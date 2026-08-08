@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config.logging import get_logger
 from app.config.settings import settings
 from app.dependencies.database import get_db
+from app.followups.service import FollowUpService
 from app.models.order import Order
 from app.payments import PaymentsNotConfigured, PaystackClient, PaystackError
 from app.payments.checkout import CheckoutError, CheckoutService
@@ -81,11 +82,31 @@ def _provision_if_paid(order: Order, db: Session) -> WorkspaceOut | None:
         profile = service.get_for_order(order)
         return WorkspaceOut.from_model(profile) if profile else None
 
+    _schedule_follow_ups(result.profile, order, db)
+
     return WorkspaceOut.from_model(
         result.profile,
         api_key=result.api_key,
         temporary_password=result.temporary_password,
     )
+
+
+def _schedule_follow_ups(profile, order: Order, db: Session) -> None:
+    """Put the post-sale calendar on the books.
+
+    Deliberately cannot fail the request. The workspace is already live and
+    the customer is looking at the confirmation screen; a scheduling problem
+    is the seller's to fix and must not surface as an error on a successful
+    purchase. Idempotent, so the repeated polls from the status page do not
+    produce repeated calendars.
+    """
+    try:
+        FollowUpService(db).schedule_for(profile, order)
+    except Exception:
+        logger.exception(
+            "Could not schedule follow-ups for order %s",
+            order.paystack_reference,
+        )
 
 
 @router.get("/config")

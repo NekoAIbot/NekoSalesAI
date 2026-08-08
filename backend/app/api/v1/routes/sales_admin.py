@@ -11,8 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
 from app.dependencies.database import get_db
+from app.followups.service import FollowUpSendError, FollowUpService
 from app.models.approval_request import STATUS_PENDING
+from app.models.follow_up import STATUS_SCHEDULED
+from app.models.order import Order
 from app.models.user import User
+from app.models.workspace_profile import WorkspaceProfile
+from app.schemas.follow_up import FollowUpCancelIn, FollowUpOut
 from app.schemas.sales import (
     ApprovalDecisionIn,
     ApprovalOut,
@@ -148,4 +153,149 @@ def desk_summary(
                 if a.status != STATUS_PENDING
             ]
         ),
+        "follow_ups_due": len(
+            FollowUpService(db).due(current_user.organization_id)
+        ),
     }
+
+
+# ---------- post-sale follow-ups ----------
+
+
+def _decorate(follow_up, db: Session) -> FollowUpOut:
+    """Attach who this is going to, for a queue that reads like a queue.
+
+    The recipient lives on the order and the company name on the workspace
+    profile, neither of which is on the follow-up row itself.
+    """
+    profile = db.get(WorkspaceProfile, follow_up.workspace_profile_id)
+    order = (
+        db.get(Order, follow_up.order_id)
+        if follow_up.order_id is not None
+        else None
+    )
+
+    return FollowUpOut.from_model(
+        follow_up,
+        recipient=order.buyer_email if order is not None else None,
+        company_name=profile.company_name if profile is not None else None,
+    )
+
+
+@router.get(
+    "/follow-ups",
+    response_model=list[FollowUpOut],
+)
+def list_follow_ups(
+    status_filter: str | None = None,
+    due_only: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The post-sale queue, scoped to the caller's organization."""
+    service = FollowUpService(db)
+
+    follow_ups = (
+        service.due(current_user.organization_id)
+        if due_only
+        else service.list(current_user.organization_id, status=status_filter)
+    )
+
+    return [_decorate(f, db) for f in follow_ups]
+
+
+@router.get("/follow-ups/due-count")
+def due_follow_up_count(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return {"due": len(FollowUpService(db).due(current_user.organization_id))}
+
+
+@router.post(
+    "/follow-ups/{follow_up_id}/send",
+    response_model=FollowUpOut,
+)
+def send_follow_up(
+    follow_up_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Deliver a follow-up through the configured sender.
+
+    With no sender configured this returns 409 with the reason, rather than
+    reporting a send that did not happen. Use the mark-sent endpoint after
+    sending it by hand.
+    """
+    service = FollowUpService(db)
+    follow_up = service.get(current_user.organization_id, follow_up_id)
+
+    if follow_up is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Follow-up not found.",
+        )
+
+    try:
+        return _decorate(service.send(follow_up), db)
+    except FollowUpSendError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/follow-ups/{follow_up_id}/mark-sent",
+    response_model=FollowUpOut,
+)
+def mark_follow_up_sent(
+    follow_up_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record that a human sent this themselves."""
+    service = FollowUpService(db)
+    follow_up = service.get(current_user.organization_id, follow_up_id)
+
+    if follow_up is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Follow-up not found.",
+        )
+
+    try:
+        return _decorate(service.mark_sent_manually(follow_up), db)
+    except FollowUpSendError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/follow-ups/{follow_up_id}/cancel",
+    response_model=FollowUpOut,
+)
+def cancel_follow_up(
+    follow_up_id: int,
+    payload: FollowUpCancelIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    service = FollowUpService(db)
+    follow_up = service.get(current_user.organization_id, follow_up_id)
+
+    if follow_up is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Follow-up not found.",
+        )
+
+    if follow_up.status != STATUS_SCHEDULED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This follow-up is already {follow_up.status}.",
+        )
+
+    return _decorate(service.cancel(follow_up, payload.reason), db)

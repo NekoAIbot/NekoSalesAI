@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 
-from app.api.v1.routes.ai import router as ai_router
 from app.api.v1.routes.checkout import router as checkout_router
 from app.api.v1.routes.contacts import router as contact_router
 from app.api.v1.routes.customers import router as customer_router
@@ -24,7 +23,6 @@ api_router.include_router(lead_router)
 api_router.include_router(sales_router)
 api_router.include_router(sales_desk_router)
 api_router.include_router(checkout_router)
-api_router.include_router(ai_router)
 api_router.include_router(task_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(health_router)
