@@ -1,29 +1,63 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.ai.scheduler.autonomous_scheduler import AutonomousScheduler
 from app.api.v1.api import api_router
+from app.config.logging import configure_logging, get_logger
+from app.config.settings import settings
 
-
-scheduler = AutonomousScheduler()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging()
+    logger.info(
+        "%s v%s starting (env=%s, db=%s)",
+        settings.APP_NAME,
+        settings.APP_VERSION,
+        settings.ENVIRONMENT,
+        "sqlite" if settings.is_sqlite else "postgres",
+    )
 
-    scheduler.start()
+    if settings.SECRET_KEY.startswith("dev-only"):
+        logger.warning(
+            "SECRET_KEY is the insecure development default. "
+            "Set SECRET_KEY in .env before deploying."
+        )
 
     yield
 
-    scheduler.stop()
+    logger.info("%s shutting down", settings.APP_NAME)
 
 
 app = FastAPI(
     title="NekoSalesAI API",
-    version="1.0.0",
+    version=settings.APP_VERSION,
     lifespan=lifespan,
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Return a generic 500 rather than leaking SQL and schema to clients."""
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error."},
+    )
+
 
 app.include_router(api_router)
 
@@ -33,4 +67,5 @@ def root():
     return {
         "message": "Welcome to NekoSalesAI API",
         "status": "running",
+        "version": settings.APP_VERSION,
     }

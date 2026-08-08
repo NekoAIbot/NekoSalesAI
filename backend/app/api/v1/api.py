@@ -11,7 +11,8 @@ from app.api.v1.routes.tasks import router as task_router
 from app.api.v1.routes.dashboard import router as dashboard_router
 from app.api.v1.routes.health import router as health_router
 
-api_router = APIRouter()
+# Versioned prefix, matching the endpoint paths documented in README.md.
+api_router = APIRouter(prefix="/api/v1")
 
 api_router.include_router(auth_router)
 api_router.include_router(organization_router)

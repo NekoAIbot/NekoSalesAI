@@ -1,6 +1,5 @@
 from datetime import datetime
 
-from app.database.database import SessionLocal
 from app.models.customer import Customer
 
 

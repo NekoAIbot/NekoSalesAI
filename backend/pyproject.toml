@@ -1,0 +1,24 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP"]
+ignore = [
+    "B008",  # Depends() in defaults is the FastAPI idiom
+    "E501",  # line length is formatter territory
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Package __init__ files re-export their public surface by design.
+"__init__.py" = ["F401"]
+"alembic/env.py" = ["F401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

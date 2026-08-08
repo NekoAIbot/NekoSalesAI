@@ -3,7 +3,6 @@
 # =========================
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
-gunicorn==23.0.0
 
 # =========================
 # Configuration
@@ -17,13 +16,14 @@ pydantic-settings==2.10.1
 # =========================
 sqlalchemy==2.0.43
 alembic==1.16.4
+# DBAPI driver used by SQLAlchemy when DATABASE_URL is postgres (see settings.py).
+# No direct import in app code — required at runtime for the Postgres path.
 psycopg[binary]==3.2.9
 
 # =========================
 # Authentication & Security
 # =========================
 python-jose[cryptography]==3.5.0
-passlib[bcrypt]==1.7.4
 bcrypt==4.3.0
 
 # =========================
@@ -35,36 +35,12 @@ email-validator==2.3.0
 # HTTP
 # =========================
 httpx==0.28.1
-requests==2.32.5
 
 # =========================
 # Templates & Forms
 # =========================
 jinja2==3.1.6
 python-multipart==0.0.20
-
-# =========================
-# Serialization
-# =========================
-orjson==3.11.2
-
-# =========================
-# Logging
-# =========================
-structlog==25.4.0
-rich==14.1.0
-python-json-logger==3.3.0
-
-# =========================
-# Async Utilities
-# =========================
-anyio==4.10.0
-
-# =========================
-# Background Tasks
-# =========================
-celery==5.5.3
-redis==6.4.0
 
 # =========================
 # Testing
@@ -75,6 +51,4 @@ pytest-asyncio==1.1.0
 # =========================
 # Code Quality
 # =========================
-black==25.1.0
 ruff==0.12.9
-mypy==1.17.1

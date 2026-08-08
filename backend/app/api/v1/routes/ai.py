@@ -4,8 +4,6 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 
 from app.ai.brain.decision_engine import DecisionEngine
-from app.repositories.ai_execution_queue_repository import AIExecutionQueueRepository
-from app.repositories.ai_decision_log_repository import AIDecisionLogRepository
 from app.repositories.ai_memory_repository import AIMemoryRepository
 from app.repositories.customer_timeline_repository import CustomerTimelineRepository
 from app.models.ai_execution_queue import AIExecutionQueue

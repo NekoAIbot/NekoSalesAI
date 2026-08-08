@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 
 class PriorityEngine:
@@ -53,7 +53,7 @@ class PriorityEngine:
             "priority": priority,
             "reasons": reasons,
             "generated_at": datetime.now(
-                timezone.utc
+                UTC
             ).isoformat(),
         }
 

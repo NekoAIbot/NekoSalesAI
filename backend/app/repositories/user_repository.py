@@ -1,4 +1,3 @@
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -34,7 +33,7 @@ class UserRepository:
     def get_by_email(
         self,
         email: str,
-    ) -> Optional[User]:
+    ) -> User | None:
         statement = select(User).where(
             User.email == email.lower()
         )
@@ -44,7 +43,7 @@ class UserRepository:
     def get_by_id(
         self,
         user_id: int,
-    ) -> Optional[User]:
+    ) -> User | None:
         statement = select(User).where(
             User.id == user_id
         )

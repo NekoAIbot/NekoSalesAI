@@ -1,7 +1,6 @@
 from app.database.database import SessionLocal
 from app.models.customer import Customer
 
-from app.core.ai.customer_learning import customer_learning
 from app.core.ai.deal_stage import deal_stage
 from app.core.ai.risk_engine import risk_engine
 from app.core.ai.profile_builder import profile_builder

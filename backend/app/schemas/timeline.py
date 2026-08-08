@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -7,13 +6,13 @@ from pydantic import BaseModel, ConfigDict
 class TimelineCreate(BaseModel):
 
     organization_id: int
-    customer_id: Optional[int] = None
+    customer_id: int | None = None
 
     event_type: str
 
     title: str
 
-    description: Optional[str] = None
+    description: str | None = None
 
     actor: str = "System"
 
@@ -28,13 +27,13 @@ class TimelineResponse(BaseModel):
 
     organization_id: int
 
-    customer_id: Optional[int]
+    customer_id: int | None
 
     event_type: str
 
     title: str
 
-    description: Optional[str]
+    description: str | None
 
     actor: str
 
