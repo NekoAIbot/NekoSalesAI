@@ -30,6 +30,19 @@ class Settings(BaseSettings):
     # chat widget both resolve to this one org.
     STOREFRONT_ORG_SLUG: str = "nekosales-demo"
 
+    # Public base URL, used to build the callback Paystack sends the buyer
+    # back to after checkout. Must be the address the browser can reach,
+    # not the address the server binds to.
+    PUBLIC_BASE_URL: str = "http://127.0.0.1:8000"
+
+    # Paystack credentials. Empty by default and deliberately so: an unset
+    # key disables checkout and says why, which is a better failure than a
+    # payment button that 500s. Use the sk_test_/pk_test_ pair until live
+    # payments are actually intended.
+    PAYSTACK_SECRET_KEY: str = ""
+    PAYSTACK_PUBLIC_KEY: str = ""
+    PAYSTACK_BASE_URL: str = "https://api.paystack.co"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
@@ -38,6 +51,19 @@ class Settings(BaseSettings):
     @property
     def is_sqlite(self) -> bool:
         return self.DATABASE_URL.startswith("sqlite")
+
+    @property
+    def payments_enabled(self) -> bool:
+        return bool(self.PAYSTACK_SECRET_KEY.strip())
+
+    @property
+    def paystack_is_live(self) -> bool:
+        """True only for a live secret key.
+
+        Worth knowing at a glance: it drives the startup banner, so nobody
+        discovers they were charging real cards by finding a real charge.
+        """
+        return self.PAYSTACK_SECRET_KEY.strip().startswith("sk_live_")
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -115,6 +115,13 @@ class Conversation(BaseModel):
         order_by="Message.id",
     )
 
+    # Orders are not cascade-deleted with the conversation: a payment record
+    # has to outlive the chat that produced it.
+    orders: Mapped[list["Order"]] = relationship(  # noqa: F821
+        back_populates="conversation",
+        order_by="Order.id",
+    )
+
     @property
     def is_handed_off(self) -> bool:
         return self.handed_off_at is not None

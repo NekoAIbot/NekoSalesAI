@@ -13,6 +13,8 @@ from app.models.contact import Contact
 from app.models.lead import Lead
 from app.models.conversation import Conversation, Message
 from app.models.approval_request import ApprovalRequest
+from app.models.order import Order
+from app.models.workspace_profile import WorkspaceProfile
 from app.models.timeline_event import TimelineEvent
 from app.models.customer_timeline import CustomerTimeline
 from app.models.activity_event import ActivityEvent
@@ -36,6 +38,8 @@ __all__ = [
     "Conversation",
     "Message",
     "ApprovalRequest",
+    "Order",
+    "WorkspaceProfile",
     "TimelineEvent",
     "CustomerTimeline",
     "ActivityEvent",
