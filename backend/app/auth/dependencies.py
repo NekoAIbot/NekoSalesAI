@@ -25,11 +25,11 @@ def get_current_user(
 
         user_id = int(payload["sub"])
 
-    except (JWTError, KeyError, ValueError):
+    except (JWTError, KeyError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token.",
-        )
+        ) from exc
 
     user = UserRepository(db).get_by_id(user_id)
 

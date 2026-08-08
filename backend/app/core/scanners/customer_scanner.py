@@ -20,9 +20,9 @@ class CustomerScanner:
         customers = (
             self.db.query(Customer)
             .filter(
-                Customer.is_active == True,
+                Customer.is_active.is_(True),
                 or_(
-                    Customer.next_review_at == None,
+                    Customer.next_review_at.is_(None),
                     Customer.next_review_at <= now,
                 ),
             )
@@ -34,7 +34,7 @@ class CustomerScanner:
 
             skipped = (
                 self.db.query(Customer)
-                .filter(Customer.is_active == True)
+                .filter(Customer.is_active.is_(True))
                 .all()
             )
 

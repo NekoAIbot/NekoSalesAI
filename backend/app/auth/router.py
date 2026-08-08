@@ -33,7 +33,7 @@ def register(
     try:
         return service.register(payload)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
 
 
 @router.post(
@@ -55,7 +55,7 @@ def login(
         }
 
     except ValueError as e:
-        raise HTTPException(401, str(e))
+        raise HTTPException(401, str(e)) from e
 
 
 @router.get(

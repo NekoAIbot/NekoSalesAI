@@ -1,43 +1,12 @@
-from app.core.runtime import runtime
+"""Backwards-compatible re-export.
 
-from app.core.workers.lead_conversion import LeadConversionWorker
-from app.core.workers.customer_onboarding import CustomerOnboardingWorker
-from app.core.workers.conversation_agent import ConversationAgentWorker
-from app.core.workers.customer_review import CustomerReviewWorker
-from app.core.workers.customer_success import CustomerSuccessWorker
-from app.core.workers.customer_intelligence import CustomerIntelligenceWorker
+This module previously declared its own register_workers() that imported six
+modules which do not exist (app.core.workers.lead_conversion and friends — the
+real ones live in app.workers), so importing it always raised
+ModuleNotFoundError. It also called runtime.register(), which WorkerRuntime
+does not define. The working implementation is app.core.workers.registry.
+"""
 
+from app.core.workers.registry import register_workers
 
-def register_workers():
-
-    runtime.register(
-        "lead_conversion",
-        LeadConversionWorker(),
-    )
-
-    runtime.register(
-        "customer_onboarding",
-        CustomerOnboardingWorker(),
-    )
-
-    runtime.register(
-        "conversation_agent",
-        ConversationAgentWorker(),
-    )
-
-    runtime.register(
-        "customer_intelligence",
-        CustomerIntelligenceWorker(),
-    )
-
-    runtime.register(
-        "customer_review",
-        CustomerReviewWorker(),
-    )
-
-    runtime.register(
-        "customer_success",
-        CustomerSuccessWorker(),
-    )
-
-    print("AI Workers Registered")
+__all__ = ["register_workers"]

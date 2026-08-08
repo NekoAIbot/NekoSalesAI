@@ -19,8 +19,6 @@ class AIDecisionEngine:
 
     def evaluate(self, event):
 
-        event_type = event.event_type.lower()
-
         payload = event.payload.lower()
 
 
