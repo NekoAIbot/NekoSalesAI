@@ -620,3 +620,138 @@ def test_api_key_is_not_returned_on_a_second_read(client, db, paid_order):
     assert first["workspace"]["api_key"]
     assert second["workspace"]["api_key"] is None
     assert second["workspace"]["temporary_password"] is None
+
+
+# ---------- closing from inside a conversation ----------
+
+
+@pytest.fixture
+def thread(client, storefront) -> str:
+    return client.post("/api/v1/sales/conversations").json()["token"]
+
+
+def reach_buy_intent(client, thread) -> dict:
+    """Talk the agent to the point where a plan has been chosen."""
+    client.post(
+        f"/api/v1/sales/conversations/{thread}/messages",
+        json={"body": f"I want to buy the {DEFAULT_PLAN.name} plan"},
+    )
+    return client.get(f"/api/v1/sales/conversations/{thread}").json()
+
+
+def test_conversation_reports_the_plan_it_reached(client, thread):
+    body = reach_buy_intent(client, thread)
+
+    assert body["interested_plan_code"] == DEFAULT_PLAN.code
+    assert body["stage"] == "ready_to_buy"
+
+
+def test_checkout_without_a_chosen_plan_is_refused(client, thread):
+    response = client.post(
+        f"/api/v1/sales/conversations/{thread}/checkout",
+        json={"email": "buyer@example.com"},
+    )
+
+    assert response.status_code == 400
+    assert "plan" in response.json()["detail"].lower()
+
+
+def test_checkout_without_an_email_is_refused(client, thread):
+    reach_buy_intent(client, thread)
+
+    response = client.post(
+        f"/api/v1/sales/conversations/{thread}/checkout",
+        json={},
+    )
+
+    assert response.status_code == 400
+    assert "email" in response.json()["detail"].lower()
+
+
+def test_checkout_on_an_unknown_thread_is_404(client, storefront):
+    response = client.post(
+        "/api/v1/sales/conversations/not-a-real-token/checkout",
+        json={"email": "buyer@example.com", "plan_code": DEFAULT_PLAN.code},
+    )
+
+    assert response.status_code == 404
+
+
+def test_conversation_checkout_charges_the_catalog_price(
+    client, db, thread, storefront, monkeypatch, transport
+):
+    reach_buy_intent(client, thread)
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.sales.CheckoutService",
+        lambda session: CheckoutService(
+            session, client=PaystackClient(secret_key=TEST_SECRET, transport=transport)
+        ),
+    )
+
+    response = client.post(
+        f"/api/v1/sales/conversations/{thread}/checkout",
+        json={"email": "buyer@example.com", "name": "Ada", "company": "Buyer Co"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["amount_minor"] == DEFAULT_PLAN.amount_minor
+    assert transport.initialize_calls[-1]["body"]["amount"] == DEFAULT_PLAN.amount_minor
+
+
+def test_conversation_checkout_ignores_an_amount_in_the_request_body(
+    client, db, thread, storefront, monkeypatch, transport
+):
+    """There is no amount field, so sending one must change nothing."""
+    reach_buy_intent(client, thread)
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.sales.CheckoutService",
+        lambda session: CheckoutService(
+            session, client=PaystackClient(secret_key=TEST_SECRET, transport=transport)
+        ),
+    )
+
+    body = client.post(
+        f"/api/v1/sales/conversations/{thread}/checkout",
+        json={
+            "email": "buyer@example.com",
+            "amount_minor": 1,
+            "amount": 1,
+            "price": 1,
+        },
+    ).json()
+
+    assert body["amount_minor"] == DEFAULT_PLAN.amount_minor
+
+
+def test_conversation_checkout_refuses_a_plan_that_does_not_exist(
+    client, db, thread, storefront, monkeypatch, transport
+):
+    reach_buy_intent(client, thread)
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.sales.CheckoutService",
+        lambda session: CheckoutService(
+            session, client=PaystackClient(secret_key=TEST_SECRET, transport=transport)
+        ),
+    )
+
+    response = client.post(
+        f"/api/v1/sales/conversations/{thread}/checkout",
+        json={"email": "buyer@example.com", "plan_code": "free_forever"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_conversation_checkout_without_keys_returns_503(client, thread):
+    reach_buy_intent(client, thread)
+
+    response = client.post(
+        f"/api/v1/sales/conversations/{thread}/checkout",
+        json={"email": "buyer@example.com"},
+    )
+
+    assert response.status_code == 503

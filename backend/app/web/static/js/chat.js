@@ -28,8 +28,22 @@
   const API = "/api/v1/sales";
   const STORAGE_KEY = "nekosales.chat.token";
 
+  const buyPanel = document.getElementById("buy-panel");
+  const buyForm = document.getElementById("buy-form");
+  const buyError = document.getElementById("buy-error");
+  const buyNote = document.getElementById("buy-note");
+  const buyPrice = document.getElementById("buy-price");
+  const buySend = document.getElementById("buy-send");
+
+  // Stages at which a buy panel is honest to show. Before ready_to_buy the
+  // visitor has not chosen anything, and after closed_won or a handoff the
+  // decision is no longer theirs to make here.
+  const BUY_STAGES = ["ready_to_buy"];
+
   let token = null;
   let busy = false;
+  let catalog = null;
+  let paymentsEnabled = null;
 
   const STAGE_LABELS = {
     greeting: "Ready",
@@ -54,6 +68,100 @@
 
   function setStage(value) {
     stage.textContent = STAGE_LABELS[value] || value;
+  }
+
+  /* ---------- the close ---------- */
+
+  /* Show the buy panel only when the conversation has genuinely arrived at
+   * a plan, and only when this deployment can actually take a payment. An
+   * unconfigured deployment says so rather than offering a button that
+   * fails at the last step. */
+  async function updateBuyPanel(conversation) {
+    if (!buyPanel) return;
+
+    const planCode = conversation.interested_plan_code;
+    const eligible = BUY_STAGES.indexOf(conversation.stage) !== -1 && !!planCode;
+
+    if (!eligible) {
+      buyPanel.classList.add("hidden");
+      return;
+    }
+
+    if (paymentsEnabled === null) {
+      try {
+        const config = await (await fetch("/api/v1/checkout/config")).json();
+        paymentsEnabled = !!config.enabled;
+      } catch (e) {
+        paymentsEnabled = false;
+      }
+    }
+
+    const plan = findPlan(planCode);
+    buyPrice.textContent = plan
+      ? plan.display_price + " / " + plan.billing_period
+      : "";
+
+    if (!paymentsEnabled) {
+      buyForm.classList.add("hidden");
+      buyNote.textContent =
+        "Card payment is not switched on for this instance yet. Ask the rep " +
+        "for an invoice and a person will pick it up.";
+      buyPanel.classList.remove("hidden");
+      return;
+    }
+
+    buyForm.classList.remove("hidden");
+    buyNote.textContent = plan
+      ? "You'll pay " + plan.display_price + " for " + plan.name +
+        ". Your workspace is set up the moment payment clears."
+      : "";
+
+    // Pre-fill from what the visitor already told the agent, so the form is
+    // a confirmation rather than a second interrogation.
+    prefill("buy-name", conversation.visitor_name);
+    prefill("buy-email", conversation.visitor_email);
+    prefill("buy-company", conversation.visitor_company);
+
+    buyPanel.classList.remove("hidden");
+  }
+
+  function prefill(id, value) {
+    const field = document.getElementById(id);
+    if (field && value && !field.value) field.value = value;
+  }
+
+  function findPlan(code) {
+    if (!catalog || !catalog.plans) return null;
+    return catalog.plans.filter(function (p) { return p.code === code; })[0] || null;
+  }
+
+  if (buyForm) {
+    buyForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      buyError.classList.add("hidden");
+      buySend.disabled = true;
+
+      try {
+        const order = await api("/conversations/" + token + "/checkout", {
+          method: "POST",
+          body: JSON.stringify({
+            name: document.getElementById("buy-name").value || null,
+            email: document.getElementById("buy-email").value,
+            company: document.getElementById("buy-company").value || null,
+          }),
+        });
+
+        if (!order.checkout_url) {
+          throw new Error("We couldn't open the payment page. Try again.");
+        }
+
+        window.location.href = order.checkout_url;
+      } catch (e) {
+        buyError.textContent = e.message;
+        buyError.classList.remove("hidden");
+        buySend.disabled = false;
+      }
+    });
   }
 
   function scrollToEnd() {
@@ -198,6 +306,14 @@
   }
 
   async function start() {
+    // The catalog is the same list the page and the agent both read from,
+    // so the buy panel cannot disagree with either about the price.
+    try {
+      catalog = await api("/catalog", {method: "GET"});
+    } catch (e) {
+      catalog = null;
+    }
+
     const saved = sessionStorage.getItem(STORAGE_KEY);
 
     if (saved) {
@@ -206,6 +322,7 @@
         token = saved;
         existing.messages.forEach(renderMessage);
         setStage(existing.stage);
+        updateBuyPanel(existing);
         return;
       } catch (e) {
         // The stored thread is gone (restarted database, expired demo).
@@ -221,6 +338,7 @@
       sessionStorage.setItem(STORAGE_KEY, token);
       created.messages.forEach(renderMessage);
       setStage(created.stage);
+      updateBuyPanel(created);
     } catch (e) {
       showError(e.message);
     }
@@ -249,10 +367,11 @@
       hideThinking();
       renderMessage(reply);
 
-      // Re-read the thread's stage: an escalation moves it, and the header
-      // should say so rather than silently staying on the old label.
+      // Re-read the thread: an escalation moves its stage and a buy intent
+      // sets its plan, and both change what the page should be showing.
       const current = await api("/conversations/" + token, {method: "GET"});
       setStage(current.stage);
+      updateBuyPanel(current);
     } catch (e) {
       hideThinking();
       showError(e.message);

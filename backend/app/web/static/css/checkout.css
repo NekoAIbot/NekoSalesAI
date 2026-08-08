@@ -1,0 +1,183 @@
+/* Checkout return page.
+ *
+ * Narrow measure, generous space, one thing to read at a time. A buyer on
+ * this page has just spent money and is waiting; the layout's job is to be
+ * legible and calm, not to celebrate.
+ *
+ * The step list is the only moving part. Steps settle in as they complete —
+ * a 6px rise, the same motion the rest of the app uses — so progress is
+ * visible without the page appearing to fidget.
+ */
+
+.return-body { background: var(--surface-sunk); }
+
+.return-wrap {
+  max-width: 620px;
+  padding-top: 64px;
+  padding-bottom: 96px;
+}
+
+.state {
+  padding: 40px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  animation: rise var(--base) var(--ease) both;
+}
+
+.state h1 {
+  margin-bottom: 10px;
+  font-size: 1.5rem;
+  letter-spacing: -.02em;
+}
+
+.state .muted { margin-bottom: 24px; }
+.state .small { font-size: .8125rem; }
+
+.ready-mark {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 1.125rem;
+}
+
+/* ---------- order summary ---------- */
+
+.order-summary {
+  margin: 22px 0;
+  padding: 18px 20px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.summary-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 7px 0;
+  font-size: .875rem;
+}
+
+.summary-row + .summary-row { border-top: 1px solid var(--line); }
+
+.summary-key { color: var(--ink-faint); }
+
+.summary-val {
+  font-weight: 500;
+  text-align: right;
+  word-break: break-all;
+}
+
+/* ---------- provisioning steps ---------- */
+
+.steps {
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  color: var(--ink-faint);
+  font-size: .9375rem;
+  transition: color var(--base) var(--ease);
+}
+
+.step + .step { border-top: 1px solid var(--line); }
+
+.step-mark {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--surface-sunk);
+  color: var(--ink-faint);
+  font-size: .75rem;
+  transition: background var(--base) var(--ease),
+              color var(--base) var(--ease);
+}
+
+.step--done { color: var(--ink); }
+
+.step--done .step-mark {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.steps--plain { counter-reset: item; }
+
+.steps--plain li {
+  padding: 7px 0;
+  border: none;
+  color: var(--ink-muted);
+  font-size: .9375rem;
+  list-style: decimal;
+  margin-left: 18px;
+}
+
+/* ---------- credentials ---------- */
+
+.credentials {
+  margin: 26px 0;
+  padding: 20px;
+  border: 1px solid var(--warn-line, #e8ddc4);
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+}
+
+.credentials-warn {
+  margin-bottom: 16px;
+  color: var(--warn);
+  font-size: .8125rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.cred + .cred { margin-top: 14px; }
+
+.cred-label {
+  margin-bottom: 5px;
+  color: var(--ink-faint);
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.cred-value {
+  display: block;
+  padding: 10px 13px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: .875rem;
+  user-select: all;      /* one click selects the whole key */
+  word-break: break-all;
+}
+
+/* ---------- next steps ---------- */
+
+.next-steps {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.next-steps h3 { margin-bottom: 10px; font-size: 1rem; }
+.next-steps .btn { margin-top: 18px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .state { animation: none; }
+}

@@ -58,8 +58,20 @@ class ConversationStart(BaseModel):
 
 
 class ConversationOut(BaseModel):
+    """The thread as the visitor's own browser sees it.
+
+    Carries back the details the visitor gave and the plan they landed on, so
+    the checkout form can be a confirmation rather than a second
+    interrogation. Still no integer id and no organization id — the token is
+    the only handle the widget gets.
+    """
+
     token: str
     stage: str
+    visitor_name: str | None = None
+    visitor_email: str | None = None
+    visitor_company: str | None = None
+    interested_plan_code: str | None = None
     messages: list[MessageOut] = Field(default_factory=list)
 
     @classmethod
@@ -67,6 +79,10 @@ class ConversationOut(BaseModel):
         return cls(
             token=conversation.public_token,
             stage=conversation.stage,
+            visitor_name=conversation.visitor_name,
+            visitor_email=conversation.visitor_email,
+            visitor_company=conversation.visitor_company,
+            interested_plan_code=conversation.interested_plan_code,
             messages=[MessageOut.from_model(m) for m in messages],
         )
 
@@ -78,6 +94,20 @@ class VisitorMessageIn(BaseModel):
 class VisitorDetailsIn(BaseModel):
     name: str | None = Field(default=None, max_length=150)
     email: EmailStr | None = None
+    company: str | None = Field(default=None, max_length=255)
+
+
+class ConversationCheckoutIn(BaseModel):
+    """Raising a payment from inside a conversation.
+
+    Every field is optional because the conversation already knows most of
+    them. There is no amount field here either — the price is the catalog's,
+    wherever the checkout was started from.
+    """
+
+    plan_code: str | None = Field(default=None, max_length=50)
+    email: EmailStr | None = None
+    name: str | None = Field(default=None, max_length=150)
     company: str | None = Field(default=None, max_length=255)
 
 

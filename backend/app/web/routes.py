@@ -54,3 +54,19 @@ def desk(request: Request):
         "desk.html",
         {"company": COMPANY},
     )
+
+
+@router.get("/checkout/return", response_class=HTMLResponse)
+def checkout_return(request: Request):
+    """Where Paystack sends the buyer back to.
+
+    Renders the shell only. Payment status and provisioning progress are
+    polled from the API, because arriving here proves the buyer left the
+    checkout page and nothing more — whether money moved is a question only
+    the server can answer.
+    """
+    return templates.TemplateResponse(
+        request,
+        "checkout_return.html",
+        {"company": COMPANY},
+    )

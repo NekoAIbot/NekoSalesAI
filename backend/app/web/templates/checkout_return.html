@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Setting up your workspace — {{ company.name }}{% endblock %}
+{% block body_class %}return-body{% endblock %}
+
+{% block content %}
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <span class="brand-mark">◆</span>
+      {{ company.name }}
+    </a>
+  </div>
+</header>
+
+<main class="wrap return-wrap">
+
+  {# Every state below is hidden until the API says which one is true. The
+     page never guesses: showing "payment confirmed" before the server has
+     confirmed it would be the one lie this screen must not tell. #}
+
+  <section class="state" id="state-checking">
+    <div class="thinking" aria-label="Checking your payment">
+      <span></span><span></span><span></span>
+    </div>
+    <h1>Checking your payment</h1>
+    <p class="muted">One moment — we're confirming this with Paystack.</p>
+  </section>
+
+  <section class="state hidden" id="state-pending">
+    <h1>We haven't seen this payment yet</h1>
+    <p class="muted">
+      If you've just paid, this can take a few seconds. We're still checking.
+    </p>
+    <div class="order-summary" id="pending-summary"></div>
+    <p class="muted small">
+      Nothing has been charged twice. If you closed the payment page without
+      paying, you can reopen the link from your email.
+    </p>
+  </section>
+
+  <section class="state hidden" id="state-provisioning">
+    <h1>Payment confirmed</h1>
+    <p class="muted" id="provisioning-line">Setting up your workspace now.</p>
+    <div class="order-summary" id="paid-summary"></div>
+    <ol class="steps" id="steps"></ol>
+  </section>
+
+  <section class="state hidden" id="state-ready">
+    <div class="ready-mark" aria-hidden="true">◆</div>
+    <h1>Your workspace is live</h1>
+    <p class="muted" id="ready-line"></p>
+
+    <div class="order-summary" id="ready-summary"></div>
+
+    {# Shown once, and only in the response that created them. Reloading this
+       page will not bring them back, which the copy says plainly rather than
+       letting someone find out later. #}
+    <div class="credentials hidden" id="credentials">
+      <div class="credentials-warn">
+        Copy these now. This is the only time they are shown — we store a hash
+        of the key, not the key.
+      </div>
+      <div class="cred" id="cred-key"></div>
+      <div class="cred" id="cred-password"></div>
+    </div>
+
+    <div class="next-steps">
+      <h3>Next</h3>
+      <ol class="steps steps--plain">
+        <li>Sign in to your desk and change the temporary password.</li>
+        <li>Set your agent's name, greeting and tone.</li>
+        <li>Paste the widget snippet into your site.</li>
+      </ol>
+      <a class="btn" href="/desk">Go to your desk</a>
+    </div>
+  </section>
+
+  <section class="state hidden" id="state-problem">
+    <h1 id="problem-title">Something needs a human</h1>
+    <p class="muted" id="problem-line"></p>
+    <p class="muted small">
+      Your payment is recorded either way. Email
+      <a href="mailto:{{ company.support_email }}">{{ company.support_email }}</a>
+      with your reference and we'll finish this by hand.
+    </p>
+    <div class="order-summary" id="problem-summary"></div>
+  </section>
+
+</main>
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="/static/css/checkout.css">
+<script src="/static/js/checkout.js" defer></script>
+{% endblock %}

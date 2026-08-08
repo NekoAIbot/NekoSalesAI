@@ -520,6 +520,79 @@ ul { margin: 0; padding: 0; list-style: none; }
   padding: 0 16px 14px;
 }
 
+/* ---------- the close ---------- */
+
+/* Sits between the transcript and the composer, so it reads as the next
+ * thing to do rather than an advertisement stapled to the side. It appears
+ * only once the conversation has reached a plan, so it arrives with the
+ * same rise the messages use — a new turn, not a popup. */
+.buy {
+  padding: 16px;
+  margin: 0 16px 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  animation: rise var(--base) var(--ease) both;
+}
+
+.buy-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.buy-label {
+  color: var(--accent);
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.buy-price {
+  color: var(--ink);
+  font-size: .9375rem;
+  font-weight: 600;
+}
+
+.buy-form {
+  display: grid;
+  gap: 8px;
+}
+
+.buy-form input {
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: .875rem;
+  transition: border-color var(--fast) var(--ease),
+              box-shadow var(--fast) var(--ease);
+}
+
+.buy-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(28, 93, 67, .12);
+}
+
+.buy-form .btn { margin-top: 2px; }
+
+.buy-note {
+  margin-top: 10px;
+  color: var(--ink-muted);
+  font-size: .75rem;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buy { animation: none; }
+}
+
 .chip {
   padding: 6px 12px;
   border: 1px solid var(--line-strong);

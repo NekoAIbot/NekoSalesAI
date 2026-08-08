@@ -13,8 +13,12 @@ from app.catalog import COMPANY, FAQS, PLANS
 from app.config.settings import settings
 from app.dependencies.database import get_db
 from app.models.conversation import Conversation
+from app.payments import PaymentsNotConfigured, PaystackError
+from app.payments.checkout import CheckoutError, CheckoutService
 from app.repositories.organization_repository import OrganizationRepository
+from app.schemas.checkout import OrderOut
 from app.schemas.sales import (
+    ConversationCheckoutIn,
     ConversationOut,
     MessageOut,
     VisitorDetailsIn,
@@ -161,3 +165,76 @@ def update_visitor(
         conversation,
         service.messages(conversation.id),
     )
+
+
+@router.post(
+    "/conversations/{token}/checkout",
+    response_model=OrderOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def checkout_from_conversation(
+    token: str,
+    payload: ConversationCheckoutIn,
+    db: Session = Depends(get_db),
+):
+    """Raise a payment for the plan this conversation settled on.
+
+    The buyer has already told the agent their email and which plan they
+    want, so asking again would be the conversation forgetting itself. The
+    plan still has to be one the conversation actually reached — a token is
+    not authority to buy something never discussed, and the price comes from
+    the catalog regardless.
+    """
+    conversation = _load_conversation(token, db)
+
+    plan_code = payload.plan_code or conversation.interested_plan_code
+    if not plan_code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No plan has been chosen in this conversation yet.",
+        )
+
+    email = str(payload.email) if payload.email else conversation.visitor_email
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An email address is needed before a payment can be raised.",
+        )
+
+    # Keep the thread and the order agreeing about who is buying what.
+    ConversationService(db).update_visitor_details(
+        conversation,
+        name=payload.name,
+        email=email,
+        company=payload.company,
+    )
+
+    try:
+        order = CheckoutService(db).create_order(
+            organization_id=conversation.organization_id,
+            plan_code=plan_code,
+            buyer_email=email,
+            buyer_name=payload.name or conversation.visitor_name,
+            buyer_company=payload.company or conversation.visitor_company,
+            conversation=conversation,
+        )
+    except PaymentsNotConfigured as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Payments are not switched on for this deployment yet. "
+                "Nothing has been charged."
+            ),
+        ) from exc
+    except CheckoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except PaystackError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Our payment provider could not start this checkout. Try again.",
+        ) from exc
+
+    return OrderOut.from_model(order)

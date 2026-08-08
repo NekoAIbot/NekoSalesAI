@@ -58,6 +58,32 @@
 
           <div class="chat-log" id="chat-log" aria-live="polite"></div>
 
+          {# Appears only once the conversation has actually reached a plan
+             and an email. It is the close, so it is not offered speculatively
+             — a buy button on a thread that never discussed a plan would be
+             asking for a decision the visitor has not got to yet. #}
+          <div class="buy hidden" id="buy-panel">
+            <div class="buy-head">
+              <span class="buy-label">Ready when you are</span>
+              <span class="buy-price" id="buy-price"></span>
+            </div>
+
+            <form class="buy-form" id="buy-form">
+              <input type="text" id="buy-name" placeholder="Your name"
+                     autocomplete="name" maxlength="150">
+              <input type="email" id="buy-email" placeholder="Work email"
+                     autocomplete="email" maxlength="255" required>
+              <input type="text" id="buy-company" placeholder="Company"
+                     autocomplete="organization" maxlength="255">
+              <button class="btn" type="submit" id="buy-send">
+                Continue to payment
+              </button>
+            </form>
+
+            <div class="chat-error hidden" id="buy-error"></div>
+            <p class="buy-note" id="buy-note"></p>
+          </div>
+
           <div class="chat-suggestions" id="chat-suggestions">
             <button class="chip" type="button">What does it cost?</button>
             <button class="chip" type="button">What can it actually do?</button>
