@@ -15,15 +15,20 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "sqlite:///./nekosales.db"
 
-    # Generated per-process when unset so a missing .env can never silently
-    # fall back to a shared, publicly-known signing key. Overriding this in
-    # production is required; see is_production_ready below.
+    # Signing key for access tokens. The default is a known, published
+    # string — safe for local development, catastrophic in production, so
+    # main.py warns loudly at startup while it is still in place.
     SECRET_KEY: str = "dev-only-insecure-key-change-me"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
     # Comma-separated list of allowed browser origins for the web app.
     CORS_ORIGINS: str = "http://localhost:8000,http://127.0.0.1:8000"
+
+    # The organization whose product the public storefront sells. This
+    # deployment sells NekoSalesAI itself, so the landing page and public
+    # chat widget both resolve to this one org.
+    STOREFRONT_ORG_SLUG: str = "nekosales-demo"
 
     model_config = SettingsConfigDict(
         env_file=".env",

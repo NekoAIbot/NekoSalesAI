@@ -9,13 +9,16 @@ every dev-server start.
 from sqlalchemy.orm import Session
 
 from app.config.logging import configure_logging, get_logger
+from app.config.settings import settings
 from app.core.security import hash_password
 from app.database.session import get_db
 from app.models import Customer, Lead, Organization, User
 
 logger = get_logger(__name__)
 
-DEMO_ORG_SLUG = "nekosales-demo"
+# The storefront org is the one the public landing page and chat sell for, so
+# the slug comes from settings rather than being defined twice.
+DEMO_ORG_SLUG = settings.STOREFRONT_ORG_SLUG
 DEMO_USER_EMAIL = "founder@nekosales.ai"
 DEMO_USER_PASSWORD = "demo-password-2026"
 
