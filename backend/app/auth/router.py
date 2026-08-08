@@ -28,7 +28,7 @@ def register(
     payload: RegisterRequest,
     db: Session = Depends(get_db),
 ):
-    service = AuthService(UserRepository(db))
+    service = AuthService(UserRepository(db), db)
 
     try:
         return service.register(payload)
@@ -44,7 +44,7 @@ def login(
     payload: LoginRequest,
     db: Session = Depends(get_db),
 ):
-    service = AuthService(UserRepository(db))
+    service = AuthService(UserRepository(db), db)
 
     try:
         result = service.login(payload)

@@ -15,6 +15,7 @@ class UserRepository:
         email: str,
         password_hash: str,
         is_admin: bool = False,
+        organization_id: int | None = None,
     ) -> User:
         user = User(
             full_name=full_name,
@@ -22,6 +23,7 @@ class UserRepository:
             password_hash=password_hash,
             is_active=True,
             is_admin=is_admin,
+            organization_id=organization_id,
         )
 
         self.db.add(user)
