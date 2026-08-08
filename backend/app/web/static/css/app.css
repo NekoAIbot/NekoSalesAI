@@ -1,0 +1,769 @@
+/* NekoSalesAI — design system.
+ *
+ * Hand-written, no framework. The look is meant to read as calm and capable:
+ * one accent colour, a real type scale, generous whitespace, and motion used
+ * only where it communicates a state change the user needs to notice.
+ *
+ * Everything is driven by the custom properties in :root. Change a value
+ * there and the whole surface follows.
+ */
+
+:root {
+  /* Warm neutrals. A pure grey reads cold and clinical at this scale. */
+  --paper:        #fbfaf9;
+  --surface:      #ffffff;
+  --surface-sunk: #f4f2ef;
+  --line:         #e6e2dc;
+  --line-strong:  #d3cec6;
+
+  --ink:          #17150f;
+  --ink-muted:    #5c574d;
+  --ink-faint:    #8a8377;
+
+  /* One accent. Deep green reads as trustworthy and settled — it is doing
+   * the work a neon gradient would only pretend to do. */
+  --accent:       #1c5d43;
+  --accent-hover: #164b36;
+  --accent-soft:  #e8f1ec;
+  --accent-line:  #bcd6c8;
+
+  --warn:         #8a5a00;
+  --warn-soft:    #fdf4e3;
+  --danger:       #9b2c23;
+  --danger-soft:  #fbeceb;
+
+  --radius-sm: 6px;
+  --radius:    10px;
+  --radius-lg: 16px;
+
+  /* Layered rather than blurred: shadows stay tight so the page feels
+   * crisp instead of foggy. */
+  --shadow-sm: 0 1px 2px rgba(23, 21, 15, .06);
+  --shadow:    0 2px 4px rgba(23, 21, 15, .05), 0 8px 24px rgba(23, 21, 15, .06);
+  --shadow-lg: 0 4px 8px rgba(23, 21, 15, .05), 0 24px 56px rgba(23, 21, 15, .10);
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas,
+               monospace;
+
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --fast: 140ms;
+  --base: 220ms;
+
+  --max: 1120px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+  font-weight: 600;
+}
+
+h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); letter-spacing: -.033em; }
+h2 { font-size: clamp(1.5rem, 3vw, 2.1rem); letter-spacing: -.025em; }
+h3 { font-size: 1.125rem; }
+
+p { margin: 0; }
+
+a { color: inherit; text-decoration: none; }
+
+ul { margin: 0; padding: 0; list-style: none; }
+
+/* ---------- layout ---------- */
+
+.wrap {
+  width: 100%;
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.section { padding: 96px 0; }
+.section--tight { padding: 64px 0; }
+
+.section-head {
+  max-width: 640px;
+  margin-bottom: 48px;
+}
+
+.section-head p {
+  margin-top: 12px;
+  color: var(--ink-muted);
+  font-size: 1.0625rem;
+}
+
+.eyebrow {
+  display: inline-block;
+  margin-bottom: 14px;
+  color: var(--accent);
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+/* ---------- header ---------- */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(251, 250, 249, .86);
+  backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+
+.site-header .wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: .7rem;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  font-size: .9375rem;
+  color: var(--ink-muted);
+}
+
+.nav a { transition: color var(--fast) var(--ease); }
+.nav a:hover { color: var(--ink); }
+
+@media (max-width: 720px) {
+  .nav .nav-link { display: none; }
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: .9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--fast) var(--ease),
+              transform var(--fast) var(--ease),
+              box-shadow var(--fast) var(--ease);
+}
+
+.btn:hover { background: var(--accent-hover); }
+.btn:active { transform: translateY(1px); }
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn[disabled] {
+  opacity: .5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.btn--ghost:hover { background: var(--surface-sunk); }
+
+.btn--lg { padding: 14px 26px; font-size: 1rem; }
+.btn--sm { padding: 7px 13px; font-size: .8125rem; }
+
+.btn--danger { background: var(--danger); }
+.btn--danger:hover { background: #85251d; }
+
+/* ---------- hero ---------- */
+
+.hero { padding: 72px 0 96px; }
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: start;
+}
+
+@media (max-width: 940px) {
+  .hero-grid { grid-template-columns: 1fr; gap: 48px; }
+}
+
+.hero h1 { margin-bottom: 20px; }
+
+.hero-sub {
+  max-width: 46ch;
+  color: var(--ink-muted);
+  font-size: 1.125rem;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.hero-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: .875rem;
+  max-width: 44ch;
+}
+
+/* ---------- chat ---------- */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 560px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.chat-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.chat-avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: .8125rem;
+  font-weight: 600;
+}
+
+.chat-title { font-size: .9375rem; font-weight: 600; }
+
+.chat-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-faint);
+  font-size: .8125rem;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scroll-behavior: smooth;
+}
+
+.msg {
+  max-width: 86%;
+  margin-bottom: 12px;
+  animation: rise var(--base) var(--ease) both;
+}
+
+/* A 6px rise on entry. Enough to read as "this just arrived", not enough to
+ * make the eye chase it. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.msg-body {
+  padding: 11px 15px;
+  border-radius: 13px;
+  font-size: .9375rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.msg--agent { align-self: flex-start; }
+
+.msg--agent .msg-body {
+  background: var(--surface-sunk);
+  border-bottom-left-radius: 4px;
+}
+
+.msg--visitor { align-self: flex-end; }
+
+.msg--visitor .msg-body {
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.msg--human { align-self: flex-start; max-width: 92%; }
+
+.msg--human .msg-body {
+  background: var(--warn-soft);
+  border: 1px solid #f0e2c4;
+  border-bottom-left-radius: 4px;
+}
+
+.msg-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+  color: var(--warn);
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+/* The reasoning disclosure. Collapsed by default so the conversation stays
+ * readable, but present on every agent turn — that is the product promise. */
+.why {
+  margin-top: 6px;
+  font-size: .8125rem;
+}
+
+.why summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-faint);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  transition: color var(--fast) var(--ease);
+}
+
+.why summary::-webkit-details-marker { display: none; }
+.why summary:hover { color: var(--ink-muted); }
+
+.why summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform var(--fast) var(--ease);
+}
+
+.why[open] summary::before { transform: rotate(90deg); }
+
+.why-body {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: var(--surface-sunk);
+  border-left: 2px solid var(--accent-line);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--ink-muted);
+  animation: rise var(--fast) var(--ease) both;
+}
+
+.why-row { display: flex; gap: 8px; margin-bottom: 7px; }
+.why-row:last-child { margin-bottom: 0; }
+
+.why-key {
+  flex-shrink: 0;
+  width: 74px;
+  color: var(--ink-faint);
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.why-val { flex: 1; }
+
+.why-val code {
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  color: var(--accent);
+}
+
+/* The thinking indicator. Tied to a real pending request — it appears when
+ * the fetch starts and leaves when the reply lands, so it always means
+ * something rather than decorating a delay. */
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 13px 16px;
+  background: var(--surface-sunk);
+  border-radius: 13px;
+  border-bottom-left-radius: 4px;
+  margin-bottom: 12px;
+  animation: rise var(--base) var(--ease) both;
+}
+
+.thinking span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  animation: pulse 1.3s var(--ease) infinite;
+}
+
+.thinking span:nth-child(2) { animation-delay: .18s; }
+.thinking span:nth-child(3) { animation-delay: .36s; }
+
+@keyframes pulse {
+  0%, 60%, 100% { opacity: .28; transform: translateY(0); }
+  30%           { opacity: 1;   transform: translateY(-2.5px); }
+}
+
+.chat-form {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.chat-input {
+  flex: 1;
+  padding: 11px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: .9375rem;
+  resize: none;
+  max-height: 120px;
+  transition: border-color var(--fast) var(--ease),
+              box-shadow var(--fast) var(--ease);
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.chat-error {
+  padding: 10px 16px;
+  background: var(--danger-soft);
+  border-top: 1px solid #f2d9d7;
+  color: var(--danger);
+  font-size: .8125rem;
+}
+
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 0 16px 14px;
+}
+
+.chip {
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 100px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: .8125rem;
+  cursor: pointer;
+  transition: all var(--fast) var(--ease);
+}
+
+.chip:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---------- cards ---------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
+  gap: 20px;
+}
+
+.card {
+  padding: 26px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.card h3 { margin-bottom: 9px; }
+.card p { color: var(--ink-muted); font-size: .9375rem; }
+
+.card-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: .875rem;
+}
+
+/* ---------- pricing ---------- */
+
+.plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 30px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--base) var(--ease),
+              box-shadow var(--base) var(--ease);
+}
+
+.plan:hover { box-shadow: var(--shadow); }
+
+.plan--featured {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.plan-badge {
+  position: absolute;
+  top: -10px;
+  left: 30px;
+  padding: 3px 11px;
+  border-radius: 100px;
+  background: var(--accent);
+  color: #fff;
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.plan-name { font-size: 1rem; font-weight: 600; }
+
+.plan-audience {
+  margin-top: 5px;
+  color: var(--ink-faint);
+  font-size: .875rem;
+  min-height: 42px;
+}
+
+.plan-price {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 20px 0 4px;
+}
+
+.plan-amount {
+  font-size: 2.1rem;
+  font-weight: 600;
+  letter-spacing: -.03em;
+}
+
+.plan-period { color: var(--ink-faint); font-size: .9375rem; }
+
+.plan-meta {
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: .8125rem;
+}
+
+.plan-features {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 26px;
+  font-size: .9063rem;
+  color: var(--ink-muted);
+}
+
+.plan-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.tick {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--accent);
+  font-size: .8125rem;
+}
+
+.plan .btn { margin-top: auto; width: 100%; }
+
+/* ---------- trust strip ---------- */
+
+.trust {
+  padding: 26px 30px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+}
+
+.trust h3 { color: var(--accent); margin-bottom: 8px; }
+.trust p { color: #2c4c3e; font-size: .9375rem; max-width: 70ch; }
+
+/* ---------- faq ---------- */
+
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+
+.faq-item { border-bottom: 1px solid var(--line); }
+
+.faq-item summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 0;
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+  transition: color var(--fast) var(--ease);
+}
+
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary:hover { color: var(--accent); }
+
+.faq-item summary::after {
+  content: "+";
+  flex-shrink: 0;
+  color: var(--ink-faint);
+  font-size: 1.25rem;
+  transition: transform var(--base) var(--ease);
+}
+
+.faq-item[open] summary::after { transform: rotate(45deg); }
+
+.faq-answer {
+  padding-bottom: 22px;
+  color: var(--ink-muted);
+  font-size: .9375rem;
+  max-width: 72ch;
+  animation: rise var(--base) var(--ease) both;
+}
+
+/* ---------- footer ---------- */
+
+.site-footer {
+  padding: 40px 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: .875rem;
+}
+
+.site-footer .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---------- utilities ---------- */
+
+.muted { color: var(--ink-muted); }
+.faint { color: var(--ink-faint); }
+.mono  { font-family: var(--font-mono); }
+
+.hidden { display: none !important; }
+
+.empty {
+  padding: 56px 24px;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: .9375rem;
+}
+
+/* Motion here is informational, so when a user has asked the OS to reduce
+ * it, the information has to survive without the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .thinking span { opacity: .6; }
+}

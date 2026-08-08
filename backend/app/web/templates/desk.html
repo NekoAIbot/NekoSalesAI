@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Sales desk — {{ company.name }}{% endblock %}
+{% block body_class %}desk-body{% endblock %}
+
+{% block content %}
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <span class="brand-mark">◆</span>
+      {{ company.name }}
+    </a>
+    <nav class="nav">
+      <span class="faint" id="desk-user"></span>
+      <button class="btn btn--ghost btn--sm hidden" id="sign-out">Sign out</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap" style="padding-top:40px;padding-bottom:80px">
+
+  {# Sign-in. Client-side against the API so the desk stays a static page. #}
+  <section id="signin-view">
+    <div class="signin">
+      <h2>Sales desk</h2>
+      <p class="muted" style="margin:10px 0 26px">
+        Sign in to review conversations and decide the requests your AI rep
+        escalated.
+      </p>
+
+      <form id="signin-form">
+        <label class="field">
+          <span>Email</span>
+          <input type="email" id="signin-email" required autocomplete="email">
+        </label>
+
+        <label class="field">
+          <span>Password</span>
+          <input type="password" id="signin-password" required
+                 autocomplete="current-password">
+        </label>
+
+        <div class="chat-error hidden" id="signin-error"
+             style="border-radius:6px;border:1px solid #f2d9d7;margin-bottom:14px"></div>
+
+        <button class="btn" type="submit" style="width:100%">Sign in</button>
+      </form>
+    </div>
+  </section>
+
+  <section id="desk-view" class="hidden">
+    <div class="desk-stats" id="desk-stats"></div>
+
+    <div class="desk-grid">
+      <div>
+        <div class="panel-head">
+          <h3>Needs your decision</h3>
+          <span class="faint" id="pending-label"></span>
+        </div>
+        <div id="approvals"></div>
+      </div>
+
+      <div>
+        <div class="panel-head">
+          <h3>Conversations</h3>
+          <span class="faint" id="conversation-label"></span>
+        </div>
+        <div id="conversations"></div>
+      </div>
+    </div>
+
+    <div class="transcript-panel hidden" id="transcript-panel">
+      <div class="panel-head">
+        <h3>Transcript</h3>
+        <button class="btn btn--ghost btn--sm" id="close-transcript">Close</button>
+      </div>
+      <div class="chat-log" id="transcript" style="max-height:520px"></div>
+    </div>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="/static/css/desk.css">
+<script src="/static/js/desk.js" defer></script>
+{% endblock %}

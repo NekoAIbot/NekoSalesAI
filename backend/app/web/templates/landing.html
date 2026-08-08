@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company.name }} — {{ company.tagline }}{% endblock %}
+
+{% block content %}
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <span class="brand-mark">◆</span>
+      {{ company.name }}
+    </a>
+    <nav class="nav">
+      <a class="nav-link" href="#how">How it works</a>
+      <a class="nav-link" href="#pricing">Pricing</a>
+      <a class="nav-link" href="#faq">FAQ</a>
+      <a class="nav-link" href="/desk">Sales desk</a>
+      <a class="btn btn--sm" href="#chat">Talk to our AI rep</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">Inbound sales, answered</span>
+        <h1>{{ company.tagline }}</h1>
+        <p class="hero-sub">{{ company.description }}</p>
+
+        <div class="hero-actions">
+          <a class="btn btn--lg" href="#chat">Talk to our AI rep</a>
+          <a class="btn btn--ghost btn--lg" href="#pricing">See pricing</a>
+        </div>
+
+        <p class="hero-note">
+          <span aria-hidden="true">↘</span>
+          The rep on this page is the product. Ask it anything — including
+          for a discount, and watch what it does instead of inventing one.
+        </p>
+      </div>
+
+      {# The conversation is the centrepiece, not a widget bolted into a
+         corner. A visitor should be able to evaluate the product by using
+         it, which is the whole pitch. #}
+      <div id="chat">
+        {% if chat_available %}
+        <div class="chat" id="chat-panel">
+          <div class="chat-head">
+            <div class="chat-avatar">AI</div>
+            <div style="flex:1">
+              <div class="chat-title">{{ company.name }} sales rep</div>
+              <div class="chat-status">
+                <span class="status-dot"></span>
+                <span id="chat-stage">Ready</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="chat-log" id="chat-log" aria-live="polite"></div>
+
+          <div class="chat-suggestions" id="chat-suggestions">
+            <button class="chip" type="button">What does it cost?</button>
+            <button class="chip" type="button">What can it actually do?</button>
+            <button class="chip" type="button">Can I get a discount?</button>
+          </div>
+
+          <div class="chat-error hidden" id="chat-error"></div>
+
+          <form class="chat-form" id="chat-form">
+            <textarea
+              class="chat-input"
+              id="chat-input"
+              rows="1"
+              placeholder="Ask about pricing, features, anything…"
+              autocomplete="off"></textarea>
+            <button class="btn" type="submit" id="chat-send">Send</button>
+          </form>
+        </div>
+        {% else %}
+        <div class="chat">
+          <div class="empty">
+            The sales rep is not configured on this instance yet.<br>
+            Run <code class="mono">./dev.sh</code> to seed it.
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">What it does</span>
+        <h2>Everything it claims, it can do today</h2>
+        <p>
+          This list is generated from the product catalog, and each entry is
+          tied to the code that implements it. Nothing aspirational makes it
+          onto this page.
+        </p>
+      </div>
+
+      <div class="grid">
+        {% for capability in capabilities %}
+        <article class="card">
+          <div class="card-icon">{{ loop.index }}</div>
+          <p>{{ capability.claim }}</p>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--tight">
+    <div class="wrap">
+      <div class="trust">
+        <h3>It will not make things up to close you</h3>
+        <p>
+          The rep can only quote the plans below. It has no ability to invent
+          a price, approve a discount, or promise a feature that does not
+          exist — ask it for one and it will tell you it needs a human, then
+          actually go and get one.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="pricing">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Pricing</span>
+        <h2>Straightforward, published pricing</h2>
+        <p>
+          These are the only figures the AI rep can quote. It reads from the
+          same list you are looking at.
+        </p>
+      </div>
+
+      <div class="plans">
+        {% for plan in plans %}
+        <article class="plan {% if plan.is_default %}plan--featured{% endif %}">
+          {% if plan.is_default %}
+          <span class="plan-badge">Founding offer</span>
+          {% endif %}
+
+          <div class="plan-name">{{ plan.name }}</div>
+          <p class="plan-audience">{{ plan.audience }}</p>
+
+          <div class="plan-price">
+            <span class="plan-amount">{{ plan.display_price }}</span>
+            <span class="plan-period">/ {{ plan.billing_period }}</span>
+          </div>
+
+          <div class="plan-meta">
+            {{ plan.seats }} seat{{ "s" if plan.seats != 1 }} ·
+            {{ "{:,}".format(plan.monthly_conversation_limit) }} conversations a month
+          </div>
+
+          <ul class="plan-features">
+            {% for feature in plan.features %}
+            <li><span class="tick">✓</span><span>{{ feature }}</span></li>
+            {% endfor %}
+          </ul>
+
+          <a class="btn {% if not plan.is_default %}btn--ghost{% endif %}"
+             href="#chat"
+             data-plan="{{ plan.name }}">Ask about {{ plan.name }}</a>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Questions</span>
+        <h2>The things people ask first</h2>
+      </div>
+
+      <div class="faq-list">
+        {% for faq in faqs %}
+        <details class="faq-item">
+          <summary>{{ faq.question }}</summary>
+          <p class="faq-answer">{{ faq.answer }}</p>
+        </details>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>{{ company.name }}</span>
+    <span>{{ company.support_email }}</span>
+  </div>
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/chat.js" defer></script>
+{% endblock %}

@@ -1,12 +1,15 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.api import api_router
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import settings
+from app.web.routes import router as web_router
 
 logger = get_logger(__name__)
 
@@ -60,12 +63,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(api_router)
+app.include_router(web_router)
 
-
-@app.get("/")
-def root():
-    return {
-        "message": "Welcome to NekoSalesAI API",
-        "status": "running",
-        "version": settings.APP_VERSION,
-    }
+app.mount(
+    "/static",
+    StaticFiles(directory=str(Path(__file__).parent / "web" / "static")),
+    name="static",
+)

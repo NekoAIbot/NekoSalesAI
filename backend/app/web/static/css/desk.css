@@ -1,0 +1,230 @@
+/* Sales desk — the staff side.
+ *
+ * Same design language as the storefront, arranged for scanning rather than
+ * for persuasion: the queue of things needing a decision comes first, and
+ * every request shows the buyer's exact words next to the decision buttons.
+ */
+
+.desk-body { background: var(--surface-sunk); }
+
+/* ---------- sign in ---------- */
+
+.signin {
+  max-width: 400px;
+  margin: 64px auto;
+  padding: 36px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.field span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: .875rem;
+  font-weight: 500;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: .9375rem;
+  transition: border-color var(--fast) var(--ease),
+              box-shadow var(--fast) var(--ease);
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.field textarea { resize: vertical; min-height: 76px; }
+
+/* ---------- stats ---------- */
+
+.desk-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.stat {
+  padding: 18px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -.03em;
+  line-height: 1.2;
+}
+
+.stat-label {
+  margin-top: 3px;
+  color: var(--ink-faint);
+  font-size: .8125rem;
+}
+
+.stat--alert { border-color: var(--accent); background: var(--accent-soft); }
+.stat--alert .stat-value { color: var(--accent); }
+
+/* ---------- layout ---------- */
+
+.desk-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .desk-grid { grid-template-columns: 1fr; }
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+/* ---------- approval cards ---------- */
+
+.approval {
+  padding: 20px;
+  margin-bottom: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  animation: rise var(--base) var(--ease) both;
+}
+
+.approval--resolved {
+  border-left-color: var(--line-strong);
+  opacity: .78;
+}
+
+.approval-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.approval-subject { font-weight: 600; font-size: .9375rem; }
+
+.badge {
+  padding: 3px 9px;
+  border-radius: 100px;
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge--pending  { background: var(--warn-soft);   color: var(--warn); }
+.badge--approved { background: var(--accent-soft); color: var(--accent); }
+.badge--declined { background: var(--danger-soft); color: var(--danger); }
+
+/* The buyer's exact words, visually quoted. The decision has to be made
+ * against what they actually said, not a summary of it. */
+.quote {
+  padding: 12px 15px;
+  margin-bottom: 14px;
+  background: var(--surface-sunk);
+  border-left: 2px solid var(--line-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: .9063rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.approval-actions { display: flex; gap: 9px; margin-top: 12px; }
+
+.resolution-note {
+  padding: 12px 15px;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  font-size: .875rem;
+  color: #2c4c3e;
+  white-space: pre-wrap;
+}
+
+.approval-meta {
+  margin-top: 10px;
+  color: var(--ink-faint);
+  font-size: .75rem;
+}
+
+/* ---------- conversation rows ---------- */
+
+.conv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  margin-bottom: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--fast) var(--ease),
+              box-shadow var(--fast) var(--ease);
+}
+
+.conv:hover { border-color: var(--accent-line); box-shadow: var(--shadow-sm); }
+
+.conv-who { font-size: .9375rem; font-weight: 500; }
+
+.conv-sub { margin-top: 2px; color: var(--ink-faint); font-size: .8125rem; }
+
+.stage-pill {
+  padding: 3px 10px;
+  border-radius: 100px;
+  background: var(--surface-sunk);
+  color: var(--ink-muted);
+  font-size: .75rem;
+  white-space: nowrap;
+}
+
+.stage-pill--hot { background: var(--accent-soft); color: var(--accent); }
+.stage-pill--wait { background: var(--warn-soft);  color: var(--warn); }
+
+/* ---------- transcript ---------- */
+
+.transcript-panel {
+  margin-top: 32px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  animation: rise var(--base) var(--ease) both;
+}
