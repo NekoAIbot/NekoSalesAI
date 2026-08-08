@@ -36,3 +36,9 @@ env/
 # Build
 dist/
 build/
+
+# Ruff
+.ruff_cache/
+
+# Local dev server logs
+.logs/
