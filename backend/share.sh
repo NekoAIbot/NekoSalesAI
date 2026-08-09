@@ -78,9 +78,15 @@ cat <<'EOF'
 
 EOF
 
-exec ssh \
+# Held open by `sleep infinity` on stdin. The remote side prints the assigned
+# URL into the session channel, so -N is not an option — and without a live
+# stdin the client hits EOF, closes the session, and the tunnel starts
+# answering 503 while the ssh process is still apparently running. That failure
+# is silent from this end, which is what makes it worth a comment.
+sleep infinity | exec ssh \
     -o StrictHostKeyChecking=accept-new \
     -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=3 \
     -o ExitOnForwardFailure=yes \
     -R "80:localhost:${PORT}" \
     nokey@localhost.run
