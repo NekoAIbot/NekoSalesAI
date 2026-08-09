@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # chat widget both resolve to this one org.
     STOREFRONT_ORG_SLUG: str = "nekosales-demo"
 
+    # The seeded demo login. Both defaults are published in this repo, so the
+    # password has to be overridable before the app is reachable from outside
+    # the machine it runs on — the desk it opens holds buyer conversations,
+    # contact details and the approval queue.
+    DEMO_USER_EMAIL: str = "founder@nekosales.ai"
+    DEMO_USER_PASSWORD: str = "demo-password-2026"
+
     # Public base URL, used to build the callback Paystack sends the buyer
     # back to after checkout. Must be the address the browser can reach,
     # not the address the server binds to.

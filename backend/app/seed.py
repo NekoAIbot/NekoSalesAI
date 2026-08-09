@@ -9,8 +9,8 @@ every dev-server start.
 from sqlalchemy.orm import Session
 
 from app.config.logging import configure_logging, get_logger
-from app.config.settings import settings
-from app.core.security import hash_password
+from app.config.settings import Settings, settings
+from app.core.security import hash_password, verify_password
 from app.database.session import get_db
 from app.models import Customer, Lead, Organization, User
 
@@ -19,8 +19,12 @@ logger = get_logger(__name__)
 # The storefront org is the one the public landing page and chat sell for, so
 # the slug comes from settings rather than being defined twice.
 DEMO_ORG_SLUG = settings.STOREFRONT_ORG_SLUG
-DEMO_USER_EMAIL = "founder@nekosales.ai"
-DEMO_USER_PASSWORD = "demo-password-2026"
+DEMO_USER_EMAIL = settings.DEMO_USER_EMAIL
+
+# Read through settings rather than os.environ so that .env is honoured — the
+# app never exports these into the process environment, so os.environ.get here
+# would silently miss a value set in .env and hand back the published default.
+DEMO_USER_PASSWORD = settings.DEMO_USER_PASSWORD
 
 
 def seed_organization(db: Session) -> Organization:
@@ -54,6 +58,17 @@ def seed_user(db: Session, org: Organization) -> User:
     user = db.query(User).filter(User.email == DEMO_USER_EMAIL).first()
 
     if user:
+        # Reconcile the password rather than returning early. The demo user
+        # outlives any single run, so a database seeded before
+        # DEMO_USER_PASSWORD was set would keep the published fallback
+        # password forever and setting the variable would appear to work
+        # while changing nothing.
+        if not verify_password(DEMO_USER_PASSWORD, user.password_hash):
+            user.password_hash = hash_password(DEMO_USER_PASSWORD)
+            db.commit()
+            db.refresh(user)
+            logger.info("Demo user password updated from the environment")
+
         return user
 
     user = User(
@@ -188,14 +203,22 @@ def seed() -> None:
         leads = seed_leads(db, org)
         customers = seed_customers(db, org)
 
+        # The password is echoed only while it is the published default, where
+        # printing it saves a trip to the source and gives away nothing. Once
+        # it has been overridden it is a real credential, and real credentials
+        # do not belong in a log that gets scrolled past, redirected to a file
+        # and pasted into chats.
+        is_default_password = (
+            DEMO_USER_PASSWORD == Settings.model_fields["DEMO_USER_PASSWORD"].default
+        )
+
         logger.info(
-            "Seed complete: org=%s, +%d leads, +%d customers "
-            "(login: %s / %s)",
+            "Seed complete: org=%s, +%d leads, +%d customers (login: %s / %s)",
             org.slug,
             leads,
             customers,
             DEMO_USER_EMAIL,
-            DEMO_USER_PASSWORD,
+            DEMO_USER_PASSWORD if is_default_password else "<set in .env>",
         )
     finally:
         db.close()
