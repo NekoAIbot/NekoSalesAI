@@ -229,3 +229,29 @@ class IntakeIn(BaseModel):
             knowledge=tuple(fact.to_faq() for fact in self.knowledge),
             max_auto_discount_percent=self.max_auto_discount_percent,
         )
+
+
+class InterviewIn(BaseModel):
+    """Every answer collected so far, plus which one was just given.
+
+    The interview is stateless — the caller holds the draft and resubmits it
+    each turn. ``last_key`` names the question a re-ask should return to when
+    an answer cannot be parsed.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    answers: dict[str, str] = Field(default_factory=dict)
+    last_key: str = Field(default="", max_length=60)
+
+    @field_validator("answers")
+    @classmethod
+    def _bounded_answers(cls, value: dict[str, str]) -> dict[str, str]:
+        if len(value) > MAX_ITEMS:
+            raise ValueError(f"At most {MAX_ITEMS} answers.")
+
+        for key, answer in value.items():
+            if len(answer) > 10_000:
+                raise ValueError(f"The answer to {key!r} is too long.")
+
+        return value

@@ -104,3 +104,31 @@ class ConfigOut(BaseModel):
             max_auto_discount_percent=config.max_auto_discount_percent,
             sells_anything=config.sells_anything,
         )
+
+
+class QuestionOut(BaseModel):
+    """The next thing to ask the customer, and what a usable answer looks like."""
+
+    key: str
+    prompt: str
+    help_text: str
+    optional: bool
+    multiline: bool
+
+
+class InterviewOut(BaseModel):
+    """Where the interview stands: what to ask, or what went wrong.
+
+    ``error`` is set when an answer already given could not be parsed. The
+    caller shows it and re-asks ``question`` rather than advancing, which is
+    how a price we could not read becomes a re-ask instead of a stored guess.
+    """
+
+    question: QuestionOut | None = None
+    error: str = ""
+    complete: bool = False
+
+    # The config the answers so far would produce. None while the answers
+    # cannot yet build one, so a customer can see their product taking shape
+    # without it being saved.
+    preview: ConfigOut | None = None
