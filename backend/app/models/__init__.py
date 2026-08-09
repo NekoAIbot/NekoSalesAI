@@ -13,6 +13,7 @@ from app.models.lead import Lead
 from app.models.conversation import Conversation, Message
 from app.models.approval_request import ApprovalRequest
 from app.models.order import Order
+from app.models.quote import Quote
 from app.models.workspace_profile import WorkspaceProfile
 from app.models.follow_up import FollowUp
 
@@ -26,6 +27,7 @@ __all__ = [
     "Message",
     "ApprovalRequest",
     "Order",
+    "Quote",
     "WorkspaceProfile",
     "FollowUp",
 ]

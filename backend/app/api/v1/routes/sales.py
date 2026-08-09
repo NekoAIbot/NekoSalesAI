@@ -177,21 +177,26 @@ def checkout_from_conversation(
     payload: ConversationCheckoutIn,
     db: Session = Depends(get_db),
 ):
-    """Raise a payment for the plan this conversation settled on.
+    """Raise a payment for what this conversation settled on.
 
-    The buyer has already told the agent their email and which plan they
-    want, so asking again would be the conversation forgetting itself. The
-    plan still has to be one the conversation actually reached — a token is
-    not authority to buy something never discussed, and the price comes from
-    the catalog regardless.
+    The buyer has already told the agent their email and what they want, so
+    asking again would be the conversation forgetting itself. It still has to
+    be something the conversation actually reached — a token is not authority
+    to buy something never discussed — and the price is computed server-side
+    either way: from the catalog for a plan, or by re-pricing the stored
+    requirement for a quote.
     """
     conversation = _load_conversation(token, db)
 
-    plan_code = payload.plan_code or conversation.interested_plan_code
-    if not plan_code:
+    quote_reference = payload.quote_reference
+    plan_code = None if quote_reference else (
+        payload.plan_code or conversation.interested_plan_code
+    )
+
+    if not plan_code and not quote_reference:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No plan has been chosen in this conversation yet.",
+            detail="No plan or quote has been chosen in this conversation yet.",
         )
 
     email = str(payload.email) if payload.email else conversation.visitor_email
@@ -213,6 +218,7 @@ def checkout_from_conversation(
         order = CheckoutService(db).create_order(
             organization_id=conversation.organization_id,
             plan_code=plan_code,
+            quote_reference=quote_reference,
             buyer_email=email,
             buyer_name=payload.name or conversation.visitor_name,
             buyer_company=payload.company or conversation.visitor_company,

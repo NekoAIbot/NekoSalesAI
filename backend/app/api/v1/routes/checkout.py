@@ -135,6 +135,7 @@ def create_order(payload: CheckoutRequest, db: Session = Depends(get_db)):
         order = service.create_order(
             organization_id=_storefront_org_id(db),
             plan_code=payload.plan_code,
+            quote_reference=payload.quote_reference,
             buyer_email=str(payload.email),
             buyer_name=payload.name,
             buyer_company=payload.company,

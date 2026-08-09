@@ -27,6 +27,7 @@ from app.config.settings import settings
 from app.models.conversation import STAGE_CLOSED_WON, Conversation
 from app.models.order import ORDER_PAID, ORDER_PENDING, Order
 from app.payments import Charge, PaystackClient, PaystackError, dump_payload
+from app.pricing.quotes import QuoteError, QuoteService
 
 logger = get_logger(__name__)
 
@@ -54,7 +55,8 @@ class CheckoutService:
         self,
         *,
         organization_id: int,
-        plan_code: str,
+        plan_code: str | None = None,
+        quote_reference: str | None = None,
         buyer_email: str,
         buyer_name: str | None = None,
         buyer_company: str | None = None,
@@ -62,12 +64,13 @@ class CheckoutService:
     ) -> Order:
         """Create a pending order and its payment link.
 
-        The plan is looked up in the catalog and its price copied onto the
-        order. Nothing about the amount is taken from the caller.
+        The plan is resolved server-side and its price copied onto the order.
+        Nothing about the amount is taken from the caller: a catalog plan code
+        is looked up, and a quote reference is re-priced from the requirement
+        we stored (see ``app.pricing.quotes``). Both hand back a ``Plan``, so
+        everything downstream of this line is identical either way.
         """
-        plan = find_plan(plan_code)
-        if plan is None:
-            raise CheckoutError(f"There is no plan with the code {plan_code!r}.")
+        plan = self._resolve_plan(plan_code, quote_reference)
 
         email = (buyer_email or "").strip()
         if not email:
@@ -132,6 +135,40 @@ class CheckoutService:
         )
 
         return order
+
+    def _resolve_plan(
+        self, plan_code: str | None, quote_reference: str | None
+    ) -> Plan:
+        """Turn whichever identifier the caller sent into a priced plan.
+
+        Exactly one identifier, because two would mean choosing between them,
+        and the cheaper-wins or first-wins rule that implies is a discount the
+        buyer set. A quote reference is re-priced here rather than read: see
+        ``QuoteService.redeem``.
+        """
+        code = (plan_code or "").strip() or None
+        reference = (quote_reference or "").strip() or None
+
+        if code and reference:
+            raise CheckoutError(
+                "Send either a plan code or a quote reference, not both."
+            )
+
+        if reference:
+            try:
+                _, plan = QuoteService(self.db).redeem(reference)
+            except QuoteError as exc:
+                raise CheckoutError(str(exc)) from exc
+            return plan
+
+        if not code:
+            raise CheckoutError("A plan code or a quote reference is required.")
+
+        plan = find_plan(code)
+        if plan is None:
+            raise CheckoutError(f"There is no plan with the code {code!r}.")
+
+        return plan
 
     def _reusable_order(
         self,

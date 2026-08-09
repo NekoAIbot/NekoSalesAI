@@ -17,11 +17,14 @@ from app.models.workspace_profile import PROVISION_STEPS, STEP_LABELS
 class CheckoutRequest(BaseModel):
     """What the buyer supplies to start a checkout.
 
-    Notably not an amount. The price is read from the catalog against the plan
-    code, so there is no field here a buyer could use to name their own price.
+    Notably not an amount. A ``plan_code`` is priced from the catalog and a
+    ``quote_reference`` is re-priced from the requirement the server stored, so
+    there is no field here a buyer could use to name their own price. Send one
+    or the other; the service refuses both at once.
     """
 
-    plan_code: str = Field(min_length=1, max_length=50)
+    plan_code: str | None = Field(default=None, min_length=1, max_length=50)
+    quote_reference: str | None = Field(default=None, min_length=1, max_length=64)
     email: EmailStr
     name: str | None = Field(default=None, max_length=150)
     company: str | None = Field(default=None, max_length=255)

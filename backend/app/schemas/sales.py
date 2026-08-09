@@ -101,11 +101,13 @@ class ConversationCheckoutIn(BaseModel):
     """Raising a payment from inside a conversation.
 
     Every field is optional because the conversation already knows most of
-    them. There is no amount field here either — the price is the catalog's,
-    wherever the checkout was started from.
+    them. There is no amount field here either — the price is computed
+    server-side from a catalog plan or a stored quote, wherever the checkout
+    was started from.
     """
 
     plan_code: str | None = Field(default=None, max_length=50)
+    quote_reference: str | None = Field(default=None, max_length=64)
     email: EmailStr | None = None
     name: str | None = Field(default=None, max_length=150)
     company: str | None = Field(default=None, max_length=255)
