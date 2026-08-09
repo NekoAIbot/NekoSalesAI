@@ -41,6 +41,8 @@ from app.models.workspace_profile import (
     STEP_WORKSPACE,
     WorkspaceProfile,
 )
+from app.products.config import ProductConfig
+from app.products.serialization import config_to_json
 
 logger = get_logger(__name__)
 
@@ -129,6 +131,9 @@ class ProvisioningService:
                     f"Hi — I'm Ada, the sales rep for {organization.name}. "
                     "Ask me anything about what we do."
                 ),
+                config_json=config_to_json(
+                    self._starting_config(organization.name)
+                ),
             )
             self.db.add(profile)
             self.db.flush()
@@ -181,6 +186,26 @@ class ProvisioningService:
             raise
 
     # ---------- steps ----------
+
+    def _starting_config(self, company: str) -> ProductConfig:
+        """The config a brand-new workspace begins with.
+
+        Empty of plans, claims and facts on purpose. We know the customer's
+        name because they paid us; we know nothing about what they sell. Their
+        agent introduces itself and routes every substantive question to them
+        until they fill this in — which is Stage B's job.
+
+        The alternative, seeding it with plausible-looking plans, would mean
+        their agent quoting prices no human ever set. Better an agent that
+        says "let me get someone" than one that invents a number.
+        """
+        return ProductConfig(
+            company_name=company,
+            tagline=f"Ask me anything about {company}.",
+            description="",
+            support_email="",
+            agent_name=f"Ada from {company}",
+        )
 
     def _create_organization(self, company: str, order: Order) -> Organization:
         organization = Organization(

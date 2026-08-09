@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.catalog import find_plan
 from app.config.logging import get_logger
 from app.models.conversation import (
     ROLE_AGENT,
@@ -25,6 +24,7 @@ from app.models.conversation import (
     Message,
 )
 from app.models.lead import Lead
+from app.products.resolver import resolve_config
 from app.sales.agent import compose_reply
 from app.sales.approvals import ApprovalService
 from app.sales.reasoning import Reasoning
@@ -65,7 +65,11 @@ class ConversationService:
         self.db.commit()
         self.db.refresh(conversation)
 
-        opening = compose_reply("", STAGE_GREETING)
+        opening = compose_reply(
+            "",
+            STAGE_GREETING,
+            config=resolve_config(self.db, organization_id),
+        )
 
         self.db.add(
             Message(
@@ -165,15 +169,18 @@ class ConversationService:
                 ).to_json(),
             )
 
-        reply = compose_reply(body, conversation.stage)
+        config = resolve_config(self.db, conversation.organization_id)
+        reply = compose_reply(body, conversation.stage, config=config)
 
         if reply.captured_email and not conversation.visitor_email:
             conversation.visitor_email = reply.captured_email
 
         if reply.interested_plan_code:
-            # Guard against the agent naming a plan the catalog has since
-            # dropped: store nothing rather than a dangling code.
-            if find_plan(reply.interested_plan_code):
+            # Guard against the agent naming a plan the config has since
+            # dropped: store nothing rather than a dangling code. Checked
+            # against this conversation's config, not the storefront's — a
+            # customer's plan codes are not visible in ours.
+            if config.find_plan(reply.interested_plan_code):
                 conversation.interested_plan_code = reply.interested_plan_code
 
         if reply.next_stage:

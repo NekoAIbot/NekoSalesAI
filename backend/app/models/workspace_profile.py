@@ -116,6 +116,13 @@ class WorkspaceProfile(BaseModel):
     # progress rather than an estimate.
     steps_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # The customer's product config — plans, capabilities, knowledge, identity.
+    # Stage A: assembled during provisioning from the purchase (plan_code), a
+    # requirements-intake form (capabilities, knowledge), and sensible defaults
+    # (company_name, tagline). Stage C replaces the fixed plan_code with
+    # dynamic complexity-based pricing built into the config.
+    config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     ready_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

@@ -1,45 +1,34 @@
-"""The published product catalog — the only claims the sales agent may make.
+"""NekoSalesAI's own product configuration — the storefront.
 
-This module is deliberately plain Python data rather than database rows. The
-sales agent quotes from it and from nothing else, so it needs to be
-version-controlled, reviewable in a diff, and impossible to change from
-inside a running conversation.
+This module used to *be* the engine's knowledge: module-level PLANS, FAQS and
+CAPABILITIES that ``app.sales.agent`` read directly. It is now one instance of
+``ProductConfig`` among many. The engine reads whichever config governs the
+conversation in front of it; this is the one that governs conversations on
+nekosales.ai, where the product being sold is NekoSalesAI itself.
 
-Three rules hold this together:
+That distinction is the point of Stage A. Before, a provisioned customer's
+widget would have quoted these prices to their buyers, because the agent had
+no other prices to reach for.
 
-1. Prices live here only. Every amount is an integer in the currency's minor
-   unit (kobo for NGN) because binary floats cannot represent money exactly.
-2. Every capability carries a ``verified_by`` pointer to the code that
-   implements it. ``tests/test_catalog.py`` asserts those targets resolve, so
-   a claim cannot outlive the feature it describes.
-3. Anything not written here is off-script. The agent routes off-script terms
-   to a human approval gate instead of inventing an answer.
+The rules that made this file trustworthy still hold:
+
+1. Prices live in a config, never in a message. Every amount is an integer in
+   the currency's minor unit (kobo for NGN) because binary floats cannot
+   represent money exactly.
+2. Every capability here carries a ``verified_by`` pointer to the code that
+   implements it, and ``tests/test_catalog.py`` asserts those targets resolve,
+   so a claim cannot outlive the feature it describes.
+3. Anything the config does not answer is off-script. The agent routes
+   off-script terms to a human approval gate instead of inventing an answer.
+
+Kept as plain Python rather than database rows: the storefront's prices should
+be reviewable in a diff and impossible to change from inside a running
+conversation. Customer configs are rows, because customers set their own.
 """
 
-from dataclasses import dataclass
+from app.products.config import Capability, Faq, Plan, ProductConfig, format_money
 
-COMPANY = {
-    "name": "NekoSalesAI",
-    "tagline": "An AI sales rep that answers your buyers in seconds.",
-    "description": (
-        "NekoSalesAI answers questions from people who land on your site, "
-        "qualifies them, and hands you a deal you can close. It quotes only "
-        "the prices and capabilities you publish, and asks you before "
-        "agreeing to anything off your price list."
-    ),
-    "support_email": "hello@nekosales.ai",
-}
-
-
-@dataclass(frozen=True)
-class Capability:
-    """One thing the product does, and the code that proves it does it."""
-
-    claim: str
-    verified_by: str
-
-
-# Only add a row here once the referenced code path actually ships. The
+# Only add a capability once the referenced code path actually ships. The
 # catalog test fails if ``verified_by`` does not resolve to a real module.
 CAPABILITIES: tuple[Capability, ...] = (
     Capability(
@@ -64,31 +53,6 @@ CAPABILITIES: tuple[Capability, ...] = (
         verified_by="app.sales.approvals",
     ),
 )
-
-
-@dataclass(frozen=True)
-class Plan:
-    """A purchasable plan. ``amount_minor`` is in the minor currency unit."""
-
-    code: str
-    name: str
-    audience: str
-    currency: str
-    amount_minor: int
-    billing_period: str
-    seats: int
-    monthly_conversation_limit: int
-    features: tuple[str, ...]
-    is_default: bool = False
-
-    @property
-    def amount_major(self) -> float:
-        """Display-only. Never use this for arithmetic or for Paystack."""
-        return self.amount_minor / 100
-
-    @property
-    def display_price(self) -> str:
-        return format_money(self.amount_minor, self.currency)
 
 
 # Founder-set pricing. These are the numbers the agent will quote to real
@@ -149,17 +113,6 @@ PLANS: tuple[Plan, ...] = (
     ),
 )
 
-# The agent may never agree to a discount on its own. Zero means every
-# off-list term goes to the human approval gate, which is the point: a bug or
-# a persuasive visitor must not be able to move the price.
-MAX_AUTO_DISCOUNT_PERCENT = 0
-
-
-@dataclass(frozen=True)
-class Faq:
-    question: str
-    answer: str
-
 
 FAQS: tuple[Faq, ...] = (
     Faq(
@@ -187,25 +140,66 @@ FAQS: tuple[Faq, ...] = (
 )
 
 
-def format_money(amount_minor: int, currency: str) -> str:
-    """Render minor units for display. Grouped, no trailing kobo when whole."""
-    symbols = {"NGN": "₦", "USD": "$"}
-    symbol = symbols.get(currency, f"{currency} ")
+# The agent may never agree to a discount on its own. Zero means every
+# off-list term goes to the human approval gate, which is the point: a bug or
+# a persuasive visitor must not be able to move the price.
+MAX_AUTO_DISCOUNT_PERCENT = 0
 
-    if amount_minor % 100 == 0:
-        return f"{symbol}{amount_minor // 100:,}"
 
-    return f"{symbol}{amount_minor / 100:,.2f}"
+STOREFRONT_CONFIG = ProductConfig(
+    company_name="NekoSalesAI",
+    tagline="An AI sales rep that answers your buyers in seconds.",
+    description=(
+        "NekoSalesAI answers questions from people who land on your site, "
+        "qualifies them, and hands you a deal you can close. It quotes only "
+        "the prices and capabilities you publish, and asks you before "
+        "agreeing to anything off your price list."
+    ),
+    support_email="hello@nekosales.ai",
+    agent_name="the NekoSalesAI sales rep",
+    plans=PLANS,
+    capabilities=CAPABILITIES,
+    faqs=FAQS,
+    max_auto_discount_percent=MAX_AUTO_DISCOUNT_PERCENT,
+)
+
+
+# Kept as a dict because templates and the follow-up rules index it by key.
+# Derived from the config rather than declared twice, so the landing page and
+# the agent cannot drift apart.
+COMPANY = {
+    "name": STOREFRONT_CONFIG.company_name,
+    "tagline": STOREFRONT_CONFIG.tagline,
+    "description": STOREFRONT_CONFIG.description,
+    "support_email": STOREFRONT_CONFIG.support_email,
+}
 
 
 def find_plan(code: str) -> Plan | None:
-    """Look up a plan by code. Returns None rather than raising or guessing."""
-    for plan in PLANS:
-        if plan.code == code:
-            return plan
+    """Look up a storefront plan by code.
 
-    return None
+    Storefront-scoped by definition. Code resolving a plan for an arbitrary
+    conversation must use that conversation's config, not this — a customer's
+    plan codes live in their own config and are not visible here.
+    """
+    return STOREFRONT_CONFIG.find_plan(code)
 
 
 def plan_codes() -> tuple[str, ...]:
-    return tuple(plan.code for plan in PLANS)
+    return STOREFRONT_CONFIG.plan_codes
+
+
+__all__ = [
+    "CAPABILITIES",
+    "COMPANY",
+    "FAQS",
+    "MAX_AUTO_DISCOUNT_PERCENT",
+    "PLANS",
+    "STOREFRONT_CONFIG",
+    "Capability",
+    "Faq",
+    "Plan",
+    "find_plan",
+    "format_money",
+    "plan_codes",
+]

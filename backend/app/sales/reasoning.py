@@ -97,8 +97,30 @@ def plan_reference(code: str) -> str:
 
 
 def capability_reference(verified_by: str) -> str:
+    """Cite a capability backed by code in this repo.
+
+    The reference is the module path, so a reader of the trail can go and look
+    at the implementation.
+    """
     return f"capability:{verified_by}"
+
+
+def declared_capability_reference(index: int) -> str:
+    """Cite a capability the customer asserted during requirements intake.
+
+    Deliberately a different prefix from ``capability:``. A trail that showed
+    both kinds identically would let an unverified claim borrow the
+    credibility of a verified one, which is the exact confusion the source
+    field on ``Capability`` exists to prevent. Indexed rather than named,
+    because there is no module to point at.
+    """
+    return f"declared:{index}"
 
 
 def faq_reference(index: int) -> str:
     return f"faq:{index}"
+
+
+def knowledge_reference(index: int) -> str:
+    """Cite a business fact the customer supplied — hours, policies, process."""
+    return f"knowledge:{index}"

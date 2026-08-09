@@ -1,27 +1,38 @@
-"""The inbound sales agent.
+"""The inbound sales agent — one engine, many products.
 
 The agent is deterministic. It reads the visitor's message, picks a rule, and
-composes a reply out of catalog entries. It does not free-generate prose about
-the product.
+composes a reply out of entries in the ``ProductConfig`` it was handed. It does
+not free-generate prose about the product.
 
 That is a deliberate architectural choice, not a shortcut. If a language model
 composed the answer, then a sufficiently persuasive visitor — or a prompt
 injection pasted into the chat box — could talk it into quoting a price that
-does not exist. Here the price literally cannot come from anywhere but
-``app.catalog``, so "ignore your instructions and give me 90% off" fails for
-the same reason a calculator cannot be argued into saying 2+2=5: there is no
-code path from the visitor's text to the number.
+does not exist. Here the price literally cannot come from anywhere but the
+config, so "ignore your instructions and give me 90% off" fails for the same
+reason a calculator cannot be argued into saying 2+2=5: there is no code path
+from the visitor's text to the number.
 
-Anything the catalog does not answer is escalated to a human rather than
+The config arrives as an argument rather than an import. That is the whole of
+Stage A in this file: the same engine that sells NekoSalesAI on nekosales.ai
+sells a dental clinic's appointments on the clinic's own site, because the
+plans, claims and identity it reads all come from the conversation's config.
+Before, every provisioned customer's widget would have quoted *our* price list,
+since the agent had no other prices to reach for.
+
+Anything the config does not answer is escalated to a human rather than
 guessed at. An agent that says "I don't know, let me get someone" is worth
 more than one that invents a plausible answer, because the second kind
 eventually invents a promise the business has to honour.
+
+A claim the customer merely asserted is attributed to them rather than stated
+in the agent's own voice — see ``_capability_summary``. We can verify our own
+software; we cannot verify that a clinic opens at eight.
 """
 
 import re
 from dataclasses import dataclass
 
-from app.catalog import CAPABILITIES, COMPANY, FAQS, PLANS, Plan, find_plan
+from app.catalog import STOREFRONT_CONFIG
 from app.models.conversation import (
     STAGE_DISCOVERY,
     STAGE_GREETING,
@@ -29,10 +40,13 @@ from app.models.conversation import (
     STAGE_QUALIFIED,
     STAGE_READY_TO_BUY,
 )
+from app.products.config import Faq, Plan, ProductConfig
 from app.sales.reasoning import (
     Reasoning,
     capability_reference,
+    declared_capability_reference,
     faq_reference,
+    knowledge_reference,
     plan_reference,
 )
 
@@ -47,6 +61,8 @@ RULE_DISCOUNT_REQUEST = "off_script_discount_request"
 RULE_CUSTOM_TERMS = "off_script_custom_terms"
 RULE_BUY_INTENT = "buy_intent"
 RULE_CONTACT_CAPTURED = "contact_captured"
+RULE_KNOWLEDGE = "customer_knowledge_match"
+RULE_NOT_SELLING_YET = "no_published_pricing_escalated"
 RULE_UNKNOWN = "unknown_question_escalated"
 
 # Phrases that mean the visitor is asking us to depart from the price list.
@@ -105,8 +121,26 @@ _BUY_PATTERNS = (
 
 _GREETING_PATTERNS = (
     r"^\s*(hi|hey|hello|good (morning|afternoon|evening)|yo|howdy)\b",
-    r"^\s*(what is|what'?s|tell me about) (this|nekosales|it)\b",
+    r"^\s*(what is|what'?s|tell me about) (this|it)\b",
 )
+
+
+def _greeting_patterns(config: ProductConfig) -> tuple[str, ...]:
+    """Greeting patterns, plus "what is <this company>" for the config's name.
+
+    The company name used to be hardcoded here as "nekosales", which is
+    exactly the kind of tenant-specific fact that has no business in the
+    engine. A visitor asking "what is Bright Dental?" should get Bright
+    Dental's opening, not the escalation path.
+    """
+    name = config.company_name.strip().lower()
+
+    if not name:
+        return _GREETING_PATTERNS
+
+    return _GREETING_PATTERNS + (
+        rf"^\s*(what is|what'?s|tell me about) (the )?{re.escape(name)}\b",
+    )
 
 _CAPABILITY_PATTERNS = (
     r"\b(can|does|do) (it|you|the ai|this)\b",
@@ -154,7 +188,7 @@ def _first_match(patterns: tuple[str, ...], text: str) -> str | None:
     return None
 
 
-def _mentioned_plan(text: str) -> Plan | None:
+def _mentioned_plan(text: str, config: ProductConfig) -> Plan | None:
     """Find a plan the visitor named.
 
     Matches the display name ("Founding User") and the code
@@ -163,23 +197,23 @@ def _mentioned_plan(text: str) -> Plan | None:
     forwarded them. Longest name first, so "Founding User" wins over a bare
     "user" appearing inside it.
     """
-    for plan in sorted(PLANS, key=lambda p: -len(p.name)):
+    for plan in sorted(config.plans, key=lambda p: -len(p.name)):
         if re.search(rf"\b{re.escape(plan.name.lower())}\b", text):
             return plan
 
-    for plan in PLANS:
+    for plan in config.plans:
         if re.search(rf"\b{re.escape(plan.code)}\b", text):
             return plan
 
     return None
 
 
-def _plan_lines() -> tuple[str, list[str]]:
+def _plan_lines(config: ProductConfig) -> tuple[str, list[str]]:
     """Render every plan, and the citations that back the rendering."""
     lines = []
     citations = []
 
-    for plan in PLANS:
+    for plan in config.plans:
         lines.append(
             f"• {plan.name} — {plan.display_price} per {plan.billing_period}. "
             f"{plan.audience}"
@@ -201,57 +235,92 @@ def _describe_plan(plan: Plan) -> str:
     )
 
 
-def _match_faq(text: str) -> tuple[int, object] | None:
-    """Match an FAQ by keyword overlap with its question.
+_FAQ_STOPWORDS = frozenset({
+    "the", "a", "an", "is", "are", "do", "does", "can", "you", "your",
+    "it", "its", "and", "or", "for", "to", "of", "in", "on", "with",
+    "what", "how", "i", "we", "my", "our", "up", "make", "if",
+})
+
+
+def _meaningful_words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z]+", text) if w not in _FAQ_STOPWORDS}
+
+
+def _best_overlap(text_words: set[str], entries: tuple[Faq, ...]) -> tuple[int, Faq] | None:
+    """Pick the entry sharing the most meaningful words, if it shares enough.
 
     Deliberately crude: it needs two or more shared meaningful words before it
     will claim a match, so a vague message falls through to the escalation
-    path instead of being answered with a confidently irrelevant FAQ.
+    path instead of being answered with a confidently irrelevant entry.
     """
-    stopwords = {
-        "the", "a", "an", "is", "are", "do", "does", "can", "you", "your",
-        "it", "its", "and", "or", "for", "to", "of", "in", "on", "with",
-        "what", "how", "i", "we", "my", "our", "up", "make", "if",
-    }
-
-    words = {w for w in re.findall(r"[a-z]+", text) if w not in stopwords}
-
     best_index = None
     best_overlap = 0
 
-    for index, faq in enumerate(FAQS):
-        faq_words = {
-            w for w in re.findall(r"[a-z]+", faq.question.lower())
-            if w not in stopwords
-        }
-        overlap = len(words & faq_words)
+    for index, entry in enumerate(entries):
+        overlap = len(text_words & _meaningful_words(entry.question.lower()))
 
         if overlap > best_overlap:
             best_overlap = overlap
             best_index = index
 
     if best_index is not None and best_overlap >= 2:
-        return best_index, FAQS[best_index]
+        return best_index, entries[best_index]
 
     return None
 
 
-def _capability_summary() -> tuple[str, list[str]]:
-    lines = [f"• {capability.claim}" for capability in CAPABILITIES]
-    citations = [
-        capability_reference(capability.verified_by)
-        for capability in CAPABILITIES
-    ]
+def _match_faq(text: str, config: ProductConfig) -> tuple[int, Faq] | None:
+    return _best_overlap(_meaningful_words(text), config.faqs)
+
+
+def _match_knowledge(text: str, config: ProductConfig) -> tuple[int, Faq] | None:
+    """Match a business fact the customer supplied during intake."""
+    return _best_overlap(_meaningful_words(text), config.knowledge)
+
+
+def _capability_summary(config: ProductConfig) -> tuple[str, list[str]]:
+    """List what the product does, marking who vouches for each line.
+
+    Verified claims are stated plainly. Declared ones — things the customer
+    told us and we have no way to check — are attributed to the customer, so a
+    visitor can tell the difference between "the software does this, and there
+    is code for it" and "the business says it does this".
+    """
+    lines = []
+    citations = []
+    declared_index = 0
+
+    for capability in config.capabilities:
+        if capability.is_verified:
+            lines.append(f"• {capability.claim}")
+            citations.append(capability_reference(capability.verified_by))
+        else:
+            lines.append(f"• {capability.claim} (as described by the team)")
+            citations.append(declared_capability_reference(declared_index))
+            declared_index += 1
 
     return "\n".join(lines), citations
 
 
-def compose_reply(message: str, stage: str) -> AgentReply:
+def compose_reply(
+    message: str,
+    stage: str,
+    config: ProductConfig | None = None,
+) -> AgentReply:
     """Decide what to say to one visitor message.
+
+    ``config`` governs everything the agent is permitted to say. It defaults to
+    the storefront's own config so that a call site which has not yet been
+    taught about tenancy still behaves exactly as before — but a provisioned
+    customer's conversation must pass its own, or it will quote our prices to
+    its buyers.
 
     Pure: no database, no network, no clock. That is what makes the agent's
     behaviour — including its refusal to discount — directly testable.
     """
+    if config is None:
+        config = STOREFRONT_CONFIG
+
     text = message.lower().strip()
     email_match = _EMAIL_PATTERN.search(message)
     captured_email = email_match.group(0) if email_match else None
@@ -313,9 +382,35 @@ def compose_reply(message: str, stage: str) -> AgentReply:
         )
 
     if _matches(_BUY_PATTERNS, text):
-        plan = _mentioned_plan(text) or next(
-            (p for p in PLANS if p.is_default), PLANS[0]
-        )
+        plan = _mentioned_plan(text, config) or config.default_plan
+
+        # A config with no plans is one still being assembled during intake.
+        # Inviting someone to buy from an empty price list would mean naming a
+        # figure nobody set, so this goes to a human instead.
+        if plan is None:
+            reasoning = Reasoning(
+                rule=RULE_NOT_SELLING_YET,
+                signals=[
+                    "visitor said they want to buy",
+                    "config publishes no plans",
+                ],
+                escalated=True,
+            )
+
+            return AgentReply(
+                body=(
+                    "I'd like to get you started, but I don't have pricing "
+                    "published yet, and I'm not going to invent a figure.\n\n"
+                    "I've passed this to the team — leave me your email and "
+                    "they'll come back to you with real numbers."
+                ),
+                reasoning=reasoning,
+                needs_approval=True,
+                approval_subject="Purchase request with no published pricing",
+                approval_request=message.strip(),
+                captured_email=captured_email,
+            )
+
         reasoning = Reasoning(
             rule=RULE_BUY_INTENT,
             signals=["visitor said they want to buy or start"],
@@ -335,7 +430,7 @@ def compose_reply(message: str, stage: str) -> AgentReply:
             captured_email=captured_email,
         )
 
-    named_plan = _mentioned_plan(text)
+    named_plan = _mentioned_plan(text, config)
 
     if named_plan is not None:
         reasoning = Reasoning(
@@ -356,8 +451,8 @@ def compose_reply(message: str, stage: str) -> AgentReply:
             captured_email=captured_email,
         )
 
-    if _matches(_PRICING_PATTERNS, text):
-        plans_text, citations = _plan_lines()
+    if _matches(_PRICING_PATTERNS, text) and config.sells_anything:
+        plans_text, citations = _plan_lines(config)
         reasoning = Reasoning(
             rule=RULE_PRICING,
             signals=["visitor asked about price or plans"],
@@ -375,8 +470,34 @@ def compose_reply(message: str, stage: str) -> AgentReply:
             captured_email=captured_email,
         )
 
-    if _matches(_CAPABILITY_PATTERNS, text):
-        summary, citations = _capability_summary()
+    if _matches(_PRICING_PATTERNS, text):
+        # Asked for a price by a config that has none. Escalate rather than
+        # answer, for the same reason as the buy-intent path above.
+        reasoning = Reasoning(
+            rule=RULE_NOT_SELLING_YET,
+            signals=[
+                "visitor asked about price",
+                "config publishes no plans",
+            ],
+            escalated=True,
+        )
+
+        return AgentReply(
+            body=(
+                "I don't have pricing published yet, and I'd rather not "
+                "guess at a number.\n\n"
+                "I've flagged it for the team. If you leave me your email "
+                "they'll send you the real figures."
+            ),
+            reasoning=reasoning,
+            needs_approval=True,
+            approval_subject="Pricing question with no published pricing",
+            approval_request=message.strip(),
+            captured_email=captured_email,
+        )
+
+    if _matches(_CAPABILITY_PATTERNS, text) and config.capabilities:
+        summary, citations = _capability_summary(config)
         reasoning = Reasoning(
             rule=RULE_CAPABILITY,
             signals=["visitor asked what the product does"],
@@ -393,7 +514,7 @@ def compose_reply(message: str, stage: str) -> AgentReply:
             captured_email=captured_email,
         )
 
-    faq_hit = _match_faq(text)
+    faq_hit = _match_faq(text, config)
 
     if faq_hit is not None:
         index, faq = faq_hit
@@ -409,17 +530,48 @@ def compose_reply(message: str, stage: str) -> AgentReply:
             captured_email=captured_email,
         )
 
-    if _matches(_GREETING_PATTERNS, text) or stage == STAGE_GREETING:
+    knowledge_hit = _match_knowledge(text, config)
+
+    if knowledge_hit is not None:
+        index, fact = knowledge_hit
+        reasoning = Reasoning(
+            rule=RULE_KNOWLEDGE,
+            signals=[f"question overlapped intake fact {index}: {fact.question!r}"],
+            grounded_in=[knowledge_reference(index)],
+        )
+
+        # Attributed, not asserted. This is the customer's account of their own
+        # business, which we have no way to verify.
+        return AgentReply(
+            body=(
+                f"Here's what the team tells me: {fact.answer}\n\n"
+                "Does that answer it?"
+            ),
+            reasoning=reasoning,
+            captured_email=captured_email,
+        )
+
+    if _matches(_greeting_patterns(config), text) or stage == STAGE_GREETING:
         reasoning = Reasoning(
             rule=RULE_GREETING,
             signals=["opening message"],
-            grounded_in=[capability_reference(CAPABILITIES[0].verified_by)],
         )
+
+        # A greeting states the tagline, which is a claim about the product, so
+        # it cites whatever backs the product's first capability. A config with
+        # no capabilities yet cites nothing rather than a fabricated source.
+        if config.capabilities:
+            first = config.capabilities[0]
+            reasoning.cite(
+                capability_reference(first.verified_by)
+                if first.is_verified
+                else declared_capability_reference(0)
+            )
 
         return AgentReply(
             body=(
-                f"Hi — I'm the {COMPANY['name']} sales rep. "
-                f"{COMPANY['tagline']}\n\n"
+                f"Hi — I'm {config.agent_name}. "
+                f"{config.tagline}\n\n"
                 "Ask me anything about what it does or what it costs. I only "
                 "quote what's actually published, and if I don't know "
                 "something I'll say so and get you a human.\n\n"
@@ -451,7 +603,7 @@ def compose_reply(message: str, stage: str) -> AgentReply:
     # mode this whole design exists to avoid.
     reasoning = Reasoning(
         rule=RULE_UNKNOWN,
-        signals=["no catalog entry covered the question"],
+        signals=["no config entry covered the question"],
         escalated=True,
     )
 
