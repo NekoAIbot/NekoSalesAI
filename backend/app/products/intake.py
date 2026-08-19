@@ -9,9 +9,17 @@ The storefront cannot be configured through this path. NekoSalesAI's own plans
 and verified claims live in ``app.catalog.products`` as reviewable Python, and
 a request that could rewrite them from a web form would be a way to change our
 prices without a diff.
+
+Neither can the product's *role*. An intake decides what the agent says; what
+the agent is permitted to do was decided when the customer paid. A support
+agent whose owner could set their own role could promote it into one that quotes
+prices and takes money on their behalf, so ``save`` overwrites whatever role it
+was handed with the one on the profile.
 """
 
 from __future__ import annotations
+
+from dataclasses import replace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -58,8 +66,13 @@ class IntakeService:
                 "nothing to configure."
             )
 
-        profile.config_json = config_to_json(config)
+        # The role is the profile's, not the payload's. An intake that could
+        # set it would be a customer granting their own agent permission to
+        # sell. Stored anyway so the row is self-describing, but stored as the
+        # value the purchase decided.
+        config = replace(config, role=profile.role)
 
+        profile.config_json = config_to_json(config)
         # The profile's own identity columns feed the widget and the minimal
         # fallback, so they follow the config rather than drifting from it.
         profile.company_name = config.company_name

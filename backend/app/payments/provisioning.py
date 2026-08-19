@@ -184,6 +184,7 @@ class ProvisioningService:
                 organization_id=organization.id,
                 order_id=order.id,
                 plan_code=order.plan_code,
+                role=role,
                 agent_name=agent_name,
                 company_name=organization.name,
                 greeting=_starting_greeting(agent_name, organization.name, role),

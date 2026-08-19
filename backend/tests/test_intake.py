@@ -10,12 +10,18 @@ survive the trip to integer minor units exactly — a price the customer typed
 and a price we charge that differ by a kobo is a support ticket.
 """
 
+import json
+
 import pytest
 
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.workspace_profile import PROVISION_READY, WorkspaceProfile
-from app.products.config import SOURCE_DECLARED
+from app.products.config import (
+    ROLE_SALES_AGENT,
+    ROLE_SUPPORT_AGENT,
+    SOURCE_DECLARED,
+)
 from app.products.resolver import resolve_config
 
 # A clinic, deliberately nothing like NekoSalesAI. The price must not coincide
@@ -235,3 +241,103 @@ def test_one_org_cannot_reach_another_orgs_config(
     assert other_config.company_name == "Other Co"
     assert other_config.plans == ()
     assert other_config.sells_anything is False
+
+
+# ---------- intake cannot grant its own permissions ----------
+
+
+@pytest.fixture
+def support_profile(db, authed_org_id) -> WorkspaceProfile:
+    """A provisioned support agent — a workspace that must not sell."""
+    profile = WorkspaceProfile(
+        organization_id=authed_org_id,
+        plan_code="quote_qt_support",
+        role=ROLE_SUPPORT_AGENT,
+        status=PROVISION_READY,
+        agent_name="Remi",
+        company_name="Bright Dental",
+        greeting="Hi there",
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def test_intake_cannot_promote_a_support_agent_into_a_seller(
+    client, auth_headers, support_profile, db, authed_org_id
+):
+    """The hole this closes: a support agent's owner posting a full price list
+    and getting an agent that quotes it. They bought support, not sales."""
+    response = client.put(
+        "/api/v1/product-config", json=CLINIC_PAYLOAD, headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    # Their plans are stored — they are allowed to describe their business.
+    assert len(response.json()["plans"]) == 1
+    # But the agent still may not sell from them.
+    assert response.json()["sells_anything"] is False
+
+    resolved = resolve_config(db, authed_org_id)
+    assert resolved.role == ROLE_SUPPORT_AGENT
+    assert resolved.can_sell is False
+
+
+def test_an_explicit_role_in_the_payload_is_ignored(
+    client, auth_headers, support_profile, db, authed_org_id
+):
+    """Belt and braces: even if a future schema accepted the field."""
+    payload = dict(CLINIC_PAYLOAD, role="sales_agent")
+
+    response = client.put(
+        "/api/v1/product-config", json=payload, headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    assert resolve_config(db, authed_org_id).role == ROLE_SUPPORT_AGENT
+
+
+def test_a_sales_agents_intake_keeps_selling(
+    client, auth_headers, authed_profile, db, authed_org_id
+):
+    """The guard must not break the product that is supposed to sell."""
+    response = client.put(
+        "/api/v1/product-config", json=CLINIC_PAYLOAD, headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["sells_anything"] is True
+
+    resolved = resolve_config(db, authed_org_id)
+    assert resolved.role == ROLE_SALES_AGENT
+    assert resolved.can_sell is True
+
+
+def test_a_tampered_role_column_reads_as_a_support_agent(
+    db, authed_org_id, authed_profile
+):
+    """Everywhere else junk falls back to the sales agent. Not here: this
+    fallback decides permission, so it fails closed."""
+    authed_profile.role = "sales_agent_but_better"
+    db.commit()
+
+    resolved = resolve_config(db, authed_org_id)
+
+    assert resolved.role == ROLE_SUPPORT_AGENT
+    assert resolved.can_sell is False
+
+
+def test_a_stored_config_claiming_to_be_a_seller_does_not_become_one(
+    db, authed_org_id, support_profile
+):
+    """The direct attack: edit config_json's role in the database."""
+    stored = json.loads(support_profile.config_json or "{}")
+    stored.update({"company_name": "Bright Dental", "role": "sales_agent"})
+    support_profile.config_json = json.dumps(stored)
+    db.commit()
+
+    resolved = resolve_config(db, authed_org_id)
+
+    assert resolved.role == ROLE_SUPPORT_AGENT
+    assert resolved.can_sell is False

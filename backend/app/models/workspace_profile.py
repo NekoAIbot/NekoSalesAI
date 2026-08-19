@@ -28,6 +28,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base_model import BaseModel
+from app.products.config import ROLE_SALES_AGENT
 
 PROVISION_PENDING = "pending"
 PROVISION_READY = "ready"
@@ -75,6 +76,16 @@ class WorkspaceProfile(BaseModel):
     )
 
     plan_code: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Which product they bought, and therefore what their agent is permitted
+    # to do. Deliberately a column rather than a field inside config_json:
+    # config_json is customer-editable through requirements intake, so a role
+    # stored there could be edited, and editing it upward would turn a support
+    # agent into one that can quote prices and take money. Set once at
+    # provisioning from the purchase; intake cannot reach it.
+    role: Mapped[str] = mapped_column(
+        String(40), nullable=False, default=ROLE_SALES_AGENT
+    )
 
     status: Mapped[str] = mapped_column(
         String(20),
