@@ -63,6 +63,7 @@ RULE_BUY_INTENT = "buy_intent"
 RULE_CONTACT_CAPTURED = "contact_captured"
 RULE_KNOWLEDGE = "customer_knowledge_match"
 RULE_NOT_SELLING_YET = "no_published_pricing_escalated"
+RULE_NOT_A_SELLER = "commercial_question_outside_role"
 RULE_UNKNOWN = "unknown_question_escalated"
 
 # Phrases that mean the visitor is asking us to depart from the price list.
@@ -108,6 +109,10 @@ _PRICING_PATTERNS = (
     r"\bprice|pricing|cost|how much|fee|rate|charge|afford\b",
     r"\bplans?\b",
     r"\bpay\b",
+    # Stage C made "a quote" a thing this system actually issues, so asking for
+    # one is a pricing question. Without this a support agent would treat it as
+    # small talk — the one commercial phrasing it failed to recognise.
+    r"\bquote|quotation\b",
 )
 
 _BUY_PATTERNS = (
@@ -381,6 +386,37 @@ def compose_reply(
             captured_email=captured_email,
         )
 
+    if not config.can_sell and (
+        _matches(_BUY_PATTERNS, text) or _matches(_PRICING_PATTERNS, text)
+    ):
+        # A support agent was not bought to take money. It hands the whole
+        # commercial conversation over rather than quoting from a price list
+        # that exists for a different product, and it does not name a plan
+        # or a figure on the way out.
+        reasoning = Reasoning(
+            rule=RULE_NOT_A_SELLER,
+            signals=[
+                "visitor asked about buying or price",
+                f"this product's role is {config.role}, which does not sell",
+            ],
+            escalated=True,
+        )
+
+        return AgentReply(
+            body=(
+                "I'm here to help with questions about how things work — I'm "
+                "not the one who handles pricing or orders, so I don't want "
+                "to quote you something and have it be wrong.\n\n"
+                "Leave me your email and I'll pass you to someone who can "
+                "give you a proper answer."
+            ),
+            reasoning=reasoning,
+            needs_approval=True,
+            approval_subject="Commercial question for a support agent",
+            approval_request=message.strip(),
+            captured_email=captured_email,
+        )
+
     if _matches(_BUY_PATTERNS, text):
         plan = _mentioned_plan(text, config) or config.default_plan
 
@@ -432,7 +468,7 @@ def compose_reply(
 
     named_plan = _mentioned_plan(text, config)
 
-    if named_plan is not None:
+    if named_plan is not None and config.can_sell:
         reasoning = Reasoning(
             rule=RULE_PLAN_DETAIL,
             signals=[f"visitor named the {named_plan.name} plan"],

@@ -44,6 +44,26 @@ SOURCE_DECLARED = "declared"
 
 CAPABILITY_SOURCES = (SOURCE_VERIFIED, SOURCE_DECLARED)
 
+# What job the agent is doing, which decides which conversations it may close
+# and which it must hand over.
+#
+#   SALES_AGENT    — may take money. Quotes the plans, raises a payment link.
+#   SUPPORT_AGENT  — may not. Answers from the customer's own knowledge and
+#                    escalates anything about price or purchase.
+#
+# A string rather than a subclass on purpose. The engine stays one code path
+# and reads this the way it reads the plan list; two agent classes would mean
+# the safety rules had to be re-proved in each of them.
+ROLE_SALES_AGENT = "sales_agent"
+ROLE_SUPPORT_AGENT = "support_agent"
+
+PRODUCT_ROLES = (ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT)
+
+# The roles that are allowed to move a conversation toward payment. Kept as
+# data next to the roles themselves so adding a third product forces an
+# explicit decision here rather than inheriting "can sell" by omission.
+SELLING_ROLES = frozenset({ROLE_SALES_AGENT})
+
 
 @dataclass(frozen=True)
 class Capability:
@@ -126,6 +146,10 @@ class ProductConfig:
     # may want "Ada from Bright Retail" rather than "Bright Retail".
     agent_name: str = "the sales rep"
 
+    # Which product this config drives. Defaults to the sales agent so every
+    # config written before Stage D keeps its exact behaviour.
+    role: str = ROLE_SALES_AGENT
+
     # --- what it may say ----------------------------------------------
     plans: tuple[Plan, ...] = ()
     capabilities: tuple[Capability, ...] = ()
@@ -143,6 +167,14 @@ class ProductConfig:
     knowledge: tuple[Faq, ...] = field(default=())
 
     def __post_init__(self) -> None:
+        if self.role not in PRODUCT_ROLES:
+            # An unknown role would fall outside SELLING_ROLES and so silently
+            # produce an agent that cannot sell. Better to refuse to build it.
+            raise ValueError(
+                f"Unknown product role {self.role!r}. "
+                f"Expected one of {PRODUCT_ROLES}."
+            )
+
         if self.max_auto_discount_percent < 0:
             raise ValueError("A discount ceiling cannot be negative.")
 
@@ -187,12 +219,23 @@ class ProductConfig:
         return self.plans[0]
 
     @property
+    def can_sell(self) -> bool:
+        """Whether this product's job includes taking money at all.
+
+        Distinct from ``sells_anything``: a support agent with a full price
+        list still may not close, because selling is not what it was bought
+        to do. Its buyer configured it to answer questions.
+        """
+        return self.role in SELLING_ROLES
+
+    @property
     def sells_anything(self) -> bool:
         """False for a config still being assembled during intake.
 
-        The agent must not invite someone to buy from an empty price list.
+        The agent must not invite someone to buy from an empty price list —
+        nor from a price list it is not the one selling.
         """
-        return bool(self.plans)
+        return self.can_sell and bool(self.plans)
 
 
 def format_money(amount_minor: int, currency: str) -> str:

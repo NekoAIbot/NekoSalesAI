@@ -426,8 +426,11 @@ def test_a_minimal_config_escalates_every_pricing_question(db, organization):
 def test_provisioning_gives_a_new_workspace_its_own_empty_config():
     """A customer we know nothing about yet must not be given invented plans."""
     from app.payments.provisioning import ProvisioningService
+    from app.products.config import ROLE_SALES_AGENT
 
-    config = ProvisioningService(None)._starting_config("Bright Dental")
+    config = ProvisioningService(None)._starting_config(
+        "Bright Dental", ROLE_SALES_AGENT
+    )
 
     assert config.company_name == "Bright Dental"
     assert config.plans == ()
@@ -438,6 +441,7 @@ def test_provisioning_gives_a_new_workspace_its_own_empty_config():
     restored = config_from_json(config_to_json(config))
     assert restored.company_name == "Bright Dental"
     assert restored.plans == ()
+    assert restored.role == ROLE_SALES_AGENT
 
 
 def test_serialization_is_lossless_except_for_provenance():

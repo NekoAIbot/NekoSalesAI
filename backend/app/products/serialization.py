@@ -26,6 +26,8 @@ from __future__ import annotations
 import json
 
 from app.products.config import (
+    PRODUCT_ROLES,
+    ROLE_SALES_AGENT,
     SOURCE_DECLARED,
     Capability,
     Faq,
@@ -52,6 +54,7 @@ def config_to_dict(config: ProductConfig) -> dict:
         "description": config.description,
         "support_email": config.support_email,
         "agent_name": config.agent_name,
+        "role": config.role,
         "max_auto_discount_percent": config.max_auto_discount_percent,
         "plans": [
             {
@@ -207,12 +210,21 @@ def config_from_dict(data: dict) -> ProductConfig:
     # agent offline, and clamping toward zero always tightens, never loosens.
     discount = min(max(discount, 0), 100)
 
+    # An unrecognised role falls back to the sales agent rather than raising:
+    # that is the behaviour every config written before Stage D had, so a row
+    # from an older release keeps working. Widening a role is a decision the
+    # factory makes at provisioning time, not something a junk string does.
+    role = _text(data, "role")
+    if role not in PRODUCT_ROLES:
+        role = ROLE_SALES_AGENT
+
     return ProductConfig(
         company_name=company_name,
         tagline=_text(data, "tagline"),
         description=_text(data, "description"),
         support_email=_text(data, "support_email"),
         agent_name=_text(data, "agent_name") or "the sales rep",
+        role=role,
         plans=_plans(data.get("plans")),
         capabilities=_capabilities(data.get("capabilities")),
         faqs=_pairs(data.get("faqs")),

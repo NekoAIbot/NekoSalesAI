@@ -31,7 +31,9 @@ from app.config.logging import get_logger
 from app.core.security import hash_password
 from app.models.order import Order
 from app.models.organization import Organization
+from app.models.quote import Quote
 from app.models.user import User
+from app.pricing.complexity import PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT
 from app.models.workspace_profile import (
     PROVISION_FAILED,
     PROVISION_READY,
@@ -41,7 +43,11 @@ from app.models.workspace_profile import (
     STEP_WORKSPACE,
     WorkspaceProfile,
 )
-from app.products.config import ProductConfig
+from app.products.config import (
+    ROLE_SALES_AGENT,
+    ROLE_SUPPORT_AGENT,
+    ProductConfig,
+)
 from app.products.serialization import config_to_json
 
 logger = get_logger(__name__)
@@ -54,6 +60,35 @@ WIDGET_TOKEN_BYTES = 18
 # choosing one. Long enough not to be guessed, and it is emailed rather than
 # shown, so its readability does not matter.
 TEMP_PASSWORD_BYTES = 12
+
+# The name each product introduces itself with. Only a default — the customer
+# renames it during intake — but it should not be a sales rep's name on a
+# support agent.
+_AGENT_FIRST_NAME = {
+    ROLE_SALES_AGENT: "Ada",
+    ROLE_SUPPORT_AGENT: "Remi",
+}
+
+# Catalog plan codes all sell the sales agent; that is what the storefront's
+# three tiers are. A quote-backed order names its product explicitly, and
+# ``_role_for_order`` reads it from the quote rather than guessing from text.
+CATALOG_ROLE = ROLE_SALES_AGENT
+
+QUOTE_PLAN_PREFIX = "quote_"
+
+# Pricing's product types and the engine's roles are separate vocabularies
+# that happen to share spellings today. Mapping them explicitly keeps the
+# layers independent, and means a product the factory learns to *price*
+# before it can *build* fails loudly here instead of resolving to a role by
+# coincidence.
+PRODUCT_TYPE_TO_ROLE = {
+    PRODUCT_SALES_AGENT: ROLE_SALES_AGENT,
+    PRODUCT_SUPPORT_AGENT: ROLE_SUPPORT_AGENT,
+}
+
+
+class ProvisioningError(RuntimeError):
+    """We cannot tell what to build, so we will not build something."""
 
 
 @dataclass(frozen=True)
@@ -84,6 +119,25 @@ def hash_api_key(key: str) -> str:
 def _slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "workspace"
+
+
+def _starting_greeting(agent_name: str, company: str, role: str) -> str:
+    """How the agent opens before the customer has configured anything.
+
+    Role-specific because a greeting is a promise. A support agent that
+    introduced itself as the sales rep would be inviting exactly the questions
+    it is then going to refuse.
+    """
+    if role == ROLE_SUPPORT_AGENT:
+        return (
+            f"Hi — I'm {agent_name}, support for {company}. "
+            "Tell me what you're stuck on and I'll help if I can."
+        )
+
+    return (
+        f"Hi — I'm {agent_name}, the sales rep for {company}. "
+        "Ask me anything about what we do."
+    )
 
 
 class ProvisioningService:
@@ -118,6 +172,11 @@ class ProvisioningService:
         profile: WorkspaceProfile | None = None
 
         try:
+            # Before anything is created: if we cannot tell which product was
+            # bought, there is nothing correct to build.
+            role = self._role_for_order(order)
+            agent_name = _AGENT_FIRST_NAME[role]
+
             organization = self._create_organization(company, order)
             self._stamp(steps, STEP_WORKSPACE)
 
@@ -125,14 +184,11 @@ class ProvisioningService:
                 organization_id=organization.id,
                 order_id=order.id,
                 plan_code=order.plan_code,
-                agent_name="Ada",
+                agent_name=agent_name,
                 company_name=organization.name,
-                greeting=(
-                    f"Hi — I'm Ada, the sales rep for {organization.name}. "
-                    "Ask me anything about what we do."
-                ),
+                greeting=_starting_greeting(agent_name, organization.name, role),
                 config_json=config_to_json(
-                    self._starting_config(organization.name)
+                    self._starting_config(organization.name, role)
                 ),
             )
             self.db.add(profile)
@@ -187,7 +243,49 @@ class ProvisioningService:
 
     # ---------- steps ----------
 
-    def _starting_config(self, company: str) -> ProductConfig:
+    def _role_for_order(self, order: Order) -> str:
+        """Which product this order bought.
+
+        A catalog plan is always the sales agent. A quote-backed order carries
+        ``quote_<reference>`` as its plan code, and the product type is read
+        from that stored quote — the row we wrote when we priced it, not
+        anything the buyer sent.
+
+        Raises when the quote is missing or names a product we have no role
+        for. Guessing here would mean guessing what the customer paid for, and
+        both guesses are wrong in a way that matters: defaulting to the sales
+        agent hands a support buyer something that can take money on their
+        behalf, and defaulting to support silently under-delivers. The caller
+        turns this into a recorded provisioning failure the desk can see.
+        """
+        code = order.plan_code or ""
+
+        if not code.startswith(QUOTE_PLAN_PREFIX):
+            return CATALOG_ROLE
+
+        reference = code[len(QUOTE_PLAN_PREFIX):]
+        quote = self.db.execute(
+            select(Quote).where(Quote.reference == reference)
+        ).scalars().first()
+
+        if quote is None:
+            raise ProvisioningError(
+                f"Order {order.paystack_reference} was bought against quote "
+                f"{reference!r}, which no longer exists. We cannot tell which "
+                "product to build."
+            )
+
+        role = PRODUCT_TYPE_TO_ROLE.get(quote.product_type)
+
+        if role is None:
+            raise ProvisioningError(
+                f"Quote {reference} is for {quote.product_type!r}, which the "
+                "factory can price but cannot yet provision."
+            )
+
+        return role
+
+    def _starting_config(self, company: str, role: str) -> ProductConfig:
         """The config a brand-new workspace begins with.
 
         Empty of plans, claims and facts on purpose. We know the customer's
@@ -198,13 +296,18 @@ class ProvisioningService:
         The alternative, seeding it with plausible-looking plans, would mean
         their agent quoting prices no human ever set. Better an agent that
         says "let me get someone" than one that invents a number.
+
+        ``role`` is what makes this the factory rather than one product with a
+        variable name on it: a support agent gets a config that will refuse
+        commercial questions no matter what is later added to its price list.
         """
         return ProductConfig(
             company_name=company,
             tagline=f"Ask me anything about {company}.",
             description="",
             support_email="",
-            agent_name=f"Ada from {company}",
+            agent_name=f"{_AGENT_FIRST_NAME[role]} from {company}",
+            role=role,
         )
 
     def _create_organization(self, company: str, order: Order) -> Organization:
