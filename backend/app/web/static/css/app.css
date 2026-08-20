@@ -813,6 +813,179 @@ ul { margin: 0; padding: 0; list-style: none; }
   justify-content: space-between;
 }
 
+/* ---------- product builder ---------- */
+
+.builder {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 24px;
+  align-items: start;
+}
+
+.builder-form {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 30px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.field { display: flex; flex-direction: column; gap: 7px; border: 0; }
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.field-label {
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.field-input {
+  width: 100%;
+  padding: 11px 13px;
+  font: inherit;
+  font-size: .9375rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--base) var(--ease);
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.field-note {
+  font-size: .8125rem;
+  color: var(--ink-faint);
+  min-height: 1.2em;
+}
+
+.checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 3px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  font-size: .9063rem;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.check input { accent-color: var(--accent); }
+
+.check-hint {
+  color: var(--ink-faint);
+  font-size: .75rem;
+}
+
+.builder-note {
+  font-size: .8125rem;
+  color: var(--ink-faint);
+}
+
+/* The quote panel. Sticky so the figure stays visible while the form above it
+ * is being adjusted — the price is the thing the buyer is actually watching. */
+.builder-quote {
+  position: sticky;
+  top: 24px;
+  padding: 26px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+}
+
+.quote-empty {
+  padding: 32px 0;
+  text-align: center;
+  color: #2c4c3e;
+  font-size: .9375rem;
+}
+
+.quote-product {
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.quote-total {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 8px 0 20px;
+}
+
+.quote-amount {
+  font-size: 2.1rem;
+  font-weight: 600;
+  letter-spacing: -.03em;
+  color: var(--ink);
+}
+
+.quote-period { color: var(--ink-muted); font-size: .9375rem; }
+
+.quote-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--accent-line);
+}
+
+.quote-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: .875rem;
+  color: #2c4c3e;
+}
+
+.quote-line-amount { font-variant-numeric: tabular-nums; }
+
+.quote-buy {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.quote-error {
+  margin-top: 14px;
+  padding: 11px 13px;
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: .875rem;
+}
+
+@media (max-width: 940px) {
+  .builder { grid-template-columns: 1fr; }
+  .builder-quote { position: static; }
+}
+
+@media (max-width: 720px) {
+  .field-row { grid-template-columns: 1fr; }
+}
+
 /* ---------- utilities ---------- */
 
 .muted { color: var(--ink-muted); }

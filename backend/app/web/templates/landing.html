@@ -12,6 +12,7 @@
     <nav class="nav">
       <a class="nav-link" href="#how">How it works</a>
       <a class="nav-link" href="#pricing">Pricing</a>
+      <a class="nav-link" href="#build">Build your own</a>
       <a class="nav-link" href="#faq">FAQ</a>
       <a class="nav-link" href="/desk">Sales desk</a>
       <a class="btn btn--sm" href="#chat">Talk to our AI rep</a>
@@ -158,7 +159,8 @@
         <h2>Straightforward, published pricing</h2>
         <p>
           These are the only figures the AI rep can quote. It reads from the
-          same list you are looking at.
+          same list you are looking at. Need something shaped differently?
+          <a href="#build">Build it and get a price</a>.
         </p>
       </div>
 
@@ -197,6 +199,131 @@
     </div>
   </section>
 
+  <section class="section" id="build">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Build your own</span>
+        <h2>Or describe the AI you actually need</h2>
+        <p>
+          The plans above are our sales rep at fixed sizes. Tell us what you
+          want built instead and you get a price with the reasoning shown —
+          every line below is one thing we have to build.
+        </p>
+      </div>
+
+      <div class="builder">
+        <form class="builder-form" id="builder-form" novalidate>
+          <div class="field">
+            <label class="field-label" for="b-product">What should it do?</label>
+            <select class="field-input" id="b-product" name="product_type">
+              {% for product in builder.products %}
+              <option value="{{ product.code }}">{{ product.name }}</option>
+              {% endfor %}
+            </select>
+            <p class="field-note" id="b-product-note"></p>
+          </div>
+
+          <fieldset class="field">
+            <legend class="field-label">Where should it answer?</legend>
+            <div class="checks">
+              {% for channel in builder.channels %}
+              <label class="check">
+                <input type="checkbox"
+                       name="channels"
+                       value="{{ channel.code }}"
+                       {% if channel.code == builder.default_channel %}checked{% endif %}>
+                <span>{{ channel.name }}{% if channel.included %} <span class="check-hint">included</span>{% endif %}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="b-volume">Conversations a month</label>
+              <select class="field-input" id="b-volume" name="monthly_conversations">
+                {% for band in builder.volume_bands %}
+                <option value="{{ band }}">up to {{ "{:,}".format(band) }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="field">
+              <label class="field-label" for="b-integrations">Systems to connect</label>
+              <input class="field-input" type="number" id="b-integrations"
+                     name="integrations" min="0" max="10" step="1" value="0">
+              <p class="field-note">Your CRM, calendar, helpdesk — anything we
+                have to talk to.</p>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="b-languages">Extra languages</label>
+              <input class="field-input" type="number" id="b-languages"
+                     name="languages" min="0" max="5" step="1" value="0">
+              <p class="field-note">Beyond English.</p>
+            </div>
+
+            <div class="field">
+              <label class="field-label" for="b-workflows">Custom workflow steps</label>
+              <input class="field-input" type="number" id="b-workflows"
+                     name="workflow_steps" min="0"
+                     max="{{ builder.max_workflow_steps }}" step="1" value="0">
+              <p class="field-note">Approval gates, handoffs, rules specific to
+                you.</p>
+            </div>
+          </div>
+
+          <button class="btn btn--lg" type="submit" id="b-submit">
+            Price it
+          </button>
+
+          <p class="builder-note">
+            No card needed to see the price. Nothing is charged until you
+            choose to continue.
+          </p>
+        </form>
+
+        <aside class="builder-quote" id="builder-quote" aria-live="polite">
+          <div class="quote-empty" id="quote-empty">
+            <p>Your price appears here, itemised.</p>
+          </div>
+
+          <div class="quote-body hidden" id="quote-body">
+            <div class="quote-product" id="quote-product"></div>
+
+            <div class="quote-total">
+              <span class="quote-amount" id="quote-amount"></span>
+              <span class="quote-period" id="quote-period"></span>
+            </div>
+
+            <ul class="quote-lines" id="quote-lines"></ul>
+
+            <form class="quote-buy" id="quote-buy">
+              <label class="field-label" for="q-email">
+                Your email, to send the receipt and login to
+              </label>
+              <input class="field-input" type="email" id="q-email"
+                     name="email" required autocomplete="email"
+                     placeholder="you@company.com">
+
+              <input class="field-input" type="text" id="q-company"
+                     name="company" autocomplete="organization"
+                     placeholder="Company name (optional)">
+
+              <button class="btn btn--lg" type="submit" id="q-submit">
+                Continue to payment
+              </button>
+            </form>
+          </div>
+
+          <p class="quote-error hidden" id="quote-error" role="alert"></p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
   <section class="section" id="faq">
     <div class="wrap">
       <div class="section-head">
@@ -226,4 +353,5 @@
 
 {% block scripts %}
 <script src="/static/js/chat.js" defer></script>
+<script src="/static/js/builder.js" defer></script>
 {% endblock %}
