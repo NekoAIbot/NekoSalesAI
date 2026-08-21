@@ -170,6 +170,16 @@
       node.classList.add("reveal");
       shown.observe(node);
     });
+
+    /* The failure this guards against is the worst one available here: .reveal
+     * sets opacity to 0, so anything the observer never reports on would be
+     * permanently invisible rather than merely un-animated. Cheap insurance —
+     * after a few seconds everything is shown regardless of what fired.
+     */
+    window.setTimeout(function () {
+      targets.forEach(function (node) { node.classList.add("reveal--in"); });
+      shown.disconnect();
+    }, 3000);
   }
 
   /* ---------- product note on the builder ---------- */

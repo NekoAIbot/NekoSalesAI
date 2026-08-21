@@ -118,11 +118,16 @@ function run(options) {
 
   let observed = null;
 
+  // Stand-ins for the sections reveals() dims and then restores.
+  const revealTargets = (opts.revealTargets || []).map(() => makeNode(""));
+
   const context = {
     document: {
       getElementById: id => nodes[id] || null,
       createElement: () => makeNode(""),
-      querySelectorAll: () => [],
+      querySelectorAll: sel => (
+        sel.indexOf("section-head") !== -1 ? revealTargets : []
+      ),
     },
     window: {
       // Collapse every delay: the real sequence takes about seven seconds and
@@ -151,7 +156,12 @@ function run(options) {
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(SOURCE, "utf8"), context);
 
-  return { nodes, fire: () => observed && observed.cb([{ isIntersecting: true, target: observed.target }]), observed: () => observed };
+  return {
+    nodes,
+    revealTargets,
+    fire: () => observed && observed.cb([{ isIntersecting: true, target: observed.target }]),
+    observed: () => observed,
+  };
 }
 
 /* ---------- it plays the script the page ships ---------- */
@@ -218,12 +228,39 @@ setTimeout(function () {
         reduced.nodes["proof-script"].children.length === TURNS.length
       );
 
-      console.log(
-        failures === 0
-          ? "\nall checks passed\n"
-          : "\n" + failures + " check(s) FAILED\n"
+      /* ---------- the reveal cannot strand content ---------- */
+
+      /* .reveal sets opacity to 0, so a section the observer never reports on
+       * would be invisible rather than merely un-animated. That is the worst
+       * failure available on this page, so it is guarded by a timer and the
+       * guard is checked here.
+       */
+      console.log("\nthe reveal safety net:");
+
+      const dimmed = run({ revealTargets: ["a", "b", "c"] });
+
+      check(
+        "dims the sections to begin with",
+        dimmed.revealTargets.every(n => n.classList.contains("reveal"))
       );
-      process.exit(failures === 0 ? 0 : 1);
+      check(
+        "nothing is shown before the observer or the timer runs",
+        dimmed.revealTargets.every(n => !n.classList.contains("reveal--in"))
+      );
+
+      setTimeout(function () {
+        check(
+          "shows every section even if the observer never fires",
+          dimmed.revealTargets.every(n => n.classList.contains("reveal--in"))
+        );
+
+        console.log(
+          failures === 0
+            ? "\nall checks passed\n"
+            : "\n" + failures + " check(s) FAILED\n"
+        );
+        process.exit(failures === 0 ? 0 : 1);
+      }, 60);
     }, 60);
   }, 60);
 }, 260);

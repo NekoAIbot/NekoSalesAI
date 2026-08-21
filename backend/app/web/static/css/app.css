@@ -744,12 +744,19 @@ summary:focus-visible,
 }
 
 .card h3 { margin-bottom: 9px; }
-.card p { color: var(--ink-muted); font-size: .9375rem; }
+
+/* Scoped to the elements that want the muted treatment rather than every <p> in
+ * the card. The claim below sets its own colour and size, and a blanket
+ * `.card p` rule would mean fighting this one with !important to do it. */
+.card > p:not(.card-claim):not(.card-cite) {
+  color: var(--ink-muted);
+  font-size: .9375rem;
+}
 
 .card-claim {
   flex: 1;
-  color: var(--ink) !important;
-  font-size: 1rem !important;
+  color: var(--ink);
+  font-size: 1rem;
 }
 
 /* The citation is the point of this card. A claim on a marketing page is worth
@@ -928,6 +935,9 @@ summary:focus-visible,
 /* ---------- trust strip ---------- */
 
 .trust {
+  /* Sits directly under the capability grid now, matching its gutter. It reads
+   * as the conclusion the cards above it support. */
+  margin-top: 20px;
   padding: 26px 30px;
   background: var(--accent-soft);
   border: 1px solid var(--accent-line);
