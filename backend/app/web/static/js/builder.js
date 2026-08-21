@@ -25,6 +25,10 @@
   const QUOTE_URL = "/api/v1/pricing/quote";
   const ORDER_URL = "/api/v1/checkout/orders";
 
+  // The language every product ships with. The form collects languages *beyond*
+  // this one, matching the field's own note.
+  const BASE_LANGUAGE = "English";
+
   const els = {
     submit: document.getElementById("b-submit"),
     product: document.getElementById("b-product"),
@@ -67,6 +71,22 @@
     els.error.classList.remove("hidden");
   }
 
+  /* What to show the buyer when the server refuses.
+   *
+   * A refusal we planned for is a 400 whose detail is a sentence written to be
+   * read ("Above 50,000 conversations a month we price by hand"), and it is
+   * shown exactly as written. A 422 is different: its detail is a *list* of
+   * field errors from the schema layer, phrased for whoever is calling the API.
+   * Assigning that list to textContent renders "[object Object]", so it is
+   * deliberately not shown — a malformed request is our bug to fix, not
+   * something the buyer can act on, and they get the generic line instead.
+   */
+  function errorText(body, fallback) {
+    const detail = body && body.detail;
+    if (typeof detail === "string" && detail) return detail;
+    return fallback;
+  }
+
   function clearError() {
     els.error.textContent = "";
     els.error.classList.add("hidden");
@@ -88,7 +108,10 @@
       form.querySelectorAll('input[name="channels"]:checked')
     ).map(function (input) { return input.value; });
 
-    const count = function (id) {
+    // A whole number from a field, or 0 if it cannot be read. The guard is not
+    // decoration: parseInt("") is NaN, JSON.stringify(NaN) is null, and the API
+    // rejects null as a type error the buyer can do nothing about.
+    const wholeNumber = function (id) {
       const raw = parseInt(document.getElementById(id).value, 10);
       return Number.isFinite(raw) && raw > 0 ? raw : 0;
     };
@@ -99,15 +122,23 @@
       return out;
     };
 
+    /* The field asks for languages *beyond* the first, but the engine prices the
+     * whole list and treats one language as included in the base. So the
+     * included language travels with the extras. Sending only the extras made
+     * the engine read one of them as the included one, and every buyer was
+     * quoted one language cheaper than they asked for.
+     */
+    const languages = [BASE_LANGUAGE].concat(
+      repeat(wholeNumber("b-languages"), "Language")
+    );
+
     return {
       product_type: els.product.value,
       channels: channels,
-      integrations: repeat(count("b-integrations"), "System"),
-      languages: repeat(count("b-languages"), "Language"),
-      monthly_conversations: parseInt(
-        document.getElementById("b-volume").value, 10
-      ),
-      workflow_steps: count("b-workflows"),
+      integrations: repeat(wholeNumber("b-integrations"), "System"),
+      languages: languages,
+      monthly_conversations: wholeNumber("b-volume"),
+      workflow_steps: wholeNumber("b-workflows"),
     };
   }
 
@@ -160,10 +191,9 @@
         // declines to quote some requirements on purpose (volumes it has not
         // costed, channels it cannot serve) and softening that into "try
         // again" would hide a real answer.
-        showError(
-          (body && body.detail) ||
-            "We couldn't price that. Adjust something and try again."
-        );
+        showError(errorText(
+          body, "We couldn't price that. Adjust something and try again."
+        ));
         return;
       }
 
@@ -212,10 +242,10 @@
       const body = await response.json().catch(function () { return null; });
 
       if (!response.ok) {
-        showError(
-          (body && body.detail) ||
-            "We couldn't start that checkout. Nothing has been charged."
-        );
+        showError(errorText(
+          body,
+          "We couldn't start that checkout. Nothing has been charged."
+        ));
         return;
       }
 

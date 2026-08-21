@@ -156,7 +156,21 @@ setTimeout(function () {
   );
   check("sends the volume band as a number", sentQuote.body.monthly_conversations === 2000);
   check("turns the integration count into a list", sentQuote.body.integrations.length === 2);
-  check("turns the language count into a list", sentQuote.body.languages.length === 1);
+
+  /* The form asks for languages *beyond* the first, but the engine prices the
+   * whole list and treats one language as included in the base. So 1 extra must
+   * travel as 2 entries. Sending 1 made the engine read it as the included one
+   * and quote the extra free — this check asserted length === 1 and so held the
+   * undercharge in place.
+   */
+  check(
+    "sends the extra languages plus the included one",
+    sentQuote.body.languages.length === 2
+  );
+  check(
+    "names the included language first",
+    sentQuote.body.languages[0] === "English"
+  );
   check("sends the workflow step count", sentQuote.body.workflow_steps === 3);
 
   check("sends no amount of any kind", (function () {
@@ -248,12 +262,59 @@ setTimeout(function () {
           refusing.dom.nodes["quote-lines"].children.length === 0
       );
 
-      console.log(
-        failures === 0
-          ? "\nall checks passed\n"
-          : "\n" + failures + " check(s) FAILED\n"
-      );
-      process.exit(failures === 0 ? 0 : 1);
+      /* ---------- a schema error is not shown raw ---------- */
+
+      console.log("\na malformed requirement (422):");
+
+      /* FastAPI's 422 detail is a *list* of field errors, not a sentence. The
+       * old code did `showError(body.detail || fallback)`; a non-empty array is
+       * truthy, so the fallback never ran and textContent coerced the array to
+       * the literal string "[object Object]". Every check above passed while
+       * this path was broken, because none of them ever sent a list.
+       */
+      const malformed = run(async function () {
+        return {
+          ok: false,
+          status: 422,
+          json: async function () {
+            return {
+              detail: [{
+                type: "int_type",
+                loc: ["body", "monthly_conversations"],
+                msg: "Input should be a valid integer",
+                input: null,
+              }],
+            };
+          },
+        };
+      });
+
+      malformed.dom.nodes["builder-form"]._on.submit({ preventDefault() {} });
+
+      setTimeout(function () {
+        const shown = malformed.dom.nodes["quote-error"].textContent;
+
+        check("never renders [object Object]", !/\[object Object\]/.test(shown));
+        check(
+          "falls back to a line the buyer can act on",
+          shown === "We couldn't price that. Adjust something and try again."
+        );
+        check(
+          "does not leak the schema's field error",
+          shown.indexOf("valid integer") === -1
+        );
+        check(
+          "still surfaces the error box",
+          malformed.dom.nodes["quote-error"].classList.contains("hidden") === false
+        );
+
+        console.log(
+          failures === 0
+            ? "\nall checks passed\n"
+            : "\n" + failures + " check(s) FAILED\n"
+        );
+        process.exit(failures === 0 ? 0 : 1);
+      }, 10);
     }, 10);
   }, 10);
 }, 10);

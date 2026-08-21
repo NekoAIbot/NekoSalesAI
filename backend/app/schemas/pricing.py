@@ -12,35 +12,46 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.pricing.complexity import (
     CHANNEL_WEB,
-    MAX_INTEGRATIONS,
-    MAX_LANGUAGES,
-    MAX_QUOTABLE_CONVERSATIONS,
-    MAX_WORKFLOW_STEPS,
     PRODUCT_SALES_AGENT,
     LineItem,
     Quote,
     Requirement,
 )
 
+# A ceiling on list *size*, far above any requirement we would quote. This is a
+# guard against an absurd payload, not a business rule: the real ceilings live
+# in ``Requirement`` and are quoted back to the buyer as prose (see below).
+MAX_LIST_ITEMS = 200
+
 
 class RequirementIn(BaseModel):
     """What a buyer wants built.
 
-    The bounds here mirror ``Requirement``'s own. Duplicated deliberately: this
-    layer turns an over-large request into a 422 with a field name, while the
-    dataclass stays independently safe for callers that never touch HTTP.
+    Shape is checked here; policy is not. This layer answers "is this a
+    requirement at all" — right types, no negative counts, nothing absurdly
+    large — and leaves "would we quote for it" to ``Requirement``, which is the
+    only place that knows the answer and the only place with a sentence to
+    explain it.
+
+    That division matters because the two layers fail differently. A bound
+    duplicated here fails as a 422 naming a field, which is not something a
+    buyer can act on; the same bound in ``Requirement`` raises ``PricingError``
+    with copy written to be read ("More than 10 integrations needs a human to
+    scope it"), which the route returns as a 400 and the builder shows verbatim.
+    Duplicating a ceiling here would shadow that message with a worse one.
+
+    ``Requirement`` stays independently safe either way, so a caller that never
+    touches HTTP is no less protected by the ceilings living there.
     """
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
     product_type: str = Field(default=PRODUCT_SALES_AGENT, max_length=40)
-    channels: tuple[str, ...] = (CHANNEL_WEB,)
-    integrations: tuple[str, ...] = Field(default=(), max_length=MAX_INTEGRATIONS)
-    languages: tuple[str, ...] = Field(default=(), max_length=MAX_LANGUAGES)
-    monthly_conversations: int = Field(
-        default=500, ge=0, le=MAX_QUOTABLE_CONVERSATIONS
-    )
-    workflow_steps: int = Field(default=0, ge=0, le=MAX_WORKFLOW_STEPS)
+    channels: tuple[str, ...] = Field(default=(CHANNEL_WEB,), max_length=MAX_LIST_ITEMS)
+    integrations: tuple[str, ...] = Field(default=(), max_length=MAX_LIST_ITEMS)
+    languages: tuple[str, ...] = Field(default=(), max_length=MAX_LIST_ITEMS)
+    monthly_conversations: int = Field(default=500, ge=0)
+    workflow_steps: int = Field(default=0, ge=0)
 
     def to_requirement(self) -> Requirement:
         """Build the priceable requirement.

@@ -323,8 +323,83 @@ def test_quote_endpoint_refuses_volume_beyond_our_bands(client):
         json={"monthly_conversations": MAX_QUOTABLE_CONVERSATIONS + 1},
     )
 
-    # 422 from the schema bound; either way no figure is invented.
-    assert response.status_code in (400, 422)
+    # Exactly 400, and exactly the engine's own sentence. This was once
+    # `in (400, 422)`, which passed whichever layer answered — and so hid the
+    # schema shadowing the engine's copy with a field name a buyer cannot use.
+    assert response.status_code == 400
+    assert "price by hand" in response.json()["detail"]
+
+
+def test_a_ceiling_is_refused_in_prose_a_buyer_can_read(client):
+    """Every ceiling answers as a 400 carrying the engine's own sentence.
+
+    The schema layer must not duplicate these bounds. If it does, the buyer gets
+    a 422 whose detail is a list of field errors — which is both unreadable and,
+    rendered naively, the literal string "[object Object]".
+    """
+    ceilings = [
+        ({"integrations": [f"System {i}" for i in range(12)]}, "needs a human"),
+        ({"languages": [f"Language {i}" for i in range(8)]}, "At most"),
+        ({"workflow_steps": 21}, "between 0 and"),
+        ({"monthly_conversations": 50_001}, "price by hand"),
+    ]
+
+    for payload, expected in ceilings:
+        response = client.post("/api/v1/pricing/quote", json=payload)
+
+        assert response.status_code == 400, f"{payload} answered with a schema error"
+        detail = response.json()["detail"]
+        assert isinstance(detail, str), f"{payload} returned a field-error list"
+        assert expected in detail
+
+
+def test_quote_endpoint_still_rejects_a_malformed_requirement(client):
+    """Shape is still the schema's job, and still a 422.
+
+    Moving the ceilings out did not make the endpoint credulous: a wrong type or
+    a negative count is not a requirement at all.
+    """
+    for payload in (
+        {"monthly_conversations": None},
+        {"monthly_conversations": "loads"},
+        {"monthly_conversations": -1},
+        {"workflow_steps": -1},
+    ):
+        assert client.post(
+            "/api/v1/pricing/quote", json=payload
+        ).status_code == 422, payload
+
+
+def test_quote_endpoint_prices_the_body_the_browser_actually_sends(client):
+    """The exact shape builder.js posts, every field populated.
+
+    Every other endpoint test here sends a partial body and leans on schema
+    defaults, so none of them would notice a field the form fills in but the
+    schema rejects. This one is deliberately redundant with the form: 5 extra
+    languages plus the included one is 6, which is the ceiling exactly.
+    """
+    response = client.post(
+        "/api/v1/pricing/quote",
+        json={
+            "product_type": "sales_agent",
+            "channels": ["web", "whatsapp"],
+            "integrations": [f"System {i}" for i in range(1, 11)],
+            "languages": ["English"] + [f"Language {i}" for i in range(1, 6)],
+            "monthly_conversations": 50_000,
+            "workflow_steps": 20,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_minor"] == sum(i["amount_minor"] for i in body["line_items"])
+
+    # 5 extras charged as 5, not 4. The engine counts languages beyond the first,
+    # so a client that omits the included one has every buyer's last extra
+    # language priced at zero.
+    language_lines = [i for i in body["line_items"] if i["dimension"] == "language"]
+    assert len(language_lines) == 1
+    assert language_lines[0]["amount_minor"] == LANGUAGE_ADD_MINOR * 5
 
 
 def test_quote_endpoint_is_public(client):
