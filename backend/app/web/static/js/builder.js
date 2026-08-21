@@ -33,9 +33,11 @@
     submit: document.getElementById("b-submit"),
     product: document.getElementById("b-product"),
     productNote: document.getElementById("b-product-note"),
+    panel: document.getElementById("builder-quote"),
     empty: document.getElementById("quote-empty"),
     body: document.getElementById("quote-body"),
     productLabel: document.getElementById("quote-product"),
+    total: document.getElementById("quote-total"),
     amount: document.getElementById("quote-amount"),
     period: document.getElementById("quote-period"),
     lines: document.getElementById("quote-lines"),
@@ -94,7 +96,49 @@
 
   function describeProduct() {
     const note = PRODUCT_NOTES[els.product.value] || "";
-    els.productNote.textContent = note;
+
+    // Faded out and back rather than swapped underneath the cursor: a caption
+    // that changes with no transition reads as a rendering glitch.
+    els.productNote.classList.add("field-note--swapping");
+    window.setTimeout(function () {
+      els.productNote.textContent = note;
+      els.productNote.classList.remove("field-note--swapping");
+    }, 140);
+  }
+
+  /* Show that a price is being computed.
+   *
+   * Pricing is a real round trip. Without this the figure either swaps
+   * instantly — indistinguishable from a cached one — or the old figure sits
+   * there looking authoritative while a different one is on its way. The panel
+   * recedes and the dots take over the moment we know the number on screen is
+   * about to be replaced.
+   */
+  function setWorking(working) {
+    els.panel.classList.toggle("builder-quote--working", working);
+    els.submit.disabled = working;
+    els.submit.textContent = working ? "Pricing…" : "Price it";
+
+    const existing = document.getElementById("quote-working");
+    if (existing) existing.remove();
+
+    if (!working) return;
+
+    els.empty.classList.add("hidden");
+    els.body.classList.add("hidden");
+
+    const wrap = el("div", "quote-working");
+    wrap.id = "quote-working";
+
+    const dots = el("div", "dots");
+    dots.appendChild(el("span"));
+    dots.appendChild(el("span"));
+    dots.appendChild(el("span"));
+
+    wrap.appendChild(dots);
+    wrap.appendChild(el("p", "quote-working-label", "Working out your price…"));
+
+    els.error.before(wrap);
   }
 
   /* Collect the form as a requirement.
@@ -152,15 +196,28 @@
 
     els.lines.replaceChildren();
 
-    body.line_items.forEach(function (item) {
+    body.line_items.forEach(function (item, index) {
       const row = el("li", "quote-line");
       row.appendChild(el("span", "quote-line-label", item.label));
       row.appendChild(el("span", "quote-line-amount", item.display_amount));
+
+      // Staggered so the breakdown reads downward as the reason for the total
+      // above it, rather than the whole block appearing at once. Capped, so a
+      // long itemisation does not make the buyer wait on an animation.
+      row.style.animationDelay = Math.min(index, 8) * 45 + "ms";
+
       els.lines.appendChild(row);
     });
 
     els.empty.classList.add("hidden");
     els.body.classList.remove("hidden");
+
+    // Restart the settle animation on every recomputation, so a price that
+    // changed is visibly a *new* price and not the old one misread. Removing
+    // the class and forcing a reflow is what makes it replay.
+    els.total.classList.remove("quote-total--settling");
+    void els.total.offsetWidth;
+    els.total.classList.add("quote-total--settling");
   }
 
   async function price(event) {
@@ -174,8 +231,7 @@
       return;
     }
 
-    els.submit.disabled = true;
-    els.submit.textContent = "Pricing…";
+    setWorking(true);
 
     try {
       const response = await fetch(QUOTE_URL, {
@@ -202,8 +258,11 @@
     } catch (e) {
       showError("We couldn't reach our server. Try again in a moment.");
     } finally {
-      els.submit.disabled = false;
-      els.submit.textContent = "Price it";
+      // Clears the dots and re-enables the button. Both failure paths above
+      // return through here having hidden every panel, so the placeholder comes
+      // back rather than leaving the column empty under the error.
+      setWorking(false);
+      if (!quote) els.empty.classList.remove("hidden");
     }
   }
 
@@ -280,6 +339,7 @@
     quote = null;
     els.body.classList.add("hidden");
     els.empty.classList.remove("hidden");
+    els.total.classList.remove("quote-total--settling");
     clearError();
   }
 

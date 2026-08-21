@@ -39,6 +39,11 @@ function makeNode(id, value) {
     textContent: "",
     className: "",
     children: [],
+    style: {},
+    hidden: false,
+    // Read by builder.js to force a reflow before replaying the settle
+    // animation. Any number will do; it is never asserted on.
+    offsetWidth: 0,
     classList: {
       _set: new Set(),
       add(c) { this._set.add(c); },
@@ -48,6 +53,10 @@ function makeNode(id, value) {
     },
     appendChild(child) { this.children.push(child); return child; },
     replaceChildren() { this.children = []; },
+    // The working indicator is inserted before the error node and removed
+    // again when the request settles.
+    before(node) { (this._before ||= []).push(node); return node; },
+    remove() { this._removed = true; },
     addEventListener(type, fn) { (this._on ||= {})[type] = fn; },
     querySelectorAll() { return []; },
     elements: [],
@@ -60,7 +69,7 @@ function buildDom() {
     "quote-product", "quote-amount", "quote-period", "quote-lines",
     "quote-error", "quote-buy", "q-submit", "q-email", "q-company",
     "b-volume", "b-integrations", "b-languages", "b-workflows",
-    "builder-form",
+    "builder-form", "builder-quote", "quote-total",
   ];
 
   const nodes = {};
@@ -104,7 +113,12 @@ function run(fetchImpl) {
   const context = {
     document: document,
     fetch: fetchImpl,
-    window: { location: { href: "" } },
+    window: {
+      location: { href: "" },
+      // builder.js defers the product-note swap and page.js defers focus, so
+      // the stub window needs a real timer rather than a bare object.
+      setTimeout: setTimeout,
+    },
     console: console,
     setTimeout: setTimeout,
     Number: Number,
@@ -112,6 +126,7 @@ function run(fetchImpl) {
     parseInt: parseInt,
     Array: Array,
     Object: Object,
+    Math: Math,
   };
 
   vm.createContext(context);

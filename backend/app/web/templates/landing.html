@@ -11,144 +11,240 @@
     </a>
     <nav class="nav">
       <a class="nav-link" href="#how">How it works</a>
+      <a class="nav-link" href="#chat">Try it</a>
       <a class="nav-link" href="#pricing">Pricing</a>
       <a class="nav-link" href="#build">Build your own</a>
-      <a class="nav-link" href="#faq">FAQ</a>
       <a class="nav-link" href="/desk">Sales desk</a>
       <a class="btn btn--sm" href="#chat">Talk to our AI rep</a>
     </nav>
   </div>
 </header>
 
-<main>
+<main id="main">
   <section class="hero">
     <div class="wrap hero-grid">
-      <div>
+      <div class="hero-copy">
         <span class="eyebrow">Inbound sales, answered</span>
         <h1>{{ company.tagline }}</h1>
         <p class="hero-sub">{{ company.description }}</p>
 
         <div class="hero-actions">
           <a class="btn btn--lg" href="#chat">Talk to our AI rep</a>
-          <a class="btn btn--ghost btn--lg" href="#pricing">See pricing</a>
+          <a class="btn btn--ghost btn--lg" href="#how">See how it works</a>
         </div>
 
+        {# The claim the rest of the page has to earn. Stated here rather than
+           in the panel, because the panel's job is to demonstrate it. #}
         <p class="hero-note">
           <span aria-hidden="true">↘</span>
-          The rep on this page is the product. Ask it anything — including
-          for a discount, and watch what it does instead of inventing one.
+          Ask it for a discount and it will not invent one. It says it needs a
+          human, then goes and gets one.
         </p>
       </div>
 
-      {# The conversation is the centrepiece, not a widget bolted into a
-         corner. A visitor should be able to evaluate the product by using
-         it, which is the whole pitch. #}
-      <div id="chat">
-        {% if chat_available %}
-        <div class="chat" id="chat-panel">
-          <div class="chat-head">
-            <div class="chat-avatar">AI</div>
-            <div style="flex:1">
-              <div class="chat-title">{{ company.name }} sales rep</div>
-              <div class="chat-status">
-                <span class="status-dot"></span>
-                <span id="chat-stage">Ready</span>
-              </div>
-            </div>
-          </div>
+      {# The signature of this page: the moment the product is actually about.
+         An AI refusing to make something up cannot be shown in a screenshot of
+         a chat bubble, so it is played out — the question, the refusal, and the
+         rule that produced it.
 
-          <div class="chat-log" id="chat-log" aria-live="polite"></div>
+         Labelled as a scripted example, deliberately and prominently. The whole
+         claim of this product is that it does not present invented things as
+         real; a demo that implied a live conversation would break that claim on
+         the way to advertising it. The live rep is one section below. #}
+      <figure class="proof" id="proof">
+        <figcaption class="proof-head">
+          <span class="proof-tag">Example exchange</span>
+          <span class="proof-sub">scripted, so you know what to expect</span>
+        </figcaption>
 
-          {# Appears only once the conversation has actually reached a plan
-             and an email. It is the close, so it is not offered speculatively
-             — a buy button on a thread that never discussed a plan would be
-             asking for a decision the visitor has not got to yet. #}
-          <div class="buy hidden" id="buy-panel">
-            <div class="buy-head">
-              <span class="buy-label">Ready when you are</span>
-              <span class="buy-price" id="buy-price"></span>
-            </div>
+        <div class="proof-log" id="proof-log" aria-hidden="true"></div>
 
-            <form class="buy-form" id="buy-form">
-              <input type="text" id="buy-name" placeholder="Your name"
-                     autocomplete="name" maxlength="150">
-              <input type="email" id="buy-email" placeholder="Work email"
-                     autocomplete="email" maxlength="255" required>
-              <input type="text" id="buy-company" placeholder="Company"
-                     autocomplete="organization" maxlength="255">
-              <button class="btn" type="submit" id="buy-send">
-                Continue to payment
-              </button>
-            </form>
+        {# The same content, flat, for anyone the animation never reaches:
+           screen readers, no JS, reduced motion. Not a fallback bolted on —
+           it is the source the player reads its script from. #}
+        <ol class="proof-script" id="proof-script">
+          <li data-role="visitor">Can you do 40% off if we sign today?</li>
+          <li data-role="agent"
+              data-trace="rule: off-list terms → human · auto-discount ceiling: 0%">
+            I can't approve that one myself — it isn't on our price list. I've
+            passed it to the team and you'll hear back today.
+          </li>
+          <li data-role="visitor">What can it actually do?</li>
+          <li data-role="agent"
+              data-trace="source: published catalog · claims outside it: refused">
+            It answers your buyers from the prices and features you publish,
+            shows you why it said what it said, and asks before agreeing to
+            anything you haven't listed.
+          </li>
+        </ol>
 
-            <div class="chat-error hidden" id="buy-error"></div>
-            <p class="buy-note" id="buy-note"></p>
-          </div>
-
-          <div class="chat-suggestions" id="chat-suggestions">
-            <button class="chip" type="button">What does it cost?</button>
-            <button class="chip" type="button">What can it actually do?</button>
-            <button class="chip" type="button">Can I get a discount?</button>
-          </div>
-
-          <div class="chat-error hidden" id="chat-error"></div>
-
-          <form class="chat-form" id="chat-form">
-            <textarea
-              class="chat-input"
-              id="chat-input"
-              rows="1"
-              placeholder="Ask about pricing, features, anything…"
-              autocomplete="off"></textarea>
-            <button class="btn" type="submit" id="chat-send">Send</button>
-          </form>
-        </div>
-        {% else %}
-        <div class="chat">
-          <div class="empty">
-            The sales rep is not configured on this instance yet.<br>
-            Run <code class="mono">./dev.sh</code> to seed it.
-          </div>
-        </div>
-        {% endif %}
-      </div>
+        <a class="proof-cta" href="#chat">
+          Now ask it yourself
+          <span aria-hidden="true">↓</span>
+        </a>
+      </figure>
     </div>
   </section>
 
+  {# A real sequence, so it is numbered. The capability cards below are not one,
+     and are not. #}
   <section class="section" id="how">
     <div class="wrap">
       <div class="section-head">
-        <span class="eyebrow">What it does</span>
-        <h2>Everything it claims, it can do today</h2>
+        <span class="eyebrow">How it works</span>
+        <h2>Three things happen, in this order</h2>
         <p>
-          This list is generated from the product catalog, and each entry is
-          tied to the code that implements it. Nothing aspirational makes it
-          onto this page.
+          You publish what you sell. The rep answers from that and nothing else.
+          Anything you did not publish stops and waits for you.
+        </p>
+      </div>
+
+      <ol class="flow">
+        <li class="flow-step">
+          <span class="flow-num">01</span>
+          <h3>A buyer asks</h3>
+          <p>
+            Someone lands on your site and asks what it costs, what it does, or
+            whether it fits them. No forms, no waiting for office hours.
+          </p>
+        </li>
+        <li class="flow-step">
+          <span class="flow-num">02</span>
+          <h3>The rep answers from your catalog</h3>
+          <p>
+            Your prices, your features, your terms. It cannot reach for a figure
+            you have not published, because it has none to reach for.
+          </p>
+        </li>
+        <li class="flow-step">
+          <span class="flow-num">03</span>
+          <h3>Anything off-list comes to you</h3>
+          <p>
+            A discount, an unusual term, a question it cannot answer — it says
+            so, raises it, and waits. You approve or decline.
+          </p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section section--sunk" id="what">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">What it does</span>
+        <h2>Every claim here points at the code that does it</h2>
+        <p>
+          This list is generated from the product catalog, and each entry names
+          the module implementing it. A test fails if that module stops
+          existing, so a claim cannot outlive the feature.
         </p>
       </div>
 
       <div class="grid">
         {% for capability in capabilities %}
         <article class="card">
-          <div class="card-icon">{{ loop.index }}</div>
-          <p>{{ capability.claim }}</p>
+          <p class="card-claim">{{ capability.claim }}</p>
+          {% if capability.verified_by %}
+          <p class="card-cite">
+            <span class="cite-label">Implemented by</span>
+            <code class="mono">{{ capability.verified_by }}</code>
+          </p>
+          {% endif %}
         </article>
         {% endfor %}
+      </div>
+
+      <div class="trust">
+        <h3>It will not make things up to close you</h3>
+        <p>
+          The rep can only quote the plans below. It has no ability to invent a
+          price, approve a discount, or promise a feature that does not exist —
+          ask it for one and it will tell you it needs a human, then actually go
+          and get one.
+        </p>
       </div>
     </div>
   </section>
 
-  <section class="section section--tight">
+  {# The real thing, after the visitor knows what they are looking at. #}
+  <section class="section" id="chat">
     <div class="wrap">
-      <div class="trust">
-        <h3>It will not make things up to close you</h3>
+      <div class="section-head">
+        <span class="eyebrow">Try it</span>
+        <h2>Ask it yourself</h2>
         <p>
-          The rep can only quote the plans below. It has no ability to invent
-          a price, approve a discount, or promise a feature that does not
-          exist — ask it for one and it will tell you it needs a human, then
-          actually go and get one.
+          This is the product, not a demo of it. The same rep your buyers would
+          talk to, selling the thing you are reading about.
         </p>
       </div>
+
+      {% if chat_available %}
+      <div class="chat" id="chat-panel">
+        <div class="chat-head">
+          <div class="chat-avatar">AI</div>
+          <div class="chat-head-text">
+            <div class="chat-title">{{ company.name }} sales rep</div>
+            <div class="chat-status">
+              <span class="status-dot"></span>
+              <span id="chat-stage">Ready</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-log" id="chat-log" aria-live="polite"></div>
+
+        {# Appears only once the conversation has actually reached a plan
+           and an email. It is the close, so it is not offered speculatively
+           — a buy button on a thread that never discussed a plan would be
+           asking for a decision the visitor has not got to yet. #}
+        <div class="buy hidden" id="buy-panel">
+          <div class="buy-head">
+            <span class="buy-label">Ready when you are</span>
+            <span class="buy-price" id="buy-price"></span>
+          </div>
+
+          <form class="buy-form" id="buy-form">
+            <input type="text" id="buy-name" placeholder="Your name"
+                   autocomplete="name" maxlength="150">
+            <input type="email" id="buy-email" placeholder="Work email"
+                   autocomplete="email" maxlength="255" required>
+            <input type="text" id="buy-company" placeholder="Company"
+                   autocomplete="organization" maxlength="255">
+            <button class="btn" type="submit" id="buy-send">
+              Continue to payment
+            </button>
+          </form>
+
+          <div class="chat-error hidden" id="buy-error"></div>
+          <p class="buy-note" id="buy-note"></p>
+        </div>
+
+        <div class="chat-suggestions" id="chat-suggestions">
+          <button class="chip" type="button">What does it cost?</button>
+          <button class="chip" type="button">What can it actually do?</button>
+          <button class="chip" type="button">Can I get a discount?</button>
+        </div>
+
+        <div class="chat-error hidden" id="chat-error"></div>
+
+        <form class="chat-form" id="chat-form">
+          <textarea
+            class="chat-input"
+            id="chat-input"
+            rows="1"
+            placeholder="Ask about pricing, features, anything…"
+            autocomplete="off"></textarea>
+          <button class="btn" type="submit" id="chat-send">Send</button>
+        </form>
+      </div>
+      {% else %}
+      <div class="chat">
+        <div class="empty">
+          The sales rep is not configured on this instance yet.<br>
+          Run <code class="mono">./dev.sh</code> to seed it.
+        </div>
+      </div>
+      {% endif %}
     </div>
   </section>
 
@@ -160,7 +256,7 @@
         <p>
           These are the only figures the AI rep can quote. It reads from the
           same list you are looking at. Need something shaped differently?
-          <a href="#build">Build it and get a price</a>.
+          <a class="link" href="#build">Build it and get a price</a>.
         </p>
       </div>
 
@@ -199,7 +295,7 @@
     </div>
   </section>
 
-  <section class="section" id="build">
+  <section class="section section--sunk" id="build">
     <div class="wrap">
       <div class="section-head">
         <span class="eyebrow">Build your own</span>
@@ -293,7 +389,7 @@
           <div class="quote-body hidden" id="quote-body">
             <div class="quote-product" id="quote-product"></div>
 
-            <div class="quote-total">
+            <div class="quote-total" id="quote-total">
               <span class="quote-amount" id="quote-amount"></span>
               <span class="quote-period" id="quote-period"></span>
             </div>
@@ -346,12 +442,13 @@
 <footer class="site-footer">
   <div class="wrap">
     <span>{{ company.name }}</span>
-    <span>{{ company.support_email }}</span>
+    <a class="link" href="mailto:{{ company.support_email }}">{{ company.support_email }}</a>
   </div>
 </footer>
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/page.js" defer></script>
 <script src="/static/js/chat.js" defer></script>
 <script src="/static/js/builder.js" defer></script>
 {% endblock %}

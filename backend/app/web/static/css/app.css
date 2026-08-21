@@ -27,6 +27,15 @@
   --accent-soft:  #e8f1ec;
   --accent-line:  #bcd6c8;
 
+  /* One dark register, for surfaces that show evidence rather than make a
+   * claim: the proof panel and the footer. A green-black rather than a neutral
+   * one, so it reads as the same brand with the lights off. The page needs
+   * somewhere dark to stop it reading as one continuous sheet of paper. */
+  --ledger:       #101a15;
+  --ledger-line:  #263630;
+  --ledger-ink:   #e8efe9;
+  --ledger-muted: #8fa79b;
+
   --warn:         #8a5a00;
   --warn-soft:    #fdf4e3;
   --danger:       #9b2c23;
@@ -42,14 +51,27 @@
   --shadow:    0 2px 4px rgba(23, 21, 15, .05), 0 8px 24px rgba(23, 21, 15, .06);
   --shadow-lg: 0 4px 8px rgba(23, 21, 15, .05), 0 24px 56px rgba(23, 21, 15, .10);
 
+  /* Three voices, and the difference between them carries meaning.
+   *
+   * --font-display sets what we claim: headlines, the price figures. Bricolage
+   * carries more personality than the body face and is used sparingly for it.
+   * --font sets reading copy, where getting out of the way is the whole job.
+   * --font-mono sets what can be checked — the module behind a capability, an
+   * amount, the rule the agent followed. Prose asserts; mono is checkable.
+   */
+  --font-display: "Bricolage Grotesque", "Inter", -apple-system,
+                  BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas,
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas,
                monospace;
 
   --ease: cubic-bezier(.2, .8, .2, 1);
   --fast: 140ms;
   --base: 220ms;
+  /* For entrances that travel further than a few pixels. Long enough to read
+   * as deliberate, short enough that nobody waits for it. */
+  --slow: 420ms;
 
   --max: 1120px;
 }
@@ -71,20 +93,73 @@ body {
 
 h1, h2, h3, h4 {
   margin: 0;
-  line-height: 1.15;
+  font-family: var(--font-display);
+  line-height: 1.12;
   letter-spacing: -.02em;
   font-weight: 600;
 }
 
-h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); letter-spacing: -.033em; }
-h2 { font-size: clamp(1.5rem, 3vw, 2.1rem); letter-spacing: -.025em; }
-h3 { font-size: 1.125rem; }
+/* Bricolage is a variable face with an optical size axis: set it to match the
+ * rendered size so large type tightens and small type opens up, which is what
+ * the axis is for. */
+h1 {
+  font-size: clamp(2.3rem, 5.4vw, 3.9rem);
+  font-variation-settings: "opsz" 72;
+  letter-spacing: -.035em;
+}
+
+h2 {
+  font-size: clamp(1.6rem, 3.2vw, 2.3rem);
+  font-variation-settings: "opsz" 32;
+  letter-spacing: -.028em;
+}
+
+h3 { font-size: 1.125rem; font-variation-settings: "opsz" 16; }
 
 p { margin: 0; }
 
 a { color: inherit; text-decoration: none; }
 
+/* Inline links inside prose need to look like links. Underlined at a distance
+ * from the baseline so descenders stay legible. */
+.link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color var(--fast) var(--ease);
+}
+
+.link:hover { color: var(--accent-hover); }
+
 ul { margin: 0; padding: 0; list-style: none; }
+
+/* Keyboard users get the same first move as everyone else: straight to the
+ * content. Off-screen until focused, then a real, visible target. */
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -60px;
+  z-index: 100;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: .875rem;
+  transition: top var(--fast) var(--ease);
+}
+
+.skip-link:focus { top: 16px; }
+
+/* Anything focusable that has not styled its own ring gets one. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
 
 /* ---------- layout ---------- */
 
@@ -98,25 +173,46 @@ ul { margin: 0; padding: 0; list-style: none; }
 .section { padding: 96px 0; }
 .section--tight { padding: 64px 0; }
 
+/* Alternating bands. Without them the page is one continuous sheet and a
+ * visitor cannot tell where one idea ends and the next begins on a long
+ * scroll. The hairline is what keeps it from reading as a colour accident. */
+.section--sunk {
+  background: var(--surface-sunk);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
 .section-head {
   max-width: 640px;
   margin-bottom: 48px;
 }
 
 .section-head p {
-  margin-top: 12px;
+  margin-top: 14px;
   color: var(--ink-muted);
   font-size: 1.0625rem;
 }
 
 .eyebrow {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 14px;
   color: var(--accent);
-  font-size: .75rem;
-  font-weight: 600;
-  letter-spacing: .09em;
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 500;
+  letter-spacing: .12em;
   text-transform: uppercase;
+}
+
+/* A short rule before the label. It marks the start of a section the way a
+ * paragraph mark does, and it is the one piece of pure decoration here. */
+.eyebrow::before {
+  content: "";
+  width: 18px;
+  height: 1px;
+  background: var(--accent-line);
 }
 
 /* ---------- header ---------- */
@@ -223,17 +319,21 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 /* ---------- hero ---------- */
 
-.hero { padding: 72px 0 96px; }
+.hero { padding: 80px 0 104px; }
 
 .hero-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* The copy leads and the proof panel answers it, so the panel gets slightly
+   * less room — it is evidence for the claim on the left, not a peer to it. */
+  grid-template-columns: 1.05fr .95fr;
   gap: 64px;
+  /* Top-aligned deliberately. The panel grows as the exchange plays, and
+   * centring would walk the headline down the screen with every turn. */
   align-items: start;
 }
 
 @media (max-width: 940px) {
-  .hero-grid { grid-template-columns: 1fr; gap: 48px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 44px; }
 }
 
 .hero h1 { margin-bottom: 20px; }
@@ -299,6 +399,10 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .chat-title { font-size: .9375rem; font-weight: 600; }
+
+/* Takes the space between the avatar and the edge, so the title and status
+ * stack against the avatar rather than centring in the header. */
+.chat-head-text { flex: 1; min-width: 0; }
 
 .chat-status {
   display: flex;
@@ -620,26 +724,102 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
   padding: 26px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
+  transition: border-color var(--base) var(--ease),
+              box-shadow var(--base) var(--ease),
+              transform var(--base) var(--ease);
+}
+
+.card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
 }
 
 .card h3 { margin-bottom: 9px; }
 .card p { color: var(--ink-muted); font-size: .9375rem; }
 
-.card-icon {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  margin-bottom: 16px;
-  border-radius: 8px;
-  background: var(--accent-soft);
+.card-claim {
+  flex: 1;
+  color: var(--ink) !important;
+  font-size: 1rem !important;
+}
+
+/* The citation is the point of this card. A claim on a marketing page is worth
+ * what it can be checked against, and this one names the module — pushed to the
+ * bottom on a rule, the way a footnote sits under the text it supports. */
+.card-cite {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.cite-label {
+  color: var(--ink-faint);
+  font-size: .6875rem;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.card-cite .mono {
   color: var(--accent);
-  font-size: .875rem;
+  font-family: var(--font-mono);
+  font-size: .8125rem;
+  word-break: break-all;
+}
+
+/* ---------- how it works ---------- */
+
+/* Numbered because these are genuinely sequential — the buyer asks, the rep
+ * answers, the exception routes to you. The capability cards above are not a
+ * sequence and carry no numbers. */
+.flow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.flow-step {
+  padding: 30px 28px;
+  border-right: 1px solid var(--line);
+}
+
+.flow-step:last-child { border-right: 0; }
+
+@media (max-width: 860px) {
+  .flow-step { border-right: 0; border-bottom: 1px solid var(--line); }
+  .flow-step:last-child { border-bottom: 0; }
+}
+
+.flow-num {
+  display: block;
+  margin-bottom: 18px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: .8125rem;
+  font-weight: 500;
+  letter-spacing: .06em;
+}
+
+.flow-step h3 { margin-bottom: 10px; }
+
+.flow-step p {
+  color: var(--ink-muted);
+  font-size: .9375rem;
 }
 
 /* ---------- pricing ---------- */
@@ -702,9 +882,13 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .plan-amount {
-  font-size: 2.1rem;
+  font-family: var(--font-display);
+  font-size: 2.3rem;
   font-weight: 600;
-  letter-spacing: -.03em;
+  font-variation-settings: "opsz" 36;
+  letter-spacing: -.035em;
+  /* Tabular figures so the three plan cards align down their price column. */
+  font-variant-numeric: tabular-nums;
 }
 
 .plan-period { color: var(--ink-faint); font-size: .9375rem; }
@@ -796,23 +980,6 @@ ul { margin: 0; padding: 0; list-style: none; }
   animation: rise var(--base) var(--ease) both;
 }
 
-/* ---------- footer ---------- */
-
-.site-footer {
-  padding: 40px 0;
-  border-top: 1px solid var(--line);
-  color: var(--ink-faint);
-  font-size: .875rem;
-}
-
-.site-footer .wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-  justify-content: space-between;
-}
-
 /* ---------- product builder ---------- */
 
 .builder {
@@ -856,8 +1023,15 @@ ul { margin: 0; padding: 0; list-style: none; }
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  transition: border-color var(--base) var(--ease);
+  transition: border-color var(--fast) var(--ease),
+              box-shadow var(--fast) var(--ease),
+              background var(--fast) var(--ease);
 }
+
+/* Hover says "this is editable" before the click. Focus says "your typing
+ * lands here" — a 3px ring rather than a colour swap, so it survives being
+ * looked at by someone who cannot distinguish the two greens. */
+.field-input:hover:not(:focus) { border-color: var(--ink-faint); }
 
 .field-input:focus {
   outline: none;
@@ -869,7 +1043,13 @@ ul { margin: 0; padding: 0; list-style: none; }
   font-size: .8125rem;
   color: var(--ink-faint);
   min-height: 1.2em;
+  transition: opacity var(--fast) var(--ease);
 }
+
+/* The product note is swapped on change, so it fades rather than jumping —
+ * a caption that changes under the cursor without transition reads as a
+ * rendering glitch. */
+.field-note--swapping { opacity: 0; }
 
 .checks {
   display: grid;
@@ -888,6 +1068,24 @@ ul { margin: 0; padding: 0; list-style: none; }
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: border-color var(--fast) var(--ease),
+              background var(--fast) var(--ease),
+              transform var(--fast) var(--ease);
+}
+
+.check:hover { border-color: var(--line-strong); background: var(--surface); }
+.check:active { transform: translateY(1px); }
+
+/* A checked channel is a line on the invoice, so it is styled as selected
+ * rather than left to the checkbox alone. */
+.check:has(input:checked) {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.check:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .check input { accent-color: var(--accent); }
@@ -911,6 +1109,16 @@ ul { margin: 0; padding: 0; list-style: none; }
   background: var(--accent-soft);
   border: 1px solid var(--accent-line);
   border-radius: var(--radius);
+  transition: border-color var(--base) var(--ease),
+              box-shadow var(--base) var(--ease);
+}
+
+/* While a price is being computed the panel recedes slightly. The figure on
+ * screen is about to be replaced, and it should stop looking authoritative
+ * the moment we know that. */
+.builder-quote--working {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 .quote-empty {
@@ -934,13 +1142,29 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .quote-amount {
-  font-size: 2.1rem;
+  font-family: var(--font-display);
+  font-size: 2.3rem;
   font-weight: 600;
-  letter-spacing: -.03em;
+  font-variation-settings: "opsz" 36;
+  letter-spacing: -.035em;
   color: var(--ink);
+  /* Tabular figures so a changing price does not reflow the line it sits on.
+   * Without this, ₦8,000 → ₦11,000 nudges the period marker sideways. */
+  font-variant-numeric: tabular-nums;
 }
 
 .quote-period { color: var(--ink-muted); font-size: .9375rem; }
+
+/* The figure settles rather than appearing. Used on every recomputation, so
+ * a price that changed is visibly a *new* price and not the old one misread. */
+.quote-total--settling .quote-amount {
+  animation: settle var(--base) var(--ease) both;
+}
+
+@keyframes settle {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
 
 .quote-lines {
   display: flex;
@@ -957,6 +1181,9 @@ ul { margin: 0; padding: 0; list-style: none; }
   gap: 14px;
   font-size: .875rem;
   color: #2c4c3e;
+  /* Staggered by index in JS. The breakdown reads top to bottom as the
+   * reason for the total above it. */
+  animation: rise var(--fast) var(--ease) both;
 }
 
 .quote-line-amount { font-variant-numeric: tabular-nums; }
@@ -975,6 +1202,71 @@ ul { margin: 0; padding: 0; list-style: none; }
   border-radius: var(--radius-sm);
   color: var(--danger);
   font-size: .875rem;
+  animation: rise var(--fast) var(--ease) both;
+}
+
+/* ---------- the thinking state ---------- */
+
+/* Three pulsing dots, the same vocabulary the chat already uses for "the
+ * server is working on it". Reused deliberately: the page should have one way
+ * of saying that, not two.
+ *
+ * This exists because computing a price is a real round trip. A figure that
+ * swapped instantly would be indistinguishable from a cached one, and a buyer
+ * cannot tell whether what they are looking at reflects the change they just
+ * made.
+ */
+.quote-working {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 0;
+}
+
+.quote-working-label {
+  font-size: .875rem;
+  color: #2c4c3e;
+}
+
+.dots {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.3s var(--ease) infinite;
+}
+
+.dots span:nth-child(2) { animation-delay: .18s; }
+.dots span:nth-child(3) { animation-delay: .36s; }
+
+/* ---------- scroll entrances ---------- */
+
+/* Sections lift into place the first time they are scrolled to, once each.
+ * The purpose is to mark the boundary between one part of the page and the
+ * next on a long scroll — not to decorate. Anything that animated every time
+ * it re-entered the viewport would be doing the second thing.
+ *
+ * .reveal is added by JS, so a browser with no JS gets the fully visible page
+ * rather than a blank one. That ordering is the whole reason this is not
+ * `opacity: 0` in the stylesheet.
+ */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity var(--slow) var(--ease),
+              transform var(--slow) var(--ease);
+}
+
+.reveal--in {
+  opacity: 1;
+  transform: none;
 }
 
 @media (max-width: 940px) {
@@ -1001,6 +1293,232 @@ ul { margin: 0; padding: 0; list-style: none; }
   font-size: .9375rem;
 }
 
+/* ---------- the proof panel ---------- */
+
+/* The one dark surface on the page, and the thing it is meant to be remembered
+ * by. It stages the moment the product is actually about: a buyer asking for a
+ * discount, and an AI declining to invent one.
+ *
+ * Dark because it is evidence rather than a claim — the light half of the hero
+ * asserts, this half shows. The exchange is scripted and says so in its own
+ * header. A panel that implied a live conversation would be fabricating the
+ * very thing this product refuses to fabricate.
+ */
+.proof {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  background: var(--ledger);
+  border: 1px solid var(--ledger-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.proof-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--ledger-line);
+}
+
+.proof-tag {
+  color: var(--ledger-ink);
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.proof-sub {
+  color: var(--ledger-muted);
+  font-size: .8125rem;
+}
+
+.proof-log {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 372px;
+  padding: 22px 20px;
+}
+
+/* Before the player runs there is nothing to show, and an empty flex column
+ * would still hold its min-height open — a blank 372px gap above the readable
+ * list. Collapsed until it has a turn in it. */
+.proof-log:empty { display: none; }
+
+/* The flat version. Visible whenever the player is not driving the panel — no
+ * JS, reduced motion, or a screen reader reading the real list rather than the
+ * div the script paints into. Same words either way.
+ *
+ * Matched min-height with the log above so the panel is the same size whichever
+ * of the two is showing, and handing over mid-scroll does not resize the hero. */
+.proof-script {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 372px;
+  margin: 0;
+  padding: 22px 20px;
+  list-style: none;
+}
+
+.proof-script[hidden] { display: none; }
+
+.proof-script li {
+  color: var(--ledger-ink);
+  font-size: .9375rem;
+}
+
+.proof-script li[data-role="visitor"] { color: var(--ledger-muted); }
+
+.proof-script li[data-role="visitor"]::before {
+  content: "Buyer — ";
+  font-family: var(--font-mono);
+  font-size: .75rem;
+  letter-spacing: .06em;
+}
+
+.proof-script li[data-role="agent"]::before {
+  content: "Rep — ";
+  font-family: var(--font-mono);
+  font-size: .75rem;
+  letter-spacing: .06em;
+  color: var(--accent-line);
+}
+
+.proof-script li[data-trace]::after {
+  content: attr(data-trace);
+  display: block;
+  margin-top: 6px;
+  color: var(--ledger-muted);
+  font-family: var(--font-mono);
+  font-size: .75rem;
+}
+
+/* One turn of the played exchange. */
+.turn { max-width: 92%; }
+.turn--visitor { align-self: flex-end; }
+.turn--agent { align-self: flex-start; }
+
+.turn-who {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ledger-muted);
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.turn-body {
+  padding: 12px 15px;
+  border-radius: 13px;
+  font-size: .9375rem;
+  line-height: 1.55;
+}
+
+.turn--visitor .turn-body {
+  background: #1c2b24;
+  color: var(--ledger-ink);
+  border-bottom-right-radius: 4px;
+}
+
+.turn--agent .turn-body {
+  background: #17241e;
+  border: 1px solid var(--ledger-line);
+  color: var(--ledger-ink);
+  border-bottom-left-radius: 4px;
+}
+
+/* The reasoning trace. This is the product's actual differentiator, so it is
+ * typeset as evidence — mono, hung off a rule, in the machine's voice rather
+ * than the rep's. */
+.turn-trace {
+  display: flex;
+  gap: 9px;
+  margin-top: 9px;
+  padding-left: 4px;
+  color: var(--ledger-muted);
+  font-family: var(--font-mono);
+  font-size: .75rem;
+  line-height: 1.5;
+}
+
+.turn-trace::before {
+  content: "";
+  flex-shrink: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: .55;
+}
+
+/* Three dots while the scripted rep "thinks". Same vocabulary as the live chat
+ * uses, because the page should have one way of saying the server is working. */
+.turn-dots {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 14px 15px;
+}
+
+.turn-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ledger-muted);
+  animation: pulse 1.3s var(--ease) infinite;
+}
+
+.turn-dots span:nth-child(2) { animation-delay: .18s; }
+.turn-dots span:nth-child(3) { animation-delay: .36s; }
+
+.proof-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 15px;
+  border-top: 1px solid var(--ledger-line);
+  color: var(--ledger-ink);
+  font-size: .875rem;
+  font-weight: 500;
+  transition: background var(--fast) var(--ease);
+}
+
+.proof-cta:hover { background: #17241e; }
+
+.proof-cta:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: -3px;
+}
+
+/* ---------- footer ---------- */
+
+.site-footer {
+  padding: 40px 0;
+  background: var(--ledger);
+  border-top: 1px solid var(--ledger-line);
+  color: var(--ledger-muted);
+  font-size: .9375rem;
+}
+
+.site-footer .wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.site-footer .link { color: var(--ledger-ink); }
+.site-footer .link:hover { color: #fff; }
+
 /* Motion here is informational, so when a user has asked the OS to reduce
  * it, the information has to survive without the movement. */
 @media (prefers-reduced-motion: reduce) {
@@ -1012,4 +1530,12 @@ ul { margin: 0; padding: 0; list-style: none; }
   }
 
   .thinking span { opacity: .6; }
+
+  /* The reveal is the one animation that hides content until JS un-hides it.
+   * Under reduced motion page.js skips it entirely, but if the class is already
+   * on an element when the preference changes mid-session, this keeps the
+   * content visible rather than stranded at opacity 0. */
+  .reveal { opacity: 1 !important; transform: none !important; }
+
+  .turn-dots span { opacity: .6; }
 }

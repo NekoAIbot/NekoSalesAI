@@ -5,10 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ company.name }}{% endblock %}</title>
   <meta name="description" content="{{ company.tagline }}">
+
+  {# Two voices, and the difference carries meaning. Bricolage Grotesque sets
+     what we claim; JetBrains Mono sets what can be checked — the module behind
+     a capability, an amount, a rule the agent followed. Inter carries the
+     reading copy, and was named in the stylesheet long before this: the page
+     asked for it and never loaded it, so every visitor without it locally has
+     been reading system sans. #}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
   <link rel="stylesheet" href="/static/css/app.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
 </head>
 <body class="{% block body_class %}{% endblock %}">
+  {# First stop for a keyboard user, and the reason the header is not a
+     twelve-tab detour before the content. #}
+  <a class="skip-link" href="#main">Skip to content</a>
+
   {% block content %}{% endblock %}
   {% block scripts %}{% endblock %}
 </body>
