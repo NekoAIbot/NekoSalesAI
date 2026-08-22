@@ -1,348 +1,150 @@
-# 🚀 NekoSalesAI
+# NekoSalesAI — backend
 
-> **An autonomous AI Sales Employee that helps businesses find, understand, engage, nurture, and convert customers through intelligent automation.**
-
----
-
-# Executive Summary
-
-NekoSalesAI is an AI-powered Sales Operating System designed to function as a digital sales employee rather than a traditional CRM.
-
-Most CRMs simply store customer information.
-
-NekoSalesAI actively works with that information.
-
-It analyzes customer behavior.
-
-It understands conversations.
-
-It detects buying intent.
-
-It predicts deal probability.
-
-It prioritizes opportunities.
-
-It creates follow-up tasks.
-
-It recommends next actions.
-
-It continuously learns from customer interactions.
-
-The long-term vision is to build an AI teammate capable of managing the complete customer lifecycle with minimal human intervention while working alongside human sales teams.
+FastAPI + SQLAlchemy. The product overview lives in the [root README](../README.md);
+this file is about how the code is arranged and why.
 
 ---
 
-# The Problem
+## The one rule
 
-Modern businesses lose revenue because:
+**No claim outlives its feature.**
 
-- Leads are forgotten.
-- Follow-ups happen too late.
-- Sales teams become overwhelmed.
-- Customer conversations are scattered.
-- Valuable opportunities are missed.
-- Traditional CRMs require constant manual updates.
+It is enforced mechanically for the storefront's own capabilities:
+`app/catalog/products.py` gives every `Capability` a `verified_by` module path,
+and `tests/test_catalog.py::test_every_capability_claim_points_at_real_code`
+fails if the module stops importing. A feature cannot be deleted while the
+landing page still advertises it.
 
-Salespeople spend too much time managing software instead of selling.
-
----
-
-# The Solution
-
-NekoSalesAI replaces repetitive manual sales work with intelligent automation.
-
-Instead of acting like a database, it behaves like an autonomous sales employee that constantly works in the background.
-
-It continuously observes customer activity, learns from interactions, recommends actions, creates tasks, monitors progress, and assists human teams in closing more deals.
+Earlier versions of this file listed a Worker Runtime, Retry Engine, Dead Letter
+Queue, Decision Engine, Recommendation Engine, Activity Feed and AI Task Engine
+as complete. Commits `aa7037a`, `4e33612` and `77d471f` deleted all of it — it was
+unreachable, and one router faked its own health check. The docs went stale
+instead, which is the same failure the product exists to refuse. Do not
+reintroduce it here.
 
 ---
 
-# Vision
+## Layout
 
-Build the world's most intelligent AI Sales Employee.
-
-An AI capable of working 24/7 that can:
-
-- Understand customers.
-- Learn continuously.
-- Think before acting.
-- Prioritize opportunities.
-- Assist human teams.
-- Automate repetitive work.
-- Scale from startups to enterprise organizations.
-
----
-
-# Core Philosophy
-
-Traditional CRM:
-
-Store customer data.
-
-NekoSalesAI:
-
-Works with customer data.
-
-It observes.
-
-It learns.
-
-It reasons.
-
-It recommends.
-
-It automates.
-
-It improves.
+```
+app/
+  main.py          app construction, CORS, the widget's origin exception
+  config/          settings and logging
+  database/        engine, session, declarative base
+  models/          12 tables
+  schemas/         request and response shapes
+  repositories/    query helpers, tenant-scoped
+  auth/            JWT for humans, api_key.py for customer integrations
+  catalog/         NekoSalesAI's own ProductConfig — the storefront
+  products/        per-tenant config, intake, interview, tenant resolution
+  pricing/         complexity pricing, quote issue and redemption
+  sales/           the agent, reasoning record, approval gate, conversation service
+  payments/        Paystack client, checkout, provisioning
+  followups/       post-sale calendar, sender seam, cron runner
+  mail/            transport (console/smtp/memory) and message composition
+  api/v1/routes/   41 endpoints
+  web/             Jinja templates, CSS, the storefront JS and the widget
+```
 
 ---
 
-# Current Features
+## Decisions worth knowing before you change things
 
-## Authentication
+**The agent is deterministic, and that is load-bearing.** `compose_reply` in
+`app/sales/agent.py` is pure — no database, no network, no clock. It reads the
+message, picks a rule, and composes from config. That purity is what makes the
+refusal to discount directly testable. If you add a model call, it goes *outside*
+this function.
 
-- JWT Authentication
-- User Registration
-- Login
-- Protected API Routes
+**Money is integer minor units.** Kobo, never floats. `format_money` renders;
+nothing else formats amounts.
 
-## Organization Management
+**Config arrives as an argument, never an import.** `resolve_config` decides whose
+rules apply. There is deliberately **no fallback** from a customer's config to the
+storefront's: a workspace with a missing config gets a minimal one that escalates
+everything, because an agent quoting our prices to someone else's buyers is worse
+than an agent that cannot answer.
 
-- Organizations
-- Users
-- Customers
-- Contacts
-- Leads
+**`role` is a column, not a config field.** `config_json` is written by customer
+intake. A role stored there could be edited from `support_agent` to `sales_agent`,
+promoting a support bot into one that quotes prices and takes money. What was
+bought decides what the agent may do.
 
-## AI Sales Intelligence
+**Two credentials, different powers.** `widget_token` is public — it ships in the
+customer's page source and may only start a conversation. `X-API-Key` is secret,
+verified against a stored SHA-256 hash (fast hash, not bcrypt: it is 24 bytes of
+CSPRNG output checked on every request), narrowed by an indexed prefix, compared
+in constant time.
 
-- Buying Intent Detection
-- Customer Learning Engine
-- Opportunity Scoring
-- Deal Probability Prediction
-- Customer Health Evaluation
-- Recommendation Engine
-- Conversation Intelligence
-- Decision Engine
+**Provisioning is idempotent and inline.** The webhook and the browser return page
+both call it, often in the same second. Two workspaces and two API keys for one
+payment is the bug it guards against.
 
-## Autonomous AI Workers
+**Email failures are reported, not raised.** By the time a receipt is composed the
+money has moved. A workspace that failed to save because its welcome email
+bounced is strictly worse than a message to resend.
 
-- Worker Runtime
-- Worker Registry
-- Dispatcher
-- Retry Engine
-- Execution Manager
-- Dead Letter Queue
-- Recovery Policies
-
-## AI Task System
-
-- Automatic Task Creation
-- Priority Assignment
-- Sales Follow-up Generation
-- Worker Execution Tracking
-
-## Customer Intelligence
-
-- Activity Feed
-- Customer Timeline
-- AI Event Logging
-- AI Memory
-- Worker Execution Logs
+**A failed follow-up stays scheduled.** `UnconfiguredSender` raises rather than
+silently succeeding, because a follow-up marked sent that nobody received is
+worse than an obvious failure.
 
 ---
 
-# AI Architecture
+## Running
 
-NekoSalesAI is built around multiple intelligent systems working together.
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+./dev.sh                                  # migrate, seed, serve with reload
+```
 
-These include:
+```bash
+.venv/bin/python -m pytest tests/ -q      # 422 tests
+node scripts/check_builder.js             # pricing builder under a stub DOM
+node scripts/check_page.js                # landing page motion, reduced-motion paths
+.venv/bin/python -m app.followups.runner --dry-run
+.venv/bin/alembic upgrade head
+```
 
-- Decision Engine
-- Recommendation Engine
-- Customer Intelligence Engine
-- Conversation Intelligence
-- Learning Engine
-- Memory Engine
-- Worker Runtime
-- Event System
-- Scheduler
-- Activity Logger
-- Timeline Engine
-
-Every module is designed to remain modular, scalable, testable, and production-ready.
-
----
-
-# Worker Architecture
-
-The platform uses autonomous workers responsible for specific business operations.
-
-Examples include:
-
-- Customer Intelligence
-- Sales Task Creation
-- Customer Review
-- Customer Success
-- AI Decision Workers
-
-Workers support:
-
-- Automatic retries
-- Priority queues
-- Failure recovery
-- Dead Letter Queue
-- Execution logging
+The JS harnesses exist because the money-carrying paths live in the browser —
+which request body gets posted, and which figure gets rendered. They stub the DOM
+rather than driving a real one; layout is not covered.
 
 ---
 
-# Technology Stack
+## Configuration
 
-## Backend
+Defaults are in `app/config/settings.py`. Safe out of the box, and loud about it:
 
-- FastAPI
-- SQLAlchemy
-- Alembic
--SQLite (Development)
-
-## AI
-
-- Custom Decision Engine
-- Rule-Based Reasoning
-- Recommendation Engine
-- Customer Intelligence
-
-## Infrastructure
-
-- Python
-- Git
-- GitHub
+- `SECRET_KEY` defaults to a published dev string; `main.py` warns at startup
+  while it is still in place.
+- `MAIL_BACKEND` defaults to `console` — logs instead of sending, so a fresh clone
+  exercises every mail path and no test reaches a real inbox.
+- `PAYSTACK_SECRET_KEY` is empty, which disables checkout and says why. A payment
+  button that 500s is a worse failure.
+- `GROQ_API_KEY` is empty and the rephrasing layer stays off.
 
 ---
 
-# UI / UX Vision
+## Tests
 
-NekoSalesAI is designed to deliver a premium software experience.
+Every test runs against in-memory SQLite built from `Base.metadata`, never the
+dev database. `get_db` is overridden so routes and assertions share one session.
 
-Design principles:
+Coverage is deliberately weighted toward things that cost money or trust:
 
-- Modern
-- Professional
-- Calm
-- AI-first
-- Mobile-first
-- Investor-grade
-
-Animations should communicate meaningful information rather than exist purely for decoration.
-
-Every movement in the interface should help users understand what the AI is doing.
-
----
-
-# Supported Platforms
-
-The project is designed around a shared architecture powering:
-
-- Responsive Web App
-- Progressive Web App (PWA)
-- Android App
-- iOS App
-- Desktop Application
-
-All platforms should share the same backend and business logic.
+| File | What it defends |
+|---|---|
+| `test_pricing.py` | every figure is derivable and itemised; ceilings refuse in prose |
+| `test_catalog.py` | no claim outlives its feature; the agent cannot self-discount |
+| `test_checkout.py` | a quoted price survives unchanged to the charge |
+| `test_widget.py` | the public token cannot do what the secret key can; no cross-tenant reads |
+| `test_mail.py` | a credential that cannot be reissued; a follow-up marked sent that nobody got |
+| `test_sales_flow.py` | the whole path from first message to paid order |
 
 ---
 
-# Development Principles
+## Contributing
 
-Every contribution should follow these principles:
-
-- Production-ready code
-- Clean architecture
-- Modular design
-- Testable implementation
-- Scalable systems
-- Security-first
-- Performance-first
-- AI-first
-- Mobile-first
-- API-first
-
-No knowingly broken code should ever be committed.
-
-Every completed feature must be tested end-to-end.
-
----
-
-# Current Development Status
-
-## Completed
-
-- Authentication
-- Organization Management
-- Customer Management
-- Lead Management
-- AI Decision Engine
-- AI Workers
-- Retry System
-- Dead Letter Queue
-- Activity Feed
-- Customer Timeline
-- AI Task Engine
-
-## In Progress
-
-- Sales Pipeline
-- AI Dashboard
-- Live Activity Feed
-- Customer Insights
-- Frontend
-- Paystack Billing
-- Multi-platform Applications
-
----
-
-# Roadmap
-
-## Phase 1
-
-- Complete Backend
-- Dashboard
-- Customer Pipeline
-- AI Recommendations
-- Sales Automation
-
-## Phase 2
-
-- Paystack Integration
-- Subscription System
-- Team Collaboration
-- Advanced Analytics
-
-## Phase 3
-
-- Autonomous Multi-Agent AI
-- Workflow Automation
-- Advanced Memory
-- Enterprise Features
-
----
-
-# Business Goal
-
-Build a commercially viable AI Sales Employee that businesses subscribe to every month.
-
-The objective is to reduce manual sales work while increasing conversions through intelligent automation.
-
----
-
-# Repository
-
-https://github.com/NekoAIbot/NekoSalesAI
-
----
-
-# Built By
-
-**Neko**
-
+See [CONTRIBUTING.md](../CONTRIBUTING.md). The short version: understand it before
+changing it, extend rather than replace, and never commit knowingly broken code.
+If you delete a feature, delete its claim in the same commit.
