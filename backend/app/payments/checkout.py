@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import mail
 from app.catalog import Plan, find_plan
 from app.config.logging import get_logger
 from app.config.settings import settings
@@ -273,7 +274,42 @@ class CheckoutService:
             order.buyer_email,
         )
 
+        # Inside the `if order.is_paid: return` guard above, so a webhook and a
+        # browser return arriving together cannot send two receipts. Non-fatal:
+        # the payment is recorded either way, and a receipt that failed to send
+        # is a message to resend, not a charge to reverse.
+        self._send_receipt(order)
+
         return order
+
+    def _send_receipt(self, order: Order) -> None:
+        """Confirm to the buyer that money moved and what it bought.
+
+        Every value is read off the order, including the plan name. The order
+        recorded what it was sold as at the time of sale, so a receipt built from
+        it cannot drift if the catalog is edited later — and a quote-backed order
+        with no catalog plan needs no special case.
+        """
+        if not order.buyer_email:
+            return
+
+        outcome = mail.send(
+            mail.receipt(
+                to=order.buyer_email,
+                company_name=order.buyer_company or order.buyer_name or "your team",
+                plan_name=order.plan_name,
+                amount_minor=order.amount_minor,
+                currency=order.currency,
+                reference=order.paystack_reference,
+            )
+        )
+
+        if not outcome.sent:
+            logger.error(
+                "Receipt failed for order %s: %s",
+                order.paystack_reference,
+                outcome.error,
+            )
 
     @staticmethod
     def _amount_matches(order: Order, charge: Charge) -> bool:

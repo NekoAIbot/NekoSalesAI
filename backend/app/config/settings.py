@@ -50,6 +50,33 @@ class Settings(BaseSettings):
     PAYSTACK_PUBLIC_KEY: str = ""
     PAYSTACK_BASE_URL: str = "https://api.paystack.co"
 
+    # Email. The default backend logs instead of sending, which is deliberate:
+    # a fresh clone runs the whole purchase flow and shows what would have gone
+    # out, and no test can accidentally mail a real person. Set "smtp" and the
+    # credentials below to send for real.
+    MAIL_BACKEND: str = "console"
+    MAIL_FROM: str = "hello@nekosales.ai"
+    MAIL_FROM_NAME: str = "NekoSalesAI"
+
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_USE_TLS: bool = True
+    SMTP_USE_SSL: bool = False
+    SMTP_TIMEOUT: int = 20
+
+    # Groq, for rephrasing the deterministic agent's replies. Empty by default
+    # and the feature stays off — the rule engine composes every reply on its
+    # own, and the model may only change wording. See app.sales.rephrase for
+    # what it is structurally prevented from doing.
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    # Short on purpose. A visitor waiting on a chat reply will not wait, so a
+    # slow model is dropped and the deterministic text ships instead.
+    LLM_TIMEOUT_SECONDS: float = 3.5
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

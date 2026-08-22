@@ -1386,20 +1386,17 @@ summary:focus-visible,
 
 .proof-script li[data-role="visitor"] { color: var(--ledger-muted); }
 
-.proof-script li[data-role="visitor"]::before {
-  content: "Buyer — ";
+/* The speaker's name comes from the markup, not from here. The agent is named in
+ * one place — the product config — and a label hardcoded in a stylesheet would
+ * be the copy that forgot to change when it was renamed. */
+.proof-script li::before {
+  content: attr(data-who) " — ";
   font-family: var(--font-mono);
   font-size: .75rem;
   letter-spacing: .06em;
 }
 
-.proof-script li[data-role="agent"]::before {
-  content: "Rep — ";
-  font-family: var(--font-mono);
-  font-size: .75rem;
-  letter-spacing: .06em;
-  color: var(--accent-line);
-}
+.proof-script li[data-role="agent"]::before { color: var(--accent-line); }
 
 .proof-script li[data-trace]::after {
   content: attr(data-trace);

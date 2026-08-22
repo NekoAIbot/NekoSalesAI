@@ -606,8 +606,14 @@ def compose_reply(
 
         return AgentReply(
             body=(
-                f"Hi — I'm {config.agent_name}. "
-                f"{config.tagline}\n\n"
+                # Says it is an AI in the first line, on purpose. A visitor who
+                # works out halfway through that they were talking to software
+                # has been misled by omission, and this product's entire pitch is
+                # that it does not mislead. Saying so up front also earns the
+                # refusal later: "I can't approve that" reads as a designed
+                # boundary rather than an unhelpful person.
+                f"Hi — I'm {config.agent_name}, the AI that handles enquiries "
+                f"here. {config.tagline}\n\n"
                 "Ask me anything about what it does or what it costs. I only "
                 "quote what's actually published, and if I don't know "
                 "something I'll say so and get you a human.\n\n"

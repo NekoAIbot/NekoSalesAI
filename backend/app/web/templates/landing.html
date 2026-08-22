@@ -15,7 +15,7 @@
       <a class="nav-link" href="#pricing">Pricing</a>
       <a class="nav-link" href="#build">Build your own</a>
       <a class="nav-link" href="/desk">Sales desk</a>
-      <a class="btn btn--sm" href="#chat">Talk to our AI rep</a>
+      <a class="btn btn--sm" href="#chat">Talk to {{ company.agent_name }}</a>
     </nav>
   </div>
 </header>
@@ -29,7 +29,7 @@
         <p class="hero-sub">{{ company.description }}</p>
 
         <div class="hero-actions">
-          <a class="btn btn--lg" href="#chat">Talk to our AI rep</a>
+          <a class="btn btn--lg" href="#chat">Talk to {{ company.agent_name }}</a>
           <a class="btn btn--ghost btn--lg" href="#how">See how it works</a>
         </div>
 
@@ -37,8 +37,8 @@
            in the panel, because the panel's job is to demonstrate it. #}
         <p class="hero-note">
           <span aria-hidden="true">↘</span>
-          Ask it for a discount and it will not invent one. It says it needs a
-          human, then goes and gets one.
+          Ask {{ company.agent_name }} for a discount and it will not invent one. It
+          says it needs a human, then goes and gets one.
         </p>
       </div>
 
@@ -63,14 +63,14 @@
            screen readers, no JS, reduced motion. Not a fallback bolted on —
            it is the source the player reads its script from. #}
         <ol class="proof-script" id="proof-script">
-          <li data-role="visitor">Can you do 40% off if we sign today?</li>
-          <li data-role="agent"
+          <li data-role="visitor" data-who="Buyer">Can you do 40% off if we sign today?</li>
+          <li data-role="agent" data-who="{{ company.agent_name }}"
               data-trace="rule: off-list terms → human · auto-discount ceiling: 0%">
             I can't approve that one myself — it isn't on our price list. I've
             passed it to the team and you'll hear back today.
           </li>
-          <li data-role="visitor">What can it actually do?</li>
-          <li data-role="agent"
+          <li data-role="visitor" data-who="Buyer">What can it actually do?</li>
+          <li data-role="agent" data-who="{{ company.agent_name }}"
               data-trace="source: published catalog · claims outside it: refused">
             It answers your buyers from the prices and features you publish,
             shows you why it said what it said, and asks before agreeing to
@@ -79,7 +79,7 @@
         </ol>
 
         <a class="proof-cta" href="#chat">
-          Now ask it yourself
+          Now ask {{ company.agent_name }} yourself
           <span aria-hidden="true">↓</span>
         </a>
       </figure>
@@ -94,8 +94,8 @@
         <span class="eyebrow">How it works</span>
         <h2>Three things happen, in this order</h2>
         <p>
-          You publish what you sell. The rep answers from that and nothing else.
-          Anything you did not publish stops and waits for you.
+          You publish what you sell. {{ company.agent_name }} answers from that and
+          nothing else. Anything you did not publish stops and waits for you.
         </p>
       </div>
 
@@ -110,10 +110,10 @@
         </li>
         <li class="flow-step">
           <span class="flow-num">02</span>
-          <h3>The rep answers from your catalog</h3>
+          <h3>It answers from your catalog</h3>
           <p>
             Your prices, your features, your terms. It cannot reach for a figure
-            you have not published, because it has none to reach for.
+            you have not published, because there is none to reach for.
           </p>
         </li>
         <li class="flow-step">
@@ -157,10 +157,10 @@
       <div class="trust">
         <h3>It will not make things up to close you</h3>
         <p>
-          The rep can only quote the plans below. It has no ability to invent a
-          price, approve a discount, or promise a feature that does not exist —
-          ask it for one and it will tell you it needs a human, then actually go
-          and get one.
+          {{ company.agent_name }} can only quote the plans below. It has no
+          ability to invent a price, approve a discount, or promise a feature that
+          does not exist — ask for one and it will say it needs a human, then
+          actually go and get one.
         </p>
       </div>
     </div>
@@ -171,19 +171,20 @@
     <div class="wrap">
       <div class="section-head">
         <span class="eyebrow">Try it</span>
-        <h2>Ask it yourself</h2>
+        <h2>Ask {{ company.agent_name }} yourself</h2>
         <p>
-          This is the product, not a demo of it. The same rep your buyers would
-          talk to, selling the thing you are reading about.
+          This is the product, not a demo of it. {{ company.agent_name }} is the
+          same agent your buyers would talk to, selling the thing you are reading
+          about.
         </p>
       </div>
 
       {% if chat_available %}
       <div class="chat" id="chat-panel">
         <div class="chat-head">
-          <div class="chat-avatar">AI</div>
+          <div class="chat-avatar">{{ company.agent_name[0] }}</div>
           <div class="chat-head-text">
-            <div class="chat-title">{{ company.name }} sales rep</div>
+            <div class="chat-title">{{ company.agent_name }}</div>
             <div class="chat-status">
               <span class="status-dot"></span>
               <span id="chat-stage">Ready</span>
@@ -240,7 +241,7 @@
       {% else %}
       <div class="chat">
         <div class="empty">
-          The sales rep is not configured on this instance yet.<br>
+          {{ company.agent_name }} is not configured on this instance yet.<br>
           Run <code class="mono">./dev.sh</code> to seed it.
         </div>
       </div>
@@ -254,8 +255,8 @@
         <span class="eyebrow">Pricing</span>
         <h2>Straightforward, published pricing</h2>
         <p>
-          These are the only figures the AI rep can quote. It reads from the
-          same list you are looking at. Need something shaped differently?
+          These are the only figures {{ company.agent_name }} can quote. It reads
+          from the same list you are looking at. Need something shaped differently?
           <a class="link" href="#build">Build it and get a price</a>.
         </p>
       </div>

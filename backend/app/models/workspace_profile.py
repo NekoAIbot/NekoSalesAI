@@ -106,7 +106,15 @@ class WorkspaceProfile(BaseModel):
     # keys — the prefix is stored separately so the UI can show which key is
     # which without being able to reconstruct one.
     api_key_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    api_key_prefix: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # Indexed because app.auth.api_key narrows by it on every authenticated
+    # request before comparing the hash. Not unique: it is a slice of a generated
+    # key, so a collision is possible and harmless — the hash still decides.
+    api_key_prefix: Mapped[str | None] = mapped_column(
+        String(16),
+        index=True,
+        nullable=True,
+    )
     api_key_issued_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

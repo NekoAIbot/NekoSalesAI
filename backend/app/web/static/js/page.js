@@ -49,6 +49,10 @@
     const turns = Array.from(script.children).map(function (node) {
       return {
         role: node.getAttribute("data-role") === "visitor" ? "visitor" : "agent",
+        // Read from the markup for the same reason the text is: the agent is
+        // named in the product config, and a name typed in here would be the
+        // copy that forgot to change when it was renamed.
+        who: node.getAttribute("data-who") || "",
         text: node.textContent.trim().replace(/\s+/g, " "),
         trace: node.getAttribute("data-trace") || "",
       };
@@ -65,7 +69,8 @@
     function addTurn(turn) {
       const wrap = el("div", "turn turn--" + turn.role);
       wrap.appendChild(el(
-        "span", "turn-who", turn.role === "visitor" ? "Buyer" : "Rep"
+        "span", "turn-who",
+        turn.who || (turn.role === "visitor" ? "Buyer" : "Rep")
       ));
       wrap.appendChild(el("div", "turn-body", turn.text));
 

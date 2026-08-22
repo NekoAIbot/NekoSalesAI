@@ -156,7 +156,7 @@ STOREFRONT_CONFIG = ProductConfig(
         "agreeing to anything off your price list."
     ),
     support_email="hello@nekosales.ai",
-    agent_name="the NekoSalesAI sales rep",
+    agent_name="Nera",
     plans=PLANS,
     capabilities=CAPABILITIES,
     faqs=FAQS,
@@ -172,6 +172,10 @@ COMPANY = {
     "tagline": STOREFRONT_CONFIG.tagline,
     "description": STOREFRONT_CONFIG.description,
     "support_email": STOREFRONT_CONFIG.support_email,
+    # The page calls the agent by the same name it introduces itself with. Read
+    # from the config rather than typed into the template, so renaming it is one
+    # edit and the greeting can never disagree with the button that opened it.
+    "agent_name": STOREFRONT_CONFIG.agent_name,
 }
 
 

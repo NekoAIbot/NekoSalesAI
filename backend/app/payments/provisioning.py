@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import mail
 from app.catalog import find_plan
 from app.config.logging import get_logger
 from app.core.security import hash_password
@@ -55,6 +56,13 @@ logger = get_logger(__name__)
 API_KEY_PREFIX = "nsk_live"
 API_KEY_BYTES = 24
 WIDGET_TOKEN_BYTES = 18
+
+# How much of a key is stored in the clear. Two jobs: the dashboard shows it so a
+# customer can tell which key is which, and app.auth.api_key narrows its lookup
+# by it so verifying a key is an indexed read rather than a scan of every
+# workspace. Both sides must agree, so the length is named here rather than
+# spelled 12 in each place.
+API_KEY_PREFIX_LENGTH = 12
 
 # Length of the one-time password generated for a customer who paid without
 # choosing one. Long enough not to be guessed, and it is emailed rather than
@@ -222,12 +230,21 @@ class ProvisioningService:
                 order.buyer_email,
             )
 
-            return ProvisionResult(
+            result = ProvisionResult(
                 profile=profile,
                 api_key=api_key,
                 temporary_password=temporary_password,
                 created=True,
             )
+
+            # After the commit, and deliberately so. The secrets in this email
+            # exist nowhere else — only their hashes are stored — so the send has
+            # to happen while they are still in memory. Doing it before the
+            # commit would risk mailing credentials for a workspace that then
+            # failed to save.
+            self._send_credentials(order, result)
+
+            return result
 
         except Exception as exc:
             # A half-built workspace is worse than none: the customer would
@@ -243,6 +260,45 @@ class ProvisioningService:
             raise
 
     # ---------- steps ----------
+
+    def _send_credentials(self, order: Order, result: ProvisionResult) -> None:
+        """Mail the customer their login, key and embed snippet.
+
+        Never raises. The money has already moved and the workspace already
+        exists by the time this runs, so a mail server having a bad minute must
+        not turn a successful purchase into an exception — the customer would see
+        a failure for something that actually worked. A failed send is logged
+        with the profile id so the desk can resend.
+
+        This is also the only moment the plaintext API key and temporary password
+        exist. Both are stored as hashes, so there is nothing to look up later:
+        if this email does not arrive, the answer is a reset, not a copy.
+        """
+        if not order.buyer_email:
+            logger.warning(
+                "No buyer email on order %s; credentials not sent.",
+                order.paystack_reference,
+            )
+            return
+
+        message = mail.credentials(
+            to=order.buyer_email,
+            company_name=result.profile.company_name,
+            temporary_password=result.temporary_password,
+            api_key=result.api_key,
+            widget_token=result.profile.widget_token,
+            workspace_profile_id=result.profile.id,
+        )
+
+        outcome = mail.send(message)
+
+        if not outcome.sent:
+            logger.error(
+                "Credentials email failed for workspace %s (order %s): %s",
+                result.profile.id,
+                order.paystack_reference,
+                outcome.error,
+            )
 
     def _role_for_order(self, order: Order) -> str:
         """Which product this order bought.
@@ -360,7 +416,7 @@ class ProvisioningService:
         key = f"{API_KEY_PREFIX}_{raw}"
 
         profile.api_key_hash = hash_api_key(key)
-        profile.api_key_prefix = key[:12]
+        profile.api_key_prefix = key[:API_KEY_PREFIX_LENGTH]
         profile.api_key_issued_at = datetime.now(timezone.utc)
 
         return key
