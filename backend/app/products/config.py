@@ -50,19 +50,34 @@ CAPABILITY_SOURCES = (SOURCE_VERIFIED, SOURCE_DECLARED)
 #   SALES_AGENT    — may take money. Quotes the plans, raises a payment link.
 #   SUPPORT_AGENT  — may not. Answers from the customer's own knowledge and
 #                    escalates anything about price or purchase.
+#   BUILDER        — Nera. Sells builds of the two above, then provisions them.
+#                    May take money, and is the only role that is never itself
+#                    provisioned: the factory does not build another factory.
 #
 # A string rather than a subclass on purpose. The engine stays one code path
 # and reads this the way it reads the plan list; two agent classes would mean
 # the safety rules had to be re-proved in each of them.
 ROLE_SALES_AGENT = "sales_agent"
 ROLE_SUPPORT_AGENT = "support_agent"
+ROLE_BUILDER = "builder"
 
-PRODUCT_ROLES = (ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT)
+PRODUCT_ROLES = (ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT, ROLE_BUILDER)
 
 # The roles that are allowed to move a conversation toward payment. Kept as
 # data next to the roles themselves so adding a third product forces an
 # explicit decision here rather than inheriting "can sell" by omission.
-SELLING_ROLES = frozenset({ROLE_SALES_AGENT})
+#
+# The builder sells, but it is worth being precise about what: it sells the
+# *making* of a sales agent, not the selling a sales agent does. Nera taking
+# money for a build is the same mechanism as a sales agent taking money for a
+# product, which is why one role flag covers both and no second checkout exists.
+SELLING_ROLES = frozenset({ROLE_SALES_AGENT, ROLE_BUILDER})
+
+# Roles a customer's product may be provisioned as. Deliberately not all of
+# PRODUCT_ROLES: nothing may hand a customer a builder. ``PRODUCT_TYPE_TO_ROLE``
+# in ``app.payments.provisioning`` is the enforcement — it has no builder entry,
+# so an order asking for one fails loudly rather than shipping a second factory.
+BUILDABLE_ROLES = frozenset({ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT})
 
 
 @dataclass(frozen=True)
@@ -145,6 +160,27 @@ class ProductConfig:
     # How the agent introduces itself. Separate from company_name: a customer
     # may want "Ada from Bright Retail" rather than "Bright Retail".
     agent_name: str = "the sales rep"
+
+    # How the agent introduces its own job, in the first person, straight after
+    # it says its name. Empty means the engine's default, which describes a
+    # worker: "the AI that handles enquiries here", plus the tagline.
+    #
+    # This exists because a *builder* introduces itself differently from a
+    # *worker*, and the tagline cannot do the job — the landing page needs that
+    # sentence in the third person ("Nera builds…") while a greeting needs it in
+    # the first ("I build…"). Nera sets this; a product Nera builds usually does
+    # not, because the default already fits an agent answering a customer's
+    # buyers.
+    #
+    # What a config cannot do through this field is remove the promise that
+    # follows it — that the agent quotes only what is published and fetches a
+    # human rather than guessing. That sentence stays in the engine, because it
+    # is a guarantee the engine enforces rather than copy a tenant may edit.
+    agent_intro: str = ""
+
+    # The question the greeting ends on. A worker asks what brought the visitor;
+    # a builder asks what they need built.
+    opening_question: str = "What brought you here?"
 
     # Which product this config drives. Defaults to the sales agent so every
     # config written before Stage D keeps its exact behaviour.

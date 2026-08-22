@@ -32,6 +32,8 @@ from app.pricing.complexity import (
 from app.pricing.quotes import QuoteService
 from app.products.config import (
     PRODUCT_ROLES,
+    BUILDABLE_ROLES,
+    ROLE_BUILDER,
     ROLE_SALES_AGENT,
     ROLE_SUPPORT_AGENT,
     SELLING_ROLES,
@@ -81,11 +83,59 @@ def _support_config(**overrides) -> ProductConfig:
 # ---------- the role itself ----------
 
 
-def test_only_the_sales_agent_may_sell():
-    """A list, not a default. Adding a product forces a decision here."""
-    assert SELLING_ROLES == {ROLE_SALES_AGENT}
+def test_only_the_sales_agent_and_the_builder_may_sell():
+    """A list, not a default. Adding a role forces a decision here.
+
+    It did exactly that when the builder arrived: Nera is a third role, and this
+    assertion failed until someone stated on purpose that it takes money. What
+    it takes money for is worth being precise about — Nera sells the *making* of
+    a sales agent, not the selling a sales agent does.
+    """
+    assert SELLING_ROLES == {ROLE_SALES_AGENT, ROLE_BUILDER}
     assert ROLE_SUPPORT_AGENT in PRODUCT_ROLES
     assert ROLE_SUPPORT_AGENT not in SELLING_ROLES
+
+
+def test_nothing_can_be_provisioned_as_a_builder():
+    """The factory does not build another factory.
+
+    A customer handed a builder could provision workspaces, which is authority
+    nobody buys. So "builder" is a real role but not a shippable one, and the two
+    places that could ship one — the pricing-to-role map and the config loader —
+    both refuse it.
+    """
+    from app.payments.provisioning import PRODUCT_TYPE_TO_ROLE
+
+    assert ROLE_BUILDER not in BUILDABLE_ROLES
+    assert ROLE_BUILDER not in PRODUCT_TYPE_TO_ROLE.values()
+
+    # A stored config claiming to be the builder is not honoured.
+    forged = config_from_json(
+        json.dumps({"company_name": "Forged Co", "role": ROLE_BUILDER})
+    )
+
+    assert forged.role == ROLE_SALES_AGENT
+
+
+def test_a_workspace_row_claiming_to_be_the_builder_is_refused():
+    """Same rule one layer down, where the role is read as *permission*.
+
+    ``resolve_config`` takes the role from the profile column rather than the
+    stored JSON precisely because the column is not customer-writable. If one
+    ever said "builder" — corruption, or someone reaching for authority — it
+    reads as a support agent, the role that can do least.
+    """
+    from app.models.workspace_profile import WorkspaceProfile
+    from app.products.resolver import _role_of
+
+    profile = WorkspaceProfile(
+        organization_id=1,
+        company_name="Forged Co",
+        agent_name="Ada",
+        role=ROLE_BUILDER,
+    )
+
+    assert _role_of(profile) == ROLE_SUPPORT_AGENT
 
 
 def test_a_config_defaults_to_the_sales_agent():

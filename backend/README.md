@@ -70,6 +70,15 @@ intake. A role stored there could be edited from `support_agent` to `sales_agent
 promoting a support bot into one that quotes prices and takes money. What was
 bought decides what the agent may do.
 
+**The factory is a role, and it is not for sale.** There are three roles in
+`app/products/config.py`: `sales_agent`, `support_agent`, and `builder` — Nera
+itself. Nera does not sell for a business; it builds the AI that does, so it needs
+a role of its own to introduce itself as the builder and to price a build. But
+`BUILDABLE_ROLES` deliberately excludes it, and both the config loader
+(`serialization.py`) and the tenant resolver (`resolver.py`) refuse a stored
+`builder`, degrading to a role that can do less. A customer handed a builder could
+provision workspaces, which is authority nobody buys.
+
 **Two credentials, different powers.** `widget_token` is public — it ships in the
 customer's page source and may only start a conversation. `X-API-Key` is secret,
 verified against a stored SHA-256 hash (fast hash, not bcrypt: it is 24 bytes of
@@ -98,7 +107,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 422 tests
+.venv/bin/python -m pytest tests/ -q      # 526 tests
 node scripts/check_builder.js             # pricing builder under a stub DOM
 node scripts/check_page.js                # landing page motion, reduced-motion paths
 .venv/bin/python -m app.followups.runner --dry-run

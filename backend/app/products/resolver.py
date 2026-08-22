@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 from app.catalog import STOREFRONT_CONFIG
 from app.config.logging import get_logger
 from app.models.workspace_profile import WorkspaceProfile
-from app.products.config import PRODUCT_ROLES, ROLE_SUPPORT_AGENT, ProductConfig
+from app.products.config import BUILDABLE_ROLES, ROLE_SUPPORT_AGENT, ProductConfig
 from app.products.serialization import config_from_json
 
 logger = get_logger(__name__)
@@ -64,8 +64,14 @@ def _role_of(profile: WorkspaceProfile) -> str:
     fallback only affects behaviour. Here it would affect *permission*: the
     sales agent is the role that can quote and take money, so guessing it from
     a corrupt column would be granting authority on the strength of junk.
+
+    Validated against ``BUILDABLE_ROLES`` rather than every role that exists.
+    A workspace profile is a *customer's* product, and no customer's product is
+    the builder — so a column reading "builder" is either corruption or an
+    attempt at one, and either way it must not be honoured. Nera's own config is
+    Python in ``app.catalog.products`` and never comes through here.
     """
-    if profile.role in PRODUCT_ROLES:
+    if profile.role in BUILDABLE_ROLES:
         return profile.role
 
     logger.error(

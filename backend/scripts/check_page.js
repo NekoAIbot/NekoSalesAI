@@ -40,11 +40,11 @@ const TURNS = [
     text: "I can't approve that one myself — it isn't on our price list.",
     trace: "rule: off-list terms → human · auto-discount ceiling: 0%",
   },
-  { role: "visitor", text: "What can it actually do?", trace: "" },
+  { role: "visitor", text: "What can you actually build?", trace: "" },
   {
     role: "agent",
-    text: "It answers your buyers from the prices and features you publish.",
-    trace: "source: published catalog · claims outside it: refused",
+    text: "Two things today: an AI sales representative and an AI support agent.",
+    trace: "source: buildable catalog · anything outside it: refused",
   },
 ];
 

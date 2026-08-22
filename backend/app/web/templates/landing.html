@@ -11,9 +11,9 @@
     </a>
     <nav class="nav">
       <a class="nav-link" href="#how">How it works</a>
+      <a class="nav-link" href="#what">What it can do</a>
       <a class="nav-link" href="#chat">Try it</a>
-      <a class="nav-link" href="#pricing">Pricing</a>
-      <a class="nav-link" href="#build">Build your own</a>
+      <a class="nav-link" href="#build">Price a build</a>
       <a class="nav-link" href="/desk">Sales desk</a>
       <a class="btn btn--sm" href="#chat">Talk to {{ company.agent_name }}</a>
     </nav>
@@ -24,12 +24,12 @@
   <section class="hero">
     <div class="wrap hero-grid">
       <div class="hero-copy">
-        <span class="eyebrow">Inbound sales, answered</span>
+        <span class="eyebrow">The AI that builds AI</span>
         <h1>{{ company.tagline }}</h1>
         <p class="hero-sub">{{ company.description }}</p>
 
         <div class="hero-actions">
-          <a class="btn btn--lg" href="#chat">Talk to {{ company.agent_name }}</a>
+          <a class="btn btn--lg" href="#chat">Tell {{ company.agent_name }} what you need</a>
           <a class="btn btn--ghost btn--lg" href="#how">See how it works</a>
         </div>
 
@@ -69,12 +69,12 @@
             I can't approve that one myself — it isn't on our price list. I've
             passed it to the team and you'll hear back today.
           </li>
-          <li data-role="visitor" data-who="Buyer">What can it actually do?</li>
+          <li data-role="visitor" data-who="Buyer">What can you actually build?</li>
           <li data-role="agent" data-who="{{ company.agent_name }}"
-              data-trace="source: published catalog · claims outside it: refused">
-            It answers your buyers from the prices and features you publish,
-            shows you why it said what it said, and asks before agreeing to
-            anything you haven't listed.
+              data-trace="source: buildable catalog · anything outside it: refused">
+            Two things today: an AI sales representative and an AI support
+            agent. Ask me for a third and I'll say so and get you a human,
+            rather than take your money for it.
           </li>
         </ol>
 
@@ -94,34 +94,37 @@
         <span class="eyebrow">How it works</span>
         <h2>Three things happen, in this order</h2>
         <p>
-          You publish what you sell. {{ company.agent_name }} answers from that and
-          nothing else. Anything you did not publish stops and waits for you.
+          You describe the job. {{ company.agent_name }} prices what it takes to
+          build it and shows the arithmetic. You pay, it builds, you get the keys.
         </p>
       </div>
 
       <ol class="flow">
         <li class="flow-step">
           <span class="flow-num">01</span>
-          <h3>A buyer asks</h3>
+          <h3>You say what you need</h3>
           <p>
-            Someone lands on your site and asks what it costs, what it does, or
-            whether it fits them. No forms, no waiting for office hours.
+            Tell {{ company.agent_name }} the job in your own words. It names the
+            AI that does it — or says plainly that it cannot build that one yet,
+            and gets you a person instead.
           </p>
         </li>
         <li class="flow-step">
           <span class="flow-num">02</span>
-          <h3>It answers from your catalog</h3>
+          <h3>It prices the build, line by line</h3>
           <p>
-            Your prices, your features, your terms. It cannot reach for a figure
-            you have not published, because there is none to reach for.
+            Every line is one thing that has to be built: the channels it answers
+            on, the volume it carries, the systems it has to talk to. No card
+            needed to see the number.
           </p>
         </li>
         <li class="flow-step">
           <span class="flow-num">03</span>
-          <h3>Anything off-list comes to you</h3>
+          <h3>It builds it and hands it over</h3>
           <p>
-            A discount, an unusual term, a question it cannot answer — it says
-            so, raises it, and waits. You approve or decline.
+            The agent goes live under your name, on your catalog, with your login
+            emailed to you. From then on it is yours — and it is the one talking
+            to your buyers, not {{ company.agent_name }}.
           </p>
         </li>
       </ol>
@@ -134,9 +137,11 @@
         <span class="eyebrow">What it does</span>
         <h2>Every claim here points at the code that does it</h2>
         <p>
+          {{ company.agent_name }} builds two AIs today — a sales representative
+          and a support agent — and it says so rather than take money for a third.
           This list is generated from the product catalog, and each entry names
-          the module implementing it. A test fails if that module stops
-          existing, so a claim cannot outlive the feature.
+          the module implementing it. A test fails if that module stops existing,
+          so a claim cannot outlive the feature.
         </p>
       </div>
 
@@ -157,10 +162,11 @@
       <div class="trust">
         <h3>It will not make things up to close you</h3>
         <p>
-          {{ company.agent_name }} can only quote the plans below. It has no
-          ability to invent a price, approve a discount, or promise a feature that
-          does not exist — ask for one and it will say it needs a human, then
-          actually go and get one.
+          {{ company.agent_name }} prices from a fixed list of things it knows how
+          to build. It cannot invent a figure, approve a discount, or promise an AI
+          that does not exist yet — ask for one and it will say it needs a human,
+          then actually go and get one. Every agent it builds carries the same
+          restraint into the business that bought it.
         </p>
       </div>
     </div>
@@ -173,9 +179,9 @@
         <span class="eyebrow">Try it</span>
         <h2>Ask {{ company.agent_name }} yourself</h2>
         <p>
-          This is the product, not a demo of it. {{ company.agent_name }} is the
-          same agent your buyers would talk to, selling the thing you are reading
-          about.
+          This is {{ company.agent_name }} itself, not a demo of it — the same
+          builder that would price and build your AI. Ask what it can build, what
+          that would cost, or for a discount it is not allowed to give.
         </p>
       </div>
 
@@ -221,8 +227,8 @@
         </div>
 
         <div class="chat-suggestions" id="chat-suggestions">
-          <button class="chip" type="button">What does it cost?</button>
-          <button class="chip" type="button">What can it actually do?</button>
+          <button class="chip" type="button">What can you build?</button>
+          <button class="chip" type="button">What would it cost?</button>
           <button class="chip" type="button">Can I get a discount?</button>
         </div>
 
@@ -253,11 +259,13 @@
     <div class="wrap">
       <div class="section-head">
         <span class="eyebrow">Pricing</span>
-        <h2>Straightforward, published pricing</h2>
+        <h2>Fixed sizes, or priced to what you need</h2>
         <p>
-          These are the only figures {{ company.agent_name }} can quote. It reads
-          from the same list you are looking at. Need something shaped differently?
-          <a class="link" href="#build">Build it and get a price</a>.
+          These three are the AI sales representative at its commonest sizes,
+          already priced — the build {{ company.agent_name }} is asked for most.
+          Anything else, the support agent included, gets priced from what it
+          takes to build: <a class="link" href="#build">describe it and see the
+          number</a>.
         </p>
       </div>
 
@@ -299,12 +307,12 @@
   <section class="section section--sunk" id="build">
     <div class="wrap">
       <div class="section-head">
-        <span class="eyebrow">Build your own</span>
+        <span class="eyebrow">Price a build</span>
         <h2>Or describe the AI you actually need</h2>
         <p>
-          The plans above are our sales rep at fixed sizes. Tell us what you
-          want built instead and you get a price with the reasoning shown —
-          every line below is one thing we have to build.
+          Tell {{ company.agent_name }} what to build and it prices it with the
+          reasoning shown — every line below is one more thing it has to build,
+          so you can see what each part of the number is for.
         </p>
       </div>
 

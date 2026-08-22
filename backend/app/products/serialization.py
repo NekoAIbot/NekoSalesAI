@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 
 from app.products.config import (
-    PRODUCT_ROLES,
+    BUILDABLE_ROLES,
     ROLE_SALES_AGENT,
     SOURCE_DECLARED,
     Capability,
@@ -214,8 +214,13 @@ def config_from_dict(data: dict) -> ProductConfig:
     # that is the behaviour every config written before Stage D had, so a row
     # from an older release keeps working. Widening a role is a decision the
     # factory makes at provisioning time, not something a junk string does.
+    #
+    # Checked against BUILDABLE_ROLES, not every role that exists. "builder" is
+    # a real role but not a shippable one — a row claiming it would be a
+    # customer's own product asserting it is the factory. There is no path that
+    # writes that today; this is what keeps it that way if one is ever added.
     role = _text(data, "role")
-    if role not in PRODUCT_ROLES:
+    if role not in BUILDABLE_ROLES:
         role = ROLE_SALES_AGENT
 
     return ProductConfig(

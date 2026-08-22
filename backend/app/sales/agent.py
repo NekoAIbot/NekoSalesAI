@@ -213,6 +213,21 @@ def _mentioned_plan(text: str, config: ProductConfig) -> Plan | None:
     return None
 
 
+def _intro_for(config: ProductConfig) -> str:
+    """The clause after "Hi — I'm <name>,".
+
+    A config that sets ``agent_intro`` says what its own job is; one that does
+    not gets the worker's description, which is what almost every product Nera
+    builds actually is. Kept here rather than as a dataclass default because the
+    fallback interpolates the tagline, and a frozen dataclass field cannot
+    reference a sibling field.
+    """
+    if config.agent_intro:
+        return config.agent_intro
+
+    return f"the AI that handles enquiries here. {config.tagline}"
+
+
 def _plan_lines(config: ProductConfig) -> tuple[str, list[str]]:
     """Render every plan, and the citations that back the rendering."""
     lines = []
@@ -629,12 +644,18 @@ def compose_reply(
                 # that it does not mislead. Saying so up front also earns the
                 # refusal later: "I can't approve that" reads as a designed
                 # boundary rather than an unhelpful person.
-                f"Hi — I'm {config.agent_name}, the AI that handles enquiries "
-                f"here. {config.tagline}\n\n"
-                "Ask me anything about what it does or what it costs. I only "
-                "quote what's actually published, and if I don't know "
-                "something I'll say so and get you a human.\n\n"
-                "What brought you here?"
+                #
+                # The *job* it names comes from the config, because the storefront
+                # agent and the agents it builds do different jobs. Nera builds
+                # the AI; what it builds is the AI that answers your buyers.
+                # Introducing the builder as though it were the worker is the one
+                # sentence that would leave a buyer paying for the wrong thing.
+                f"Hi — I'm {config.agent_name}, {_intro_for(config)}\n\n"
+                # Fixed, not configurable. This is the guarantee the engine
+                # enforces rather than copy a tenant may reword away.
+                "I only quote figures I can actually stand behind, and if I "
+                "don't know something I'll say so and get you a human.\n\n"
+                f"{config.opening_question}"
             ),
             reasoning=reasoning,
             next_stage=STAGE_DISCOVERY,

@@ -50,6 +50,7 @@ from app.models.channel_identity import (
     ChannelIdentity,
 )
 from app.models.conversation import Conversation, Message
+from app.products.config import ROLE_BUILDER
 from app.products.resolver import resolve_config
 from app.repositories.organization_repository import OrganizationRepository
 from app.sales.service import ConversationError, ConversationService
@@ -346,38 +347,95 @@ class InboundMessagingService:
         )
 
     def _help_text(self, identity: ChannelIdentity) -> str:
-        """What Nera is, for someone who will not read a paragraph.
+        """What this agent is, for someone who will not read a paragraph.
+
+        Two texts, because there are two kinds of agent on this codebase and
+        help that conflated them would be the same mistake in a new place. Nera
+        is the *builder* — it makes the AI. What it builds is a *worker* — that
+        is the AI that answers a business's buyers. Both can be reached over
+        Telegram, so which one is answering decides which text is right.
 
         Written for an impatient reader: short lines, concrete verbs, the limits
-        stated as plainly as the features. Every line describes something that
-        exists in shipped code today — the price list comes from the same config
-        the agent answers from, the approval gate is ``app.sales.approvals``, the
-        reasoning log is ``app.sales.reasoning``. Nothing here is a roadmap.
-        Advertising a capability before it works is the one thing that would make
+        stated as plainly as the features.
+        """
+        config = resolve_config(self.db, identity.organization_id)
+
+        if config.role == ROLE_BUILDER:
+            return self._builder_help(config.agent_name)
+
+        return self._worker_help(config)
+
+    def _builder_help(self, name: str) -> str:
+        """Nera's own help. The first line is the one that matters.
+
+        An earlier version opened "an AI that sells for you", which described the
+        thing Nera *makes* as though it were Nera — so a reader came away
+        believing this chat was the AI that would answer their buyers. It isn't.
+        A wrong first line here is not a wording problem: it sells the wrong
+        product.
+
+        Every line describes shipped code — pricing is
+        ``app.pricing.complexity``, build-and-hand-over is
+        ``app.payments.provisioning``, the approval gate is
+        ``app.sales.approvals``, the reasoning trail is ``app.sales.reasoning``.
+        Which is also why WHAT IT BUILDS names two AIs rather than twenty:
+        advertising a capability before it works is the one thing that would make
         a product sold on "it won't overstate things" absurd.
         """
-        name = self._agent_name(identity)
+        return (
+            f"{name} — the AI that builds AI for your business.\n"
+            "─────────────────────\n"
+            f"{name} doesn't sell for you. It builds the AI that does, and "
+            "hands it over working.\n\n"
+            "HOW IT GOES\n"
+            "1. You say what your business needs done\n"
+            f"2. {name} says which AI does it\n"
+            "3. It prices the build — every line shown\n"
+            "4. You pay, it builds, you get the keys\n\n"
+            "WHAT IT BUILDS TODAY\n"
+            "• AI Sales Representative — answers buyers, quotes your published "
+            "prices, takes payment, follows up\n"
+            "• AI Support Agent — answers from your own material, escalates "
+            "anything commercial\n"
+            "Ask for anything else and it says so plainly, then gets you a "
+            "human. It won't pretend it can already ship it.\n\n"
+            "WHERE WHAT IT BUILDS ANSWERS\n"
+            "• Your website (a widget you paste in)\n"
+            "• Telegram — a chat like this one\n"
+            "• WhatsApp and email\n\n"
+            "WHAT NEITHER WILL DO\n"
+            "• Invent a price or a feature\n"
+            "• Give a discount without approval\n"
+            "• Guess — it hands the question to a person instead\n"
+            "• Quote a build it can't deliver\n\n"
+            "You see the reason behind every reply: what it read, which rule it "
+            "followed, and the line it priced from.\n\n"
+            "WANT ONE?\n"
+            "Tell me what your business needs and I'll price the build.\n\n"
+            "/reset — start over"
+        )
+
+    def _worker_help(self, config) -> str:
+        """Help for an agent Nera built, answering its owner's buyers.
+
+        Says less on purpose. This agent belongs to a business we do not speak
+        for, so the only things stated are the ones the engine itself guarantees:
+        it answers from what was published, and it fetches a person rather than
+        guessing. Everything specific comes from the config.
+        """
+        name = config.agent_name
+        who = config.company_name or "this business"
+        can_sell = " what it costs," if config.sells_anything else ""
 
         return (
-            f"{name} — an AI that sells for you.\n"
+            f"{name} — the AI answering for {who}.\n"
             "─────────────────────\n"
-            "WHAT IT DOES\n"
-            "• Answers buyers about what you sell, day or night\n"
-            "• Quotes only prices you've published — itemised\n"
-            "• Qualifies, captures the lead, takes payment\n"
-            "• Follows up if they go quiet\n\n"
-            "WHERE IT WORKS\n"
-            "• Your website (a widget you paste in)\n"
-            "• Telegram — this chat\n"
-            "• WhatsApp and email\n\n"
-            "WHAT IT WON'T DO\n"
-            "• Invent a price or a feature\n"
-            "• Give a discount without your approval\n"
-            "• Guess — it hands the question to a person instead\n\n"
-            "You see the reason behind every reply: what it read, which rule it "
-            "followed, and the price list line it quoted.\n\n"
-            "WANT ONE?\n"
-            "Tell me what your business sells and I'll price it.\n\n"
+            "WHAT I CAN DO\n"
+            f"• Answer what {who} offers,{can_sell} day or night\n"
+            "• Take your details so a person can follow up\n\n"
+            "WHAT I WON'T DO\n"
+            "• Invent a price or a promise\n"
+            "• Guess — I hand the question to a person instead\n\n"
             "/reset — start over"
         )
 
