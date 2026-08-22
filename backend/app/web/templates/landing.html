@@ -37,8 +37,8 @@
            in the panel, because the panel's job is to demonstrate it. #}
         <p class="hero-note">
           <span aria-hidden="true">↘</span>
-          Ask {{ company.agent_name }} for a discount and it will not invent one. It
-          says it needs a human, then goes and gets one.
+          Ask {{ company.agent_name }} for a discount it has not been authorised
+          to give and it will tell you so, then bring in someone who can decide.
         </p>
       </div>
 
@@ -71,10 +71,10 @@
           </li>
           <li data-role="visitor" data-who="Buyer">What can you actually build?</li>
           <li data-role="agent" data-who="{{ company.agent_name }}"
-              data-trace="source: buildable catalog · anything outside it: refused">
-            Two things today: an AI sales representative and an AI support
-            agent. Ask me for a third and I'll say so and get you a human,
-            rather than take your money for it.
+              data-trace="source: buildable catalog · anything outside it: escalated">
+            Two today: an AI sales representative and an AI support agent.
+            Anything beyond those, I'll tell you upfront and bring in the team —
+            I'd rather scope it properly than promise it.
           </li>
         </ol>
 
@@ -138,7 +138,7 @@
         <h2>Every claim here points at the code that does it</h2>
         <p>
           {{ company.agent_name }} builds two AIs today — a sales representative
-          and a support agent — and it says so rather than take money for a third.
+          and a support agent — and it names them rather than implying more.
           This list is generated from the product catalog, and each entry names
           the module implementing it. A test fails if that module stops existing,
           so a claim cannot outlive the feature.
@@ -160,13 +160,13 @@
       </div>
 
       <div class="trust">
-        <h3>It will not make things up to close you</h3>
+        <h3>It will not overstate what it can do</h3>
         <p>
           {{ company.agent_name }} prices from a fixed list of things it knows how
-          to build. It cannot invent a figure, approve a discount, or promise an AI
-          that does not exist yet — ask for one and it will say it needs a human,
-          then actually go and get one. Every agent it builds carries the same
-          restraint into the business that bought it.
+          to build. It cannot invent a figure, authorise a discount, or commit to
+          an AI that does not exist yet — ask for one and it will say so and bring
+          in someone who can decide. Every agent it builds carries the same
+          discipline into the business that bought it.
         </p>
       </div>
     </div>
@@ -255,64 +255,16 @@
     </div>
   </section>
 
-  <section class="section" id="pricing">
-    <div class="wrap">
-      <div class="section-head">
-        <span class="eyebrow">Pricing</span>
-        <h2>Fixed sizes, or priced to what you need</h2>
-        <p>
-          These three are the AI sales representative at its commonest sizes,
-          already priced — the build {{ company.agent_name }} is asked for most.
-          Anything else, the support agent included, gets priced from what it
-          takes to build: <a class="link" href="#build">describe it and see the
-          number</a>.
-        </p>
-      </div>
-
-      <div class="plans">
-        {% for plan in plans %}
-        <article class="plan {% if plan.is_default %}plan--featured{% endif %}">
-          {% if plan.is_default %}
-          <span class="plan-badge">Founding offer</span>
-          {% endif %}
-
-          <div class="plan-name">{{ plan.name }}</div>
-          <p class="plan-audience">{{ plan.audience }}</p>
-
-          <div class="plan-price">
-            <span class="plan-amount">{{ plan.display_price }}</span>
-            <span class="plan-period">/ {{ plan.billing_period }}</span>
-          </div>
-
-          <div class="plan-meta">
-            {{ plan.seats }} seat{{ "s" if plan.seats != 1 }} ·
-            {{ "{:,}".format(plan.monthly_conversation_limit) }} conversations a month
-          </div>
-
-          <ul class="plan-features">
-            {% for feature in plan.features %}
-            <li><span class="tick">✓</span><span>{{ feature }}</span></li>
-            {% endfor %}
-          </ul>
-
-          <a class="btn {% if not plan.is_default %}btn--ghost{% endif %}"
-             href="#chat"
-             data-plan="{{ plan.name }}">Ask about {{ plan.name }}</a>
-        </article>
-        {% endfor %}
-      </div>
-    </div>
-  </section>
-
   <section class="section section--sunk" id="build">
     <div class="wrap">
       <div class="section-head">
         <span class="eyebrow">Price a build</span>
-        <h2>Or describe the AI you actually need</h2>
+        <h2>Describe the AI you need and see the number</h2>
         <p>
-          Tell {{ company.agent_name }} what to build and it prices it with the
-          reasoning shown — every line below is one more thing it has to build,
-          so you can see what each part of the number is for.
+          There are no packages to pick between. Tell {{ company.agent_name }}
+          what to build and it prices that, with the reasoning shown — every
+          line below is one more thing it has to build, so you can see what
+          each part of the number is for.
         </p>
       </div>
 

@@ -9,12 +9,13 @@ authentication.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.catalog import COMPANY, FAQS, PLANS
+from app.catalog import COMPANY, FAQS, STOREFRONT_CONFIG
 from app.config.settings import settings
 from app.dependencies.database import get_db
 from app.models.conversation import Conversation
 from app.payments import PaymentsNotConfigured, PaystackError
 from app.payments.checkout import CheckoutError, CheckoutService
+from app.pricing.quotes import reference_from_plan_code
 from app.repositories.organization_repository import OrganizationRepository
 from app.schemas.checkout import OrderOut
 from app.schemas.sales import (
@@ -64,9 +65,22 @@ def _load_conversation(token: str, db: Session) -> Conversation:
 
 @router.get("/catalog")
 def get_catalog():
-    """The published catalog, so the page and the agent cannot disagree."""
+    """The published catalog, so the page and the agent cannot disagree.
+
+    ``plans`` is empty for this storefront and stays in the payload rather than
+    disappearing from it: the widget reads it to label a fixed plan, and a
+    customer's own product may well publish three. What the storefront publishes
+    instead is ``pricing``, which says the figure is computed — so a client can
+    tell "no tiers" apart from "tiers failed to load" and show the buyer the
+    right thing either way.
+    """
     return {
         "company": COMPANY,
+        "pricing": {
+            "mode": STOREFRONT_CONFIG.pricing_mode,
+            "quote_endpoint": "/api/v1/pricing/quote",
+            "options_endpoint": "/api/v1/pricing/options",
+        },
         "plans": [
             {
                 "code": plan.code,
@@ -81,7 +95,7 @@ def get_catalog():
                 "features": list(plan.features),
                 "is_default": plan.is_default,
             }
-            for plan in PLANS
+            for plan in STOREFRONT_CONFIG.plans
         ],
         "faqs": [
             {"question": faq.question, "answer": faq.answer} for faq in FAQS
@@ -192,6 +206,17 @@ def checkout_from_conversation(
     plan_code = None if quote_reference else (
         payload.plan_code or conversation.interested_plan_code
     )
+
+    # A build Nera priced in the conversation is remembered as
+    # ``quote_<reference>`` in the same column a plan code lives in — one slot,
+    # because the buyer settled on exactly one thing. Unwrap it here so the
+    # checkout is handed a reference rather than a code that no plan list will
+    # ever contain. Without this the widget's own close breaks the moment the
+    # storefront stops selling fixed tiers.
+    from_quote = reference_from_plan_code(plan_code)
+    if from_quote is not None:
+        quote_reference = from_quote
+        plan_code = None
 
     if not plan_code and not quote_reference:
         raise HTTPException(

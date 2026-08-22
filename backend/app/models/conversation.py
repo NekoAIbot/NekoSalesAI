@@ -96,10 +96,20 @@ class Conversation(BaseModel):
 
     # Plan the visitor has settled on, by catalog code. Not a foreign key:
     # plans live in version control, not in the database.
+    #
+    # A dynamically-priced build lands here too, as ``quote_<reference>`` —
+    # ``CheckoutService`` and ``ProvisioningService`` already read that form, so
+    # a computed price needs no second slot.
     interested_plan_code: Mapped[str | None] = mapped_column(
         String(50),
         nullable=True,
     )
+
+    # What the buyer has told us about a build being priced, as JSON. Written by
+    # ConversationService from ``app.sales.scoping.Scope``; the agent stays pure
+    # and never reads a column. Null on every conversation with a fixed price
+    # list, which is most of them.
+    scope_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Set when a human takes over, so the agent stops replying.
     handed_off_at: Mapped[datetime | None] = mapped_column(

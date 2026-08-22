@@ -22,7 +22,7 @@ from app.pricing.complexity import (
     PricingError,
     price,
 )
-from app.pricing.quotes import QuoteService
+from app.pricing.quotes import QuoteError, QuoteService
 from app.schemas.pricing import QuoteOut, RequirementIn
 
 router = APIRouter(
@@ -76,3 +76,32 @@ def quote(payload: RequirementIn, db: Session = Depends(get_db)):
     stored = QuoteService(db).issue(requirement)
 
     return QuoteOut.from_quote(computed, reference=stored.reference)
+
+
+@router.get("/quotes/{reference}", response_model=QuoteOut)
+def get_quote(reference: str, db: Session = Depends(get_db)):
+    """Read back a quote by reference, re-priced from its requirement.
+
+    The chat widget needs this: the agent computes a figure mid-conversation and
+    the buy panel has to show the buyer what they are about to pay for. Without
+    it the panel would either show nothing or keep its own copy of the number,
+    and a second copy of a price is a second chance to disagree with the
+    charge.
+
+    Unauthenticated, like the quote endpoint itself, and safe for the same
+    reason: a reference is an unguessable name for a requirement *this server*
+    priced. Reading one reveals what was quoted and nothing else, and it carries
+    no authority over the amount — this route re-prices rather than reads, so a
+    figure shown here is a figure the checkout would also compute.
+    """
+    try:
+        _, computed = QuoteService(db).recompute(reference)
+    except QuoteError as exc:
+        # Unknown, unreadable and stale all land here. The message is written
+        # to be shown to the buyer, and no case invents a replacement figure.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return QuoteOut.from_quote(computed, reference=reference)

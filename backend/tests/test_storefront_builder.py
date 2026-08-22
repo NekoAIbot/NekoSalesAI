@@ -86,15 +86,28 @@ def test_the_builder_publishes_no_prices(client):
         assert f"{amount_minor // 100:,}" not in builder
 
 
-def test_the_page_still_publishes_the_fixed_tiers(client):
-    """The builder is an addition, not a replacement. These are published
-    figures and the agent quotes them."""
-    from app.catalog import PLANS
+def test_the_page_publishes_no_fixed_tiers(client):
+    """The inverse of a test that used to demand the three tiers be on the page.
+
+    They were removed on purpose. What replaced them is the builder above: the
+    buyer describes the build and the engine prices it. This test is the guard
+    against a tier section returning, in the only place it would matter — the
+    page a visitor actually reads.
+    """
+    import re
 
     body = client.get("/").text
 
-    for plan in PLANS:
-        assert plan.display_price in body
+    for retired in ("Founding User", "Growth", "Starter"):
+        assert retired not in body
+
+    # And no standalone price anywhere in the markup. Every figure on this page
+    # now depends on answers the visitor has not given yet, so a number in the
+    # served HTML could only be a hardcoded leftover.
+    for amount in ("180,000", "25,000", "9,000"):
+        assert amount not in body
+
+    assert re.search(r"₦\s?[\d,]{3,}", body) is None
 
 
 # ---------- buying a support agent, end to end ----------

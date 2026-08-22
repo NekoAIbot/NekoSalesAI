@@ -24,10 +24,12 @@ from app.models.conversation import (
     Message,
 )
 from app.models.lead import Lead
+from app.pricing.quotes import QuoteService, plan_code_for
 from app.products.resolver import resolve_config
 from app.sales.agent import compose_reply
 from app.sales.approvals import ApprovalService
 from app.sales.reasoning import Reasoning
+from app.sales.scoping import Scope
 
 logger = get_logger(__name__)
 
@@ -184,10 +186,38 @@ class ConversationService:
             conversation.stage,
             config=config,
             interested_plan_code=conversation.interested_plan_code,
+            scope=Scope.from_json(conversation.scope_json),
         )
+
+        if reply.scope is not None:
+            # Written back on every turn that touched it, so the next turn asks
+            # the next question rather than the first one again. Stored as the
+            # engine's own JSON — this layer does not interpret it.
+            conversation.scope_json = reply.scope.to_json()
+
+        if reply.quoted is not None:
+            # The agent has just told the buyer a computed figure. Issue the
+            # redeemable quote behind it now, so what the checkout re-derives is
+            # the requirement that produced the number they were given — not a
+            # requirement reassembled later from a transcript.
+            #
+            # It lands in interested_plan_code as ``quote_<reference>`` because
+            # that is the form CheckoutService and ProvisioningService already
+            # understand, so a computed price needs no second path to payment.
+            quote_row = QuoteService(self.db).issue(reply.scope.to_requirement())
+            conversation.interested_plan_code = plan_code_for(quote_row.reference)
 
         if reply.captured_email and not conversation.visitor_email:
             conversation.visitor_email = reply.captured_email
+
+        # Only ever fills a blank. The agent reads these out of prose, so a
+        # value the visitor typed into the widget's own form — or gave on an
+        # earlier, clearer turn — outranks anything parsed later.
+        if reply.captured_name and not conversation.visitor_name:
+            conversation.visitor_name = reply.captured_name
+
+        if reply.captured_company and not conversation.visitor_company:
+            conversation.visitor_company = reply.captured_company
 
         if reply.interested_plan_code:
             # Guard against the agent naming a plan the config has since

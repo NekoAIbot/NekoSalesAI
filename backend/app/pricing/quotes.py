@@ -21,12 +21,32 @@ from sqlalchemy.orm import Session
 from app.config.logging import get_logger
 from app.models.quote import Quote
 from app.pricing.complexity import PricingError, Requirement, price
+from app.pricing.complexity import Quote as ComputedQuote
 from app.products.config import Plan
 
 logger = get_logger(__name__)
 
 REFERENCE_PREFIX = "qt"
 REFERENCE_BYTES = 12
+
+# How a computed price is named everywhere a plan code is expected. One
+# definition, because four layers read it: the agent's conversation remembers
+# ``quote_<reference>`` in ``interested_plan_code``, the checkout unwraps it back
+# to a reference, ``to_plan`` stamps it onto the order, and provisioning reads it
+# to work out which product was bought.
+QUOTE_PLAN_PREFIX = "quote_"
+
+
+def plan_code_for(reference: str) -> str:
+    return f"{QUOTE_PLAN_PREFIX}{reference}"
+
+
+def reference_from_plan_code(code: str | None) -> str | None:
+    """The quote reference inside a plan code, or None if it is not one."""
+    if not code or not code.startswith(QUOTE_PLAN_PREFIX):
+        return None
+
+    return code[len(QUOTE_PLAN_PREFIX):] or None
 
 
 class QuoteError(ValueError):
@@ -103,11 +123,13 @@ class QuoteService:
             select(Quote).where(Quote.reference == reference)
         ).scalars().first()
 
-    def redeem(self, reference: str) -> tuple[Quote, Plan]:
-        """Re-price a stored quote and return the plan to charge.
+    def recompute(self, reference: str) -> tuple[Quote, ComputedQuote]:
+        """Re-price a stored quote and check it still agrees with the row.
 
-        The price is recomputed rather than read. A quote reference names a
-        requirement; it does not carry authority over the amount.
+        The one place a stored quote turns back into a figure. Both redeeming it
+        for payment and showing it back to the buyer come through here, so a
+        price that would be refused at the checkout cannot be displayed as
+        though it were still good.
         """
         quote = self.get(reference)
         if quote is None:
@@ -147,4 +169,14 @@ class QuoteService:
                 "Please ask for a fresh one."
             )
 
-        return quote, recomputed.to_plan(code=f"quote_{quote.reference}")
+        return quote, recomputed
+
+    def redeem(self, reference: str) -> tuple[Quote, Plan]:
+        """Re-price a stored quote and return the plan to charge.
+
+        The price is recomputed rather than read. A quote reference names a
+        requirement; it does not carry authority over the amount.
+        """
+        quote, recomputed = self.recompute(reference)
+
+        return quote, recomputed.to_plan(code=plan_code_for(quote.reference))

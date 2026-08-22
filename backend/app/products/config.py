@@ -44,6 +44,23 @@ SOURCE_DECLARED = "declared"
 
 CAPABILITY_SOURCES = (SOURCE_VERIFIED, SOURCE_DECLARED)
 
+# How this product's agent arrives at a figure.
+#
+#   FIXED    — from the plan list in this config. A customer who published
+#              three tiers has three quotable prices and no others.
+#   DYNAMIC  — computed by ``app.pricing.complexity`` from what the buyer says
+#              they need. The agent asks a few bounded questions and prices the
+#              answers; there is still no path from prose to a number, because
+#              every answer is parsed into a bounded field first.
+#
+# Nera is dynamic: it sells builds, and a build's price is the work in it. A
+# product Nera builds is fixed by default, because a business that publishes
+# three tiers wants those three quoted and nothing else.
+PRICING_FIXED = "fixed"
+PRICING_DYNAMIC = "dynamic"
+
+PRICING_MODES = (PRICING_FIXED, PRICING_DYNAMIC)
+
 # What job the agent is doing, which decides which conversations it may close
 # and which it must hand over.
 #
@@ -191,6 +208,10 @@ class ProductConfig:
     capabilities: tuple[Capability, ...] = ()
     faqs: tuple[Faq, ...] = ()
 
+    # Where a figure comes from: a published plan, or the complexity engine
+    # scoring what the buyer asked for. See PRICING_MODES.
+    pricing_mode: str = PRICING_FIXED
+
     # --- what it may agree to -----------------------------------------
     # Zero means every off-list term goes to a human. A customer may raise it,
     # but the ceiling is a number in a config the conversation cannot reach,
@@ -211,9 +232,16 @@ class ProductConfig:
                 f"Expected one of {PRODUCT_ROLES}."
             )
 
+        if self.pricing_mode not in PRICING_MODES:
+            # An unknown mode would decide, by accident, whether the agent
+            # quotes a list or scopes a build. Refuse to construct it.
+            raise ValueError(
+                f"Unknown pricing mode {self.pricing_mode!r}. "
+                f"Expected one of {PRICING_MODES}."
+            )
+
         if self.max_auto_discount_percent < 0:
             raise ValueError("A discount ceiling cannot be negative.")
-
         if self.max_auto_discount_percent > 100:
             raise ValueError("A discount ceiling above 100% is not a price.")
 
@@ -270,8 +298,20 @@ class ProductConfig:
 
         The agent must not invite someone to buy from an empty price list —
         nor from a price list it is not the one selling.
+
+        A dynamically-priced product has no list to be empty: its figures come
+        from the complexity engine, so it can sell from the moment its role says
+        it may.
         """
-        return self.can_sell and bool(self.plans)
+        if not self.can_sell:
+            return False
+
+        return self.prices_dynamically or bool(self.plans)
+
+    @property
+    def prices_dynamically(self) -> bool:
+        """Whether a figure is computed for this buyer rather than looked up."""
+        return self.pricing_mode == PRICING_DYNAMIC
 
 
 def format_money(amount_minor: int, currency: str) -> str:

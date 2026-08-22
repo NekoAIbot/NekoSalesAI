@@ -96,9 +96,14 @@
       }
     }
 
-    const plan = findPlan(planCode);
-    buyPrice.textContent = plan
-      ? plan.display_price + " / " + plan.billing_period
+    /* Two kinds of thing can be bought, and both have to price themselves
+     * from the server rather than from anything this file remembers. A
+     * catalog plan comes from /catalog; a build Nera priced in the
+     * conversation comes from its quote. */
+    const priced = await priceFor(planCode);
+
+    buyPrice.textContent = priced
+      ? priced.amount + " / " + priced.period
       : "";
 
     if (!paymentsEnabled) {
@@ -111,8 +116,8 @@
     }
 
     buyForm.classList.remove("hidden");
-    buyNote.textContent = plan
-      ? "You'll pay " + plan.display_price + " for " + plan.name +
+    buyNote.textContent = priced
+      ? "You'll pay " + priced.amount + " for " + priced.name +
         ". Your workspace is set up the moment payment clears."
       : "";
 
@@ -128,6 +133,41 @@
   function prefill(id, value) {
     const field = document.getElementById(id);
     if (field && value && !field.value) field.value = value;
+  }
+
+  const QUOTE_PREFIX = "quote_";
+
+  /* What this code costs, in the server's words.
+   *
+   * Returns null rather than a guess when the figure cannot be fetched: the
+   * panel then shows the form with no price, and the buyer still sees the
+   * real amount on Paystack's own page before anything is charged. Inventing
+   * a number here to fill the gap is the one thing that must not happen. */
+  async function priceFor(code) {
+    if (code.indexOf(QUOTE_PREFIX) === 0) {
+      try {
+        const quote = await api(
+          "/pricing/quotes/" + encodeURIComponent(code.slice(QUOTE_PREFIX.length)),
+          {method: "GET"}
+        );
+        return {
+          amount: quote.display_total,
+          period: quote.billing_period,
+          name: quote.product_name,
+        };
+      } catch (e) {
+        return null;
+      }
+    }
+
+    const plan = findPlan(code);
+    if (!plan) return null;
+
+    return {
+      amount: plan.display_price,
+      period: plan.billing_period,
+      name: plan.name,
+    };
   }
 
   function findPlan(code) {

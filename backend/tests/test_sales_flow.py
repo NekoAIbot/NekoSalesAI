@@ -7,7 +7,7 @@ has to stop at the approval gate.
 
 import pytest
 
-from app.catalog import PLANS
+from app.catalog import STOREFRONT_CONFIG
 from app.config.settings import settings
 from app.models.approval_request import (
     STATUS_APPROVED,
@@ -85,12 +85,43 @@ def test_catalog_endpoint_matches_the_catalog_module(client):
     assert response.status_code == 200
     data = response.json()
 
-    assert len(data["plans"]) == len(PLANS)
+    assert len(data["plans"]) == len(STOREFRONT_CONFIG.plans)
 
-    for plan, payload in zip(PLANS, data["plans"]):
+    for plan, payload in zip(STOREFRONT_CONFIG.plans, data["plans"]):
         assert payload["code"] == plan.code
         assert payload["amount_minor"] == plan.amount_minor
         assert payload["display_price"] == plan.display_price
+
+
+def test_catalog_endpoint_says_pricing_is_computed_rather_than_listed(client):
+    """A client has to be able to tell "no tiers" from "tiers failed to load".
+
+    ``plans`` being empty is ambiguous on its own — a fetch error looks the same
+    — so the payload states the mode and where to get a figure. A widget that
+    read only ``plans`` would otherwise render an empty pricing section and no
+    way to buy.
+    """
+    data = client.get("/api/v1/sales/catalog").json()
+
+    assert data["plans"] == []
+    assert data["pricing"]["mode"] == "dynamic"
+    assert data["pricing"]["quote_endpoint"]
+    assert data["pricing"]["options_endpoint"]
+
+
+def test_catalog_endpoint_publishes_no_price_at_all(client):
+    """Nothing that looks like money may appear in the storefront catalog.
+
+    Every figure now depends on the buyer's own requirements, so a number here
+    could only be a leftover — and a leftover price is one a visitor might be
+    shown without anybody having derived it for them.
+    """
+    import json
+    import re
+
+    blob = json.dumps(client.get("/api/v1/sales/catalog").json())
+
+    assert re.search(r"[₦$]\s?[\d,]{3,}", blob) is None
 
 
 def test_starting_a_conversation_returns_a_greeting(client, storefront):
@@ -118,14 +149,51 @@ def test_unknown_token_is_404(client, storefront):
     assert response.status_code == 404
 
 
-def test_pricing_question_returns_published_prices(client, thread):
+def test_pricing_question_starts_the_intake_instead_of_listing_tiers(client, thread):
+    """The storefront has no tiers to list, so it asks what to price."""
     response = send(client, thread, "how much does it cost?")
 
     assert response.status_code == 201
     data = response.json()
 
-    for plan in PLANS:
-        assert plan.display_price in data["body"]
+    assert data["reasoning"]["rule"] == "scoping_the_build"
+
+    import re
+
+    assert re.search(r"[₦$]\s?[\d,]{3,}", data["body"]) is None
+
+
+def test_the_whole_intake_reaches_a_computed_price_over_the_api(client, thread):
+    """The web storefront's real path to a number, end to end through HTTP."""
+    from app.pricing.complexity import (
+        CHANNEL_WEB,
+        PRODUCT_SALES_AGENT,
+        Requirement,
+        price,
+    )
+
+    for answer in (
+        "I need an AI sales representative",
+        "just my website",
+        "about 2,000 a month",
+        "none",
+    ):
+        data = send(client, thread, answer).json()
+
+    expected = price(
+        Requirement(
+            product_type=PRODUCT_SALES_AGENT,
+            channels=(CHANNEL_WEB,),
+            monthly_conversations=2_000,
+        )
+    )
+
+    assert data["reasoning"]["rule"] == "computed_quote"
+    assert expected.display_total in data["body"]
+
+    # And the conversation remembers it as a quote reference, not a plan code.
+    thread_body = client.get(f"/api/v1/sales/conversations/{thread}").json()
+    assert thread_body["interested_plan_code"].startswith("quote_")
 
 
 def test_every_agent_reply_carries_reasoning(client, thread):

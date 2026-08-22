@@ -217,7 +217,9 @@ def test_an_unconfigured_agent_still_greets():
 
 
 def test_duplicate_plan_codes_are_rejected():
-    plan = STOREFRONT_CONFIG.plans[0]
+    # A plan of this file's own rather than one borrowed from the storefront,
+    # which publishes none: every price it quotes is computed per buyer.
+    plan = CLINIC.plans[0]
 
     with pytest.raises(ValueError, match="Duplicate plan codes"):
         ProductConfig(

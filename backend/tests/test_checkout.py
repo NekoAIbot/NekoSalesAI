@@ -16,7 +16,7 @@ import json
 
 import pytest
 
-from app.catalog import PLANS, find_plan
+from app.catalog import find_plan
 from app.config.settings import settings
 from app.models.order import ORDER_PAID, ORDER_PENDING, Order
 from app.models.organization import Organization
@@ -33,10 +33,45 @@ from app.payments.paystack import (
     PaystackError,
 )
 from app.payments.provisioning import ProvisioningService, hash_api_key
+from app.pricing.complexity import (
+    CHANNEL_WEB,
+    CHANNEL_WHATSAPP,
+    PRODUCT_SALES_AGENT,
+    PRODUCT_SUPPORT_AGENT,
+    Requirement,
+    price,
+)
+from app.pricing.quotes import QuoteService, plan_code_for
 
 TEST_SECRET = "sk_test_pretend_key_for_tests"
 
-DEFAULT_PLAN = next(p for p in PLANS if p.is_default)
+
+# What the storefront now sells: a build described by the buyer and priced by
+# the engine. There is no default tier to order any more, so the tests order the
+# way a buyer does — every amount below is computed from these requirements
+# rather than written down, so a pricing change cannot leave a test asserting a
+# figure the product no longer charges.
+SALES_BUILD = Requirement(
+    product_type=PRODUCT_SALES_AGENT,
+    channels=(CHANNEL_WEB,),
+    monthly_conversations=2_000,
+)
+
+# A deliberately different build, for the tests that need two distinct orders.
+# Different product *and* different price, so "the second order is its own
+# order" is not accidentally true only because of the amount.
+SUPPORT_BUILD = Requirement(
+    product_type=PRODUCT_SUPPORT_AGENT,
+    channels=(CHANNEL_WEB, CHANNEL_WHATSAPP),
+    monthly_conversations=500,
+)
+
+# The priced form of each, so a test can say what it expects without repeating
+# the pricing rules. price() is the same function the checkout calls.
+SALES_QUOTE = price(SALES_BUILD)
+SUPPORT_QUOTE = price(SUPPORT_BUILD)
+
+BUILDS = (SALES_BUILD, SUPPORT_BUILD)
 
 
 class FakeTransport:
@@ -82,9 +117,9 @@ class FakeTransport:
                     "amount": (
                         self.amount_override
                         if self.amount_override is not None
-                        else DEFAULT_PLAN.amount_minor
+                        else SALES_QUOTE.total_minor
                     ),
-                    "currency": DEFAULT_PLAN.currency,
+                    "currency": SALES_QUOTE.currency,
                 },
             }
 
@@ -119,15 +154,38 @@ def checkout(db, paystack) -> CheckoutService:
     return CheckoutService(db, client=paystack)
 
 
-def make_order(checkout, storefront, **overrides) -> Order:
+@pytest.fixture
+def quoted(db) -> str:
+    """A stored quote for the default build, as the conversation would issue it.
+
+    Returns the reference. This is the storefront's only route to a payment now:
+    the buyer describes a build, the engine prices it, and the reference names
+    that requirement — never the amount.
+    """
+    return QuoteService(db).issue(SALES_BUILD).reference
+
+
+def make_order(checkout, storefront, quoted=None, build=None, **overrides) -> Order:
+    """Place an order the way the storefront does — against a quote.
+
+    ``quoted`` is an existing reference and ``build`` a requirement to quote
+    fresh; with neither, the default sales build is quoted. Overriding
+    ``plan_code`` is still possible and a few tests do it deliberately, to prove
+    a retired tier code is refused rather than silently priced.
+    """
     params = {
         "organization_id": storefront.id,
-        "plan_code": DEFAULT_PLAN.code,
         "buyer_email": "buyer@example.com",
         "buyer_name": "Ada Buyer",
         "buyer_company": "Buyer Co",
     }
     params.update(overrides)
+
+    if not params.get("plan_code"):
+        if quoted is None:
+            quoted = QuoteService(checkout.db).issue(build or SALES_BUILD).reference
+        params["quote_reference"] = quoted
+
     return checkout.create_order(**params)
 
 
@@ -152,30 +210,38 @@ def charge_event(reference: str, amount_minor: int, currency: str = "NGN") -> di
 # ---------- creating an order ----------
 
 
-def test_order_amount_comes_from_the_catalog_not_the_request(
+def test_order_amount_is_computed_server_side_not_sent_by_the_caller(
     checkout, storefront, transport
 ):
+    """The amount is never a parameter. It is re-derived from the requirement.
+
+    This is the property the whole money path rests on: ``create_order`` takes a
+    quote reference, and the figure that reaches Paystack is what
+    ``price()`` returns for the requirement stored under it.
+    """
     order = make_order(checkout, storefront)
 
-    assert order.amount_minor == DEFAULT_PLAN.amount_minor
-    assert order.currency == DEFAULT_PLAN.currency
+    assert order.amount_minor == SALES_QUOTE.total_minor
+    assert order.currency == SALES_QUOTE.currency
 
     # And the same figure is what actually crossed the wire.
     sent = transport.initialize_calls[0]["body"]
-    assert sent["amount"] == DEFAULT_PLAN.amount_minor
-    assert sent["currency"] == DEFAULT_PLAN.currency
+    assert sent["amount"] == SALES_QUOTE.total_minor
+    assert sent["currency"] == SALES_QUOTE.currency
 
 
-@pytest.mark.parametrize("plan", PLANS, ids=lambda p: p.code)
-def test_every_plan_can_be_ordered_at_its_published_price(
-    checkout, storefront, plan, transport
+@pytest.mark.parametrize("build", BUILDS, ids=lambda b: b.product_type)
+def test_every_build_can_be_ordered_at_its_computed_price(
+    checkout, storefront, build, transport
 ):
-    order = make_order(checkout, storefront, plan_code=plan.code)
+    expected = price(build)
 
-    assert order.amount_minor == plan.amount_minor
-    assert order.plan_name == plan.name
-    assert order.billing_period == plan.billing_period
-    assert transport.initialize_calls[-1]["body"]["amount"] == plan.amount_minor
+    order = make_order(checkout, storefront, build=build)
+
+    assert order.amount_minor == expected.total_minor
+    assert order.plan_name == expected.product_name
+    assert order.billing_period == expected.billing_period
+    assert transport.initialize_calls[-1]["body"]["amount"] == expected.total_minor
 
 
 def test_order_starts_pending_with_a_checkout_url(checkout, storefront):
@@ -191,24 +257,41 @@ def test_unknown_plan_is_refused(checkout, storefront):
         make_order(checkout, storefront, plan_code="enterprise_unlimited_free")
 
 
+def test_retired_tier_codes_are_refused_not_re_priced(checkout, storefront):
+    """The old storefront tiers are gone, and asking for one by name must fail.
+
+    These three codes were real and public. A buyer, a bookmark or a stale
+    cached page can still send them, and the only safe answer is a refusal —
+    falling back to any other price would charge somebody for a plan this
+    product no longer sells.
+    """
+    for retired in ("founding_annual", "growth_monthly", "starter_monthly"):
+        with pytest.raises(CheckoutError):
+            make_order(checkout, storefront, plan_code=retired)
+
+
 def test_order_without_an_email_is_refused(checkout, storefront):
     with pytest.raises(CheckoutError):
         make_order(checkout, storefront, buyer_email="   ")
 
 
-def test_repeat_request_reuses_the_pending_order(checkout, storefront, transport):
-    first = make_order(checkout, storefront)
-    second = make_order(checkout, storefront)
+def test_repeat_request_reuses_the_pending_order(checkout, storefront, transport, quoted):
+    """The same quote, asked for twice, is one order.
+
+    Same *quote*, not merely the same build: a buyer who refreshes is redeeming
+    the reference they were given. Two separate quotes for identical
+    requirements are two things bought, and stacking them is correct.
+    """
+    first = make_order(checkout, storefront, quoted=quoted)
+    second = make_order(checkout, storefront, quoted=quoted)
 
     assert first.id == second.id
     assert len(transport.initialize_calls) == 1
 
 
-def test_a_different_plan_gets_its_own_order(checkout, storefront):
-    other = next(p for p in PLANS if p.code != DEFAULT_PLAN.code)
-
+def test_a_different_build_gets_its_own_order(checkout, storefront):
     first = make_order(checkout, storefront)
-    second = make_order(checkout, storefront, plan_code=other.code)
+    second = make_order(checkout, storefront, build=SUPPORT_BUILD)
 
     assert first.id != second.id
 
@@ -384,8 +467,8 @@ def test_returning_buyer_does_not_get_their_password_reset(
         db.query(User).filter(User.email == first.buyer_email).first().password_hash
     )
 
-    other = next(p for p in PLANS if p.code != DEFAULT_PLAN.code)
-    second = make_order(checkout, storefront, plan_code=other.code)
+    other = SUPPORT_BUILD
+    second = make_order(checkout, storefront, build=other)
     second = checkout.confirm(
         paystack.charge_from_webhook(
             charge_event(second.paystack_reference, second.amount_minor)
@@ -565,10 +648,10 @@ def test_checkout_config_reports_disabled_when_no_key_is_set(client):
     assert body["live_mode"] is False
 
 
-def test_creating_an_order_without_keys_returns_503_not_500(client, storefront):
+def test_creating_an_order_without_keys_returns_503_not_500(client, storefront, quoted):
     response = client.post(
         "/api/v1/checkout/orders",
-        json={"plan_code": DEFAULT_PLAN.code, "email": "buyer@example.com"},
+        json={"quote_reference": quoted, "email": "buyer@example.com"},
     )
 
     assert response.status_code == 503
@@ -587,7 +670,9 @@ def test_order_status_reports_the_order_and_no_workspace_while_pending(
     body = client.get(f"/api/v1/checkout/orders/{order.paystack_reference}").json()
 
     assert body["order"]["status"] == ORDER_PENDING
-    assert body["order"]["display_amount"] == find_plan(order.plan_code).display_price
+    # Read off the order, not looked up in a catalog. A quote-backed order has
+    # no catalog plan to look up, and the order is the record of what was sold.
+    assert body["order"]["display_amount"] == SALES_QUOTE.display_total
     assert body["workspace"] is None
 
 
@@ -630,20 +715,49 @@ def thread(client, storefront) -> str:
     return client.post("/api/v1/sales/conversations").json()["token"]
 
 
+# The four answers that complete an intake, in the order the agent asks for
+# them. Matched to SALES_BUILD, so the figure the conversation reaches is
+# SALES_QUOTE and a test can assert on it without hardcoding a number.
+INTAKE_ANSWERS = (
+    "I need an AI sales representative",
+    "just my website",
+    "about 2,000 a month",
+    "none",
+)
+
+
 def reach_buy_intent(client, thread) -> dict:
-    """Talk the agent to the point where a plan has been chosen."""
-    client.post(
-        f"/api/v1/sales/conversations/{thread}/messages",
-        json={"body": f"I want to buy the {DEFAULT_PLAN.name} plan"},
-    )
+    """Talk the agent all the way to a price, the way a buyer does.
+
+    There are no tiers to name any more, so this walks the real intake: four
+    answers, then the agent quotes. What it leaves behind is a stored quote and
+    ``quote_<reference>`` on the conversation — which is exactly the state the
+    widget's close then has to work from.
+    """
+    for answer in INTAKE_ANSWERS:
+        client.post(
+            f"/api/v1/sales/conversations/{thread}/messages",
+            json={"body": answer},
+        )
+
     return client.get(f"/api/v1/sales/conversations/{thread}").json()
 
 
-def test_conversation_reports_the_plan_it_reached(client, thread):
+def test_conversation_reaches_a_computed_price_and_remembers_the_quote(client, thread):
     body = reach_buy_intent(client, thread)
 
-    assert body["interested_plan_code"] == DEFAULT_PLAN.code
     assert body["stage"] == "ready_to_buy"
+
+    # Not a plan code — a reference to the requirement that was priced.
+    code = body["interested_plan_code"]
+    assert code.startswith("quote_")
+    assert find_plan(code) is None
+
+    # And the figure the buyer was actually shown is the computed one.
+    messages = client.get(
+        f"/api/v1/sales/conversations/{thread}"
+    ).json()["messages"]
+    assert any(SALES_QUOTE.display_total in m["body"] for m in messages)
 
 
 def test_checkout_without_a_chosen_plan_is_refused(client, thread):
@@ -668,18 +782,25 @@ def test_checkout_without_an_email_is_refused(client, thread):
     assert "email" in response.json()["detail"].lower()
 
 
-def test_checkout_on_an_unknown_thread_is_404(client, storefront):
+def test_checkout_on_an_unknown_thread_is_404(client, storefront, quoted):
     response = client.post(
         "/api/v1/sales/conversations/not-a-real-token/checkout",
-        json={"email": "buyer@example.com", "plan_code": DEFAULT_PLAN.code},
+        json={"email": "buyer@example.com", "quote_reference": quoted},
     )
 
     assert response.status_code == 404
 
 
-def test_conversation_checkout_charges_the_catalog_price(
+def test_conversation_checkout_charges_the_computed_price(
     client, db, thread, storefront, monkeypatch, transport
 ):
+    """The widget's own close, end to end, on a quoted build.
+
+    This is the case that broke when the tiers went: the widget sends no plan,
+    the route falls back to ``interested_plan_code``, and that is now
+    ``quote_<reference>`` rather than a code any plan list contains. If the
+    unwrap in ``checkout_from_conversation`` regresses, this 400s.
+    """
     reach_buy_intent(client, thread)
 
     monkeypatch.setattr(
@@ -696,8 +817,8 @@ def test_conversation_checkout_charges_the_catalog_price(
 
     assert response.status_code == 201
     body = response.json()
-    assert body["amount_minor"] == DEFAULT_PLAN.amount_minor
-    assert transport.initialize_calls[-1]["body"]["amount"] == DEFAULT_PLAN.amount_minor
+    assert body["amount_minor"] == SALES_QUOTE.total_minor
+    assert transport.initialize_calls[-1]["body"]["amount"] == SALES_QUOTE.total_minor
 
 
 def test_conversation_checkout_ignores_an_amount_in_the_request_body(
@@ -723,7 +844,7 @@ def test_conversation_checkout_ignores_an_amount_in_the_request_body(
         },
     ).json()
 
-    assert body["amount_minor"] == DEFAULT_PLAN.amount_minor
+    assert body["amount_minor"] == SALES_QUOTE.total_minor
 
 
 def test_conversation_checkout_refuses_a_plan_that_does_not_exist(

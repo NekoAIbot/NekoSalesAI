@@ -13,7 +13,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.catalog import PLANS
 from app.config.settings import settings
 from app.followups.rules import RULES, RULES_BY_CODE, FollowUpContext
 from app.followups.service import (
@@ -34,8 +33,24 @@ from app.models.organization import Organization
 from app.payments.checkout import CheckoutService
 from app.payments.paystack import PaystackClient
 from app.payments.provisioning import ProvisioningService
+from app.pricing.complexity import (
+    CHANNEL_WEB,
+    PRODUCT_SALES_AGENT,
+    Requirement,
+    price,
+)
+from app.pricing.quotes import QuoteService, plan_code_for
 
-DEFAULT_PLAN = next(p for p in PLANS if p.is_default)
+# What a follow-up is written about: a build somebody bought. The storefront
+# sells no tiers, so there is no default plan to borrow a name and a price from
+# — both come from the engine, which is where a real order's did.
+SOLD_BUILD = Requirement(
+    product_type=PRODUCT_SALES_AGENT,
+    channels=(CHANNEL_WEB,),
+    monthly_conversations=2_000,
+)
+
+SOLD = price(SOLD_BUILD)
 
 TEST_SECRET = "sk_test_pretend_key_for_tests"
 
@@ -77,8 +92,8 @@ class FakeTransport:
                 "data": {
                     "reference": reference,
                     "status": "success",
-                    "amount": DEFAULT_PLAN.amount_minor,
-                    "currency": DEFAULT_PLAN.currency,
+                    "amount": SOLD.total_minor,
+                    "currency": SOLD.currency,
                 },
             }
 
@@ -101,7 +116,7 @@ def paid_order(db, storefront) -> Order:
 
     order = checkout.create_order(
         organization_id=storefront.id,
-        plan_code=DEFAULT_PLAN.code,
+        quote_reference=QuoteService(db).issue(SOLD_BUILD).reference,
         buyer_email="buyer@example.com",
         buyer_name="Ada Buyer",
         buyer_company="Buyer Co",
@@ -391,7 +406,7 @@ def test_the_body_is_rendered_from_the_customers_own_facts(
 
     assert "Buyer Co" in day_zero.subject
     assert "Ada" in day_zero.body                       # buyer's first name
-    assert DEFAULT_PLAN.name in day_zero.body
+    assert SOLD.product_name in day_zero.body
     assert workspace.api_key_prefix in day_zero.body
 
 
@@ -466,10 +481,10 @@ def test_a_buyer_without_a_name_is_addressed_by_company(db, storefront):
     context = FollowUpContext(
         company_name="Nameless Ltd",
         buyer_name=None,
-        plan_code=DEFAULT_PLAN.code,
-        plan_name=DEFAULT_PLAN.name,
-        amount_minor=DEFAULT_PLAN.amount_minor,
-        currency=DEFAULT_PLAN.currency,
+        plan_code=plan_code_for("qt_pretend_reference"),
+        plan_name=SOLD.product_name,
+        amount_minor=SOLD.total_minor,
+        currency=SOLD.currency,
         api_key_prefix="nsk_live_ab",
         conversation_count=0,
         support_email="support@example.com",
@@ -484,10 +499,10 @@ def test_every_rule_renders_without_a_name_or_an_api_key():
     context = FollowUpContext(
         company_name="Sparse Co",
         buyer_name=None,
-        plan_code=DEFAULT_PLAN.code,
-        plan_name=DEFAULT_PLAN.name,
-        amount_minor=DEFAULT_PLAN.amount_minor,
-        currency=DEFAULT_PLAN.currency,
+        plan_code=plan_code_for("qt_pretend_reference"),
+        plan_name=SOLD.product_name,
+        amount_minor=SOLD.total_minor,
+        currency=SOLD.currency,
         api_key_prefix=None,
         conversation_count=0,
         support_email="support@example.com",

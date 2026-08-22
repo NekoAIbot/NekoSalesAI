@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.catalog import CAPABILITIES, COMPANY, FAQS, PLANS
+from app.catalog import CAPABILITIES, COMPANY, FAQS
 from app.config.settings import settings
 from app.dependencies.database import get_db
 from app.pricing.complexity import (
@@ -67,9 +67,10 @@ def landing(request: Request, db: Session = Depends(get_db)):
     so the page and the chat can never disagree about the price.
 
     The builder section is rendered from the pricing engine's own dimensions
-    for the same reason. Note that no price reaches this template: the fixed
-    tiers carry theirs because they are published figures, while a built
-    product is priced by ``POST /api/v1/pricing/quote`` on demand.
+    for the same reason. Note that no price reaches this template at all: there
+    are no fixed tiers left to publish, and a built product is priced by
+    ``POST /api/v1/pricing/quote`` on demand — which means a stale page cannot
+    show a figure the engine would not compute.
     """
     org = OrganizationRepository(db).get_by_slug(settings.STOREFRONT_ORG_SLUG)
 
@@ -78,7 +79,6 @@ def landing(request: Request, db: Session = Depends(get_db)):
         "landing.html",
         {
             "company": COMPANY,
-            "plans": PLANS,
             "capabilities": CAPABILITIES,
             "faqs": FAQS,
             "chat_available": org is not None,

@@ -303,7 +303,7 @@ def test_a_support_agent_still_refuses_discount_requests():
     )
 
     assert reply.reasoning.escalated is True
-    assert "20%" not in reply.body or "can't change the price" in reply.body
+    assert "20%" not in reply.body or "isn't mine to change" in reply.body
 
 
 # ---------- the role survives storage ----------

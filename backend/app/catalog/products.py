@@ -45,6 +45,7 @@ conversation. Customer configs are rows, because customers set their own.
 """
 
 from app.products.config import (
+    PRICING_DYNAMIC,
     ROLE_BUILDER,
     Capability,
     Faq,
@@ -103,63 +104,32 @@ CAPABILITIES: tuple[Capability, ...] = (
 )
 
 
-# Founder-set pricing. These are the numbers the agent will quote to real
-# buyers, so they are the founder's call and not the engine's — change them
-# here and every quote, payment link and page follows.
-PLANS: tuple[Plan, ...] = (
-    Plan(
-        code="founding_annual",
-        name="Founding User",
-        audience="First 20 customers, paid annually up front.",
-        currency="NGN",
-        amount_minor=180_000_00,
-        billing_period="year",
-        seats=3,
-        monthly_conversation_limit=2_000,
-        features=(
-            "Everything in Growth",
-            "Locked-in founding price for as long as you stay subscribed",
-            "Direct line to the founder for support",
-            "Your feature requests get looked at first",
-        ),
-        is_default=True,
-    ),
-    Plan(
-        code="growth_monthly",
-        name="Growth",
-        audience="Small teams handling steady inbound.",
-        currency="NGN",
-        amount_minor=25_000_00,
-        billing_period="month",
-        seats=3,
-        monthly_conversation_limit=2_000,
-        features=(
-            "AI sales rep on your website",
-            "Up to 2,000 buyer conversations a month",
-            "3 team seats",
-            "Approval gate for off-list discounts and terms",
-            "Paystack checkout links",
-            "Reasoning log on every AI reply",
-        ),
-    ),
-    Plan(
-        code="starter_monthly",
-        name="Starter",
-        audience="Solo founders testing inbound sales.",
-        currency="NGN",
-        amount_minor=9_000_00,
-        billing_period="month",
-        seats=1,
-        monthly_conversation_limit=400,
-        features=(
-            "AI sales rep on your website",
-            "Up to 400 buyer conversations a month",
-            "1 seat",
-            "Approval gate for off-list discounts and terms",
-            "Reasoning log on every AI reply",
-        ),
-    ),
-)
+# No fixed tiers. This used to be three of them — Founding User, Growth,
+# Starter — and removing them is a deliberate pricing decision, not a cleanup.
+#
+# A tier is a bet that everyone at that size wants the same build. Nera does not
+# sell a subscription to software that already exists; it is asked to build a
+# specific AI, and what that costs depends on what the AI has to do: which
+# product, which channels, how many systems it talks to, how much traffic it
+# carries. Three cards on a page can only answer that by rounding, and rounding
+# a price is either overcharging the small build or underpricing the large one.
+#
+# So every figure Nera quotes is now computed by ``app.pricing.complexity`` from
+# a requirement the buyer stated, itemised so they can see what each line is
+# for. ``STOREFRONT_CONFIG`` declares ``pricing_mode=PRICING_DYNAMIC`` below, and
+# that is what routes a pricing question into the four scoping questions in
+# ``app.sales.scoping`` instead of a price list.
+#
+# ``PLANS`` is gone rather than emptied, so nothing can quietly read a stale
+# tier. Fixed plans remain a first-class feature of ``ProductConfig`` — a
+# customer whose own product genuinely has three sizes still publishes them, and
+# their agent still quotes them. What no longer exists is a fixed price for a
+# *build*.
+#
+# Orders placed against the old codes keep working: an order freezes its plan
+# name and amount at purchase, ``find_plan`` returns None for a retired code,
+# and both ``app.followups.rules`` and ``app.payments.provisioning`` already fall
+# back to what the order recorded.
 
 
 FAQS: tuple[Faq, ...] = (
@@ -260,7 +230,9 @@ STOREFRONT_CONFIG = ProductConfig(
         "it."
     ),
     opening_question="So: what does your business need?",
-    plans=PLANS,
+    # Priced by the engine, from what the buyer says the build has to do. There
+    # is no plan list here on purpose — see the note above ``FAQS``.
+    pricing_mode=PRICING_DYNAMIC,
     capabilities=CAPABILITIES,
     faqs=FAQS,
     max_auto_discount_percent=MAX_AUTO_DISCOUNT_PERCENT,
@@ -285,6 +257,12 @@ COMPANY = {
 def find_plan(code: str) -> Plan | None:
     """Look up a storefront plan by code.
 
+    Returns None for everything now that the storefront publishes no tiers, and
+    that is the point rather than an oversight: a retired code must resolve to
+    nothing rather than to the nearest surviving plan. Callers that hold a code
+    from an old order — ``app.followups.rules``, ``app.payments.provisioning`` —
+    already fall back to the name and amount the order froze at purchase.
+
     Storefront-scoped by definition. Code resolving a plan for an arbitrary
     conversation must use that conversation's config, not this — a customer's
     plan codes live in their own config and are not visible here.
@@ -301,7 +279,6 @@ __all__ = [
     "COMPANY",
     "FAQS",
     "MAX_AUTO_DISCOUNT_PERCENT",
-    "PLANS",
     "STOREFRONT_CONFIG",
     "Capability",
     "Faq",

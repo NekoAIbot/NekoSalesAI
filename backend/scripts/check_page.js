@@ -43,8 +43,8 @@ const TURNS = [
   { role: "visitor", text: "What can you actually build?", trace: "" },
   {
     role: "agent",
-    text: "Two things today: an AI sales representative and an AI support agent.",
-    trace: "source: buildable catalog · anything outside it: refused",
+    text: "Two today: an AI sales representative and an AI support agent.",
+    trace: "source: buildable catalog · anything outside it: escalated",
   },
 ];
 

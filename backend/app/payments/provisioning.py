@@ -35,6 +35,7 @@ from app.models.organization import Organization
 from app.models.quote import Quote
 from app.models.user import User
 from app.pricing.complexity import PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT
+from app.pricing.quotes import reference_from_plan_code
 from app.models.workspace_profile import (
     PROVISION_FAILED,
     PROVISION_READY,
@@ -77,12 +78,14 @@ _AGENT_FIRST_NAME = {
     ROLE_SUPPORT_AGENT: "Remi",
 }
 
-# Catalog plan codes all sell the sales agent; that is what the storefront's
-# three tiers are. A quote-backed order names its product explicitly, and
-# ``_role_for_order`` reads it from the quote rather than guessing from text.
+# A plan code that is not a quote reference belongs to a fixed tier, and every
+# fixed tier that has ever existed on this storefront sold the sales agent. The
+# storefront publishes none now — everything it sells is quoted — so this is the
+# fallback for orders placed before that change, not the common path. A
+# quote-backed order names its product explicitly, and ``_role_for_order`` reads
+# it from the quote rather than guessing from text.
 CATALOG_ROLE = ROLE_SALES_AGENT
 
-QUOTE_PLAN_PREFIX = "quote_"
 
 # Pricing's product types and the engine's roles are separate vocabularies
 # that happen to share spellings today. Mapping them explicitly keeps the
@@ -315,12 +318,11 @@ class ProvisioningService:
         behalf, and defaulting to support silently under-delivers. The caller
         turns this into a recorded provisioning failure the desk can see.
         """
-        code = order.plan_code or ""
+        reference = reference_from_plan_code(order.plan_code)
 
-        if not code.startswith(QUOTE_PLAN_PREFIX):
+        if reference is None:
             return CATALOG_ROLE
 
-        reference = code[len(QUOTE_PLAN_PREFIX):]
         quote = self.db.execute(
             select(Quote).where(Quote.reference == reference)
         ).scalars().first()
