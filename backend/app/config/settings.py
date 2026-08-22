@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     WHATSAPP_VERIFY_TOKEN: str = ""
     # Meta signs every delivery with this. Used to verify X-Hub-Signature-256.
     WHATSAPP_APP_SECRET: str = ""
+    # Only needed to set the business profile photo: Meta's resumable upload runs
+    # against the *app*, not the phone number, so the numeric app id is a
+    # separate value from every other credential here. Sending never touches it.
+    WHATSAPP_APP_ID: str = ""
 
     MESSAGING_TIMEOUT: float = 10.0
 

@@ -132,8 +132,16 @@ class ConversationService:
         self,
         conversation: Conversation,
         body: str,
+        external_id: str | None = None,
     ) -> Message:
-        """Store the visitor's turn, produce the agent's, return the reply."""
+        """Store the visitor's turn, produce the agent's, return the reply.
+
+        ``external_id`` is the platform's id for the delivery that carried this
+        message — a Telegram update, a WhatsApp message id — and is null for the
+        widget, which has no such thing. It is recorded on the visitor's turn so
+        a re-delivery can be recognised as one; see
+        ``app.messaging.service.InboundMessagingService``.
+        """
         body = (body or "").strip()
 
         if not body:
@@ -150,6 +158,7 @@ class ConversationService:
                 conversation_id=conversation.id,
                 role=ROLE_VISITOR,
                 body=body,
+                external_id=external_id,
             )
         )
         self.db.commit()
@@ -170,7 +179,12 @@ class ConversationService:
             )
 
         config = resolve_config(self.db, conversation.organization_id)
-        reply = compose_reply(body, conversation.stage, config=config)
+        reply = compose_reply(
+            body,
+            conversation.stage,
+            config=config,
+            interested_plan_code=conversation.interested_plan_code,
+        )
 
         if reply.captured_email and not conversation.visitor_email:
             conversation.visitor_email = reply.captured_email

@@ -151,6 +151,16 @@ class Message(BaseModel):
     #         "escalated": bool}
     reasoning_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # The platform's own id for the message that produced this turn — a Telegram
+    # update id, a WhatsApp message id — and null for anything that arrived
+    # through the widget.
+    #
+    # This is a deduplication key, not a reference. Both platforms deliver at
+    # least once and retry anything they do not see acknowledged, so the same
+    # buyer question can arrive twice; without this the transcript would grow a
+    # duplicate turn and the buyer would be answered twice.
+    external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
 
 
@@ -158,4 +168,12 @@ Index(
     "ix_conversation_messages_conversation_id_id",
     Message.conversation_id,
     Message.id,
+)
+
+# Narrow, and only over rows that have one: this is looked up once per inbound
+# platform message to answer "have I already handled this delivery".
+Index(
+    "ix_conversation_messages_external_id",
+    Message.conversation_id,
+    Message.external_id,
 )

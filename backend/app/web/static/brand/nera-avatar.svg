@@ -1,0 +1,26 @@
+<!-- Nera / NekoSalesAI — the mark.
+
+     The diamond is the brand mark already in the site header. The two rules
+     beneath it are the published price list.
+
+     That is the whole product in two shapes: it speaks, and it speaks from a
+     fixed list underneath it. A mark of a brain, a spark or a chat bubble would
+     say "AI", which is the least interesting true thing about this. What makes
+     it worth buying is the line it cannot step off.
+
+     Geometry is centred for a circular crop — Telegram, WhatsApp and every
+     avatar slot round it off — so nothing important sits further than 165 units
+     from the middle of a 512 canvas.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
+     width="512" height="512" role="img" aria-label="NekoSalesAI">
+  <title>NekoSalesAI — Nera</title>
+
+  <rect width="512" height="512" rx="112" fill="#1c5d43"/>
+
+  <g fill="#fbfaf9">
+    <path d="M256 108 356 208 256 308 156 208Z"/>
+    <rect x="164" y="348" width="184" height="22" rx="11"/>
+    <rect x="196" y="386" width="120" height="22" rx="11"/>
+  </g>
+</svg>

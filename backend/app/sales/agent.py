@@ -311,6 +311,7 @@ def compose_reply(
     message: str,
     stage: str,
     config: ProductConfig | None = None,
+    interested_plan_code: str | None = None,
 ) -> AgentReply:
     """Decide what to say to one visitor message.
 
@@ -319,6 +320,13 @@ def compose_reply(
     taught about tenancy still behaves exactly as before — but a provisioned
     customer's conversation must pass its own, or it will quote our prices to
     its buyers.
+
+    ``interested_plan_code`` is the plan this conversation has already settled
+    on. Without it, "yes, let's start" has no idea what the buyer said they
+    wanted two turns ago and falls back to the default plan — which found a live
+    buyer who chose Starter and was closed on Founding User at twenty times the
+    price. A sales agent that upsells by forgetting is worse than one that cannot
+    close.
 
     Pure: no database, no network, no clock. That is what makes the agent's
     behaviour — including its refusal to discount — directly testable.
@@ -418,7 +426,16 @@ def compose_reply(
         )
 
     if _matches(_BUY_PATTERNS, text):
-        plan = _mentioned_plan(text, config) or config.default_plan
+        # In priority order: the plan named in *this* message, the plan this
+        # conversation already settled on, then the default. The middle term is
+        # the one that matters — "yes, let's start" names no plan, and without
+        # the conversation's memory it silently became the default, which is the
+        # most expensive plan on the list.
+        plan = (
+            _mentioned_plan(text, config)
+            or (config.find_plan(interested_plan_code) if interested_plan_code else None)
+            or config.default_plan
+        )
 
         # A config with no plans is one still being assembled during intake.
         # Inviting someone to buy from an empty price list would mean naming a

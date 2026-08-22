@@ -23,6 +23,9 @@ env/
 # Logs
 *.log
 
+# Runtime state for the poller supervisor (nera.sh): pid and stop marker.
+backend/var/
+
 # IDEs
 .vscode/
 .idea/

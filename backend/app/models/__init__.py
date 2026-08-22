@@ -16,6 +16,7 @@ from app.models.order import Order
 from app.models.quote import Quote
 from app.models.workspace_profile import WorkspaceProfile
 from app.models.follow_up import FollowUp
+from app.models.channel_identity import ChannelIdentity
 
 __all__ = [
     "Organization",
@@ -30,4 +31,5 @@ __all__ = [
     "Quote",
     "WorkspaceProfile",
     "FollowUp",
+    "ChannelIdentity",
 ]

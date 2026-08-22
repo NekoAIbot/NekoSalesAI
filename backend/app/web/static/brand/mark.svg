@@ -1,0 +1,18 @@
+<!-- The mark alone, transparent, in the accent colour.
+
+     For light surfaces: favicon, README, the site header. Same geometry as
+     nera-avatar.svg with the plate removed and the box tightened to the ink, so
+     it can be dropped into a line of text without carrying padding it did not
+     ask for.
+
+     currentColor on purpose — one file works on paper and on the dark ledger
+     surface, and inherits a hover colour rather than needing a second copy.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"
+     width="200" height="300" fill="currentColor" role="img"
+     aria-label="NekoSalesAI">
+  <title>NekoSalesAI</title>
+  <path d="M100 0 200 100 100 200 0 100Z"/>
+  <rect x="8" y="240" width="184" height="22" rx="11"/>
+  <rect x="40" y="278" width="120" height="22" rx="11"/>
+</svg>
