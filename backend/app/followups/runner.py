@@ -32,9 +32,10 @@ from sqlalchemy.orm import Session
 
 from app.config.logging import configure_logging, get_logger
 from app.database.session import SessionLocal
-from app.followups.sender import MailSender
+from app.followups.dispatcher import FollowUpDispatcher
 from app.followups.service import FollowUpSendError, FollowUpService
 from app.models.follow_up import STATUS_SCHEDULED, STATUS_SENT, FollowUp
+from app.models.workspace_profile import WorkspaceProfile
 
 logger = get_logger(__name__)
 
@@ -85,6 +86,20 @@ def due_across_organizations(
     )
 
 
+def _service_for(db: Session, follow_up: FollowUp) -> FollowUpService | None:
+    """A service whose sender matches this workspace's chosen channels.
+
+    Returns None when the workspace has gone, so the caller can cancel rather
+    than send into nothing.
+    """
+    profile = db.get(WorkspaceProfile, follow_up.workspace_profile_id)
+
+    if profile is None:
+        return None
+
+    return FollowUpService(db, sender=FollowUpDispatcher(profile))
+
+
 def run_due(
     db: Session,
     *,
@@ -100,8 +115,6 @@ def run_due(
         logger.info("No follow-ups due.")
         return report
 
-    worker = service or FollowUpService(db, sender=MailSender())
-
     for follow_up in follow_ups:
         if dry_run:
             logger.info(
@@ -110,6 +123,20 @@ def run_due(
                 follow_up.rule_code,
                 follow_up.due_at,
             )
+            continue
+
+        # Built per follow-up rather than once for the run, because channel
+        # preferences live on the workspace and each one may have chosen a
+        # different set. An explicit service overrides this entirely, which is
+        # what tests use to pin a single sender.
+        worker = service or _service_for(db, follow_up)
+
+        if worker is None:
+            report.cancelled += 1
+            logger.warning(
+                "Follow-up %s has no workspace; cancelling.", follow_up.id
+            )
+            FollowUpService(db).cancel(follow_up, "The workspace no longer exists.")
             continue
 
         try:

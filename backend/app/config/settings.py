@@ -77,6 +77,27 @@ class Settings(BaseSettings):
     # slow model is dropped and the deterministic text ships instead.
     LLM_TIMEOUT_SECONDS: float = 3.5
 
+    # Telegram. Empty disables the channel: a follow-up preference naming it is
+    # skipped with a reason rather than failing, and the webhook returns 503.
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_BASE_URL: str = "https://api.telegram.org"
+    # Shared secret echoed by Telegram in X-Telegram-Bot-Api-Secret-Token. The
+    # webhook must be public, so without this anyone who learns the URL could
+    # post fabricated messages into a customer's conversation.
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+
+    # WhatsApp, via the Meta Cloud API. Needs both the token and the phone
+    # number id; either missing disables the channel.
+    WHATSAPP_ACCESS_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_BASE_URL: str = "https://graph.facebook.com/v21.0"
+    # Echoed back during Meta's webhook handshake.
+    WHATSAPP_VERIFY_TOKEN: str = ""
+    # Meta signs every delivery with this. Used to verify X-Hub-Signature-256.
+    WHATSAPP_APP_SECRET: str = ""
+
+    MESSAGING_TIMEOUT: float = 10.0
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
