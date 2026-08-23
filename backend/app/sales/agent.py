@@ -119,6 +119,12 @@ _CUSTOM_TERMS_PATTERNS = (
     r"\bmoney[- ]back\b",
     r"\bguarantee\b",
     r"\bunlimited\b",
+    # A lifetime or perpetual price is a term nobody here is authorised to set,
+    # and it is one of the commonest asks — it was reaching the approval queue
+    # only as a generic unanswered question, which files it under the wrong
+    # subject for whoever picks it up.
+    r"\blifetime\b",
+    r"\bperpetual\b",
     r"\bwhite ?label\b",
     r"\bon[- ]premise", r"\bself[- ]host",
     r"\bexclusiv",
@@ -585,6 +591,23 @@ def _courtesy_reply(scope: Scope | None) -> str:
     )
 
 
+def _said_before(
+    rules_already_used: frozenset[str], rule: str, first: str, again: str
+) -> str:
+    """The same point, worded differently the second time it has to be made.
+
+    Both strings say the same thing — this picks wording, never substance, so a
+    refusal is still a refusal and a question is still the same question. What it
+    removes is the byte-identical repeat, which a buyer reads as a bot that has
+    stopped listening rather than one holding its ground.
+
+    Two variants and no more. A third adds nothing a buyer would notice, and a
+    rotation long enough to feel varied is a rotation somebody has to keep in
+    step with the copy it varies.
+    """
+    return again if rule in rules_already_used else first
+
+
 def _scoping_reply(
     scope: Scope,
     signals: list[str],
@@ -696,6 +719,7 @@ def compose_reply(
     config: ProductConfig | None = None,
     interested_plan_code: str | None = None,
     scope: Scope | None = None,
+    rules_already_used: frozenset[str] = frozenset(),
 ) -> AgentReply:
     """Decide what to say to one visitor message.
 
@@ -716,6 +740,14 @@ def compose_reply(
     has already said about the build, so each turn asks the next question rather
     than the first one again. It is passed in and handed back rather than kept,
     which is what lets this function stay pure.
+
+    ``rules_already_used`` is which rules have fired earlier in this
+    conversation. It exists for one reason: a rule that fires twice used to
+    produce byte-identical copy, and two identical messages in a row is what a
+    broken bot looks like from the buyer's end — the failure they notice and
+    leave over. Re-asking an unanswered question is *correct*; re-asking it in
+    exactly the same words is not. Passed in rather than remembered, like the
+    scope, so this stays pure.
 
     Pure: no database, no network, no clock. That is what makes the agent's
     behaviour — including its refusal to discount — directly testable.
@@ -744,12 +776,26 @@ def compose_reply(
             reasoning.add_signal(f"matched off-script pattern {matched!r}")
 
         return AgentReply(
-            body=(
-                "Pricing isn't mine to change — I quote from our published "
-                "figures only. What I can do is put the request to the team "
-                "and come back to you with a firm answer.\n\n"
-                "What's the best email to reach you on, and roughly what "
-                "budget or terms are you working with?"
+            body=_said_before(
+                rules_already_used,
+                RULE_DISCOUNT_REQUEST,
+                first=(
+                    "Pricing isn't mine to change — I quote from our published "
+                    "figures only. What I can do is put the request to the team "
+                    "and come back to you with a firm answer.\n\n"
+                    "What's the best email to reach you on, and roughly what "
+                    "budget or terms are you working with?"
+                ),
+                # Asked twice. The answer does not move, and saying so plainly is
+                # more respectful than repeating the first refusal word for word
+                # as though the question had not been heard.
+                again=(
+                    "Still no, and it won't change however it's asked — the "
+                    "figure isn't mine to move. The request is already with the "
+                    "team, and they're the ones who can answer it.\n\n"
+                    "Leave me an email and I'll make sure their answer reaches "
+                    "you. Otherwise I'm happy to keep going on the build itself."
+                ),
             ),
             reasoning=reasoning,
             next_stage=STAGE_NEGOTIATING,
@@ -770,12 +816,22 @@ def compose_reply(
             reasoning.add_signal(f"matched off-script pattern {matched!r}")
 
         return AgentReply(
-            body=(
-                "That's beyond what I'm authorised to agree to, so I won't "
-                "commit us to it on the spot. I've put it to the team and "
-                "they'll confirm what's workable.\n\n"
-                "If you leave me your email I'll make sure the answer gets "
-                "to you."
+            body=_said_before(
+                rules_already_used,
+                RULE_CUSTOM_TERMS,
+                first=(
+                    "That's beyond what I'm authorised to agree to, so I won't "
+                    "commit us to it on the spot. I've put it to the team and "
+                    "they'll confirm what's workable.\n\n"
+                    "If you leave me your email I'll make sure the answer gets "
+                    "to you."
+                ),
+                again=(
+                    "Same answer as before, and for the same reason: agreeing to "
+                    "terms I'm not authorised to set would be me committing the "
+                    "business to something it hasn't agreed. It's with the team.\n\n"
+                    "An email address is all I need to get their answer to you."
+                ),
             ),
             reasoning=reasoning,
             next_stage=STAGE_NEGOTIATING,
@@ -913,8 +969,24 @@ def compose_reply(
                     scope,
                     ["visitor asked about price or buying", f"awaiting {pending}"],
                     lead_in=(
-                        "Price follows what it has to do, so let me get that "
-                        "straight first — four quick questions."
+                        _said_before(
+                            rules_already_used,
+                            RULE_SCOPING,
+                            first=(
+                                "Price follows what it has to do, so let me get "
+                                "that straight first — four quick questions."
+                            ),
+                            # Pressed for a number again without answering. The
+                            # question genuinely has to be answered first, so it
+                            # is asked again — but named as a repeat, because
+                            # re-sending the identical sentence is what makes a
+                            # buyer think nothing is listening.
+                            again=(
+                                "I know you want the number — I can't give you an "
+                                "honest one until I know this much, and a made-up "
+                                "figure is worth nothing to either of us."
+                            ),
+                        )
                         if scope.is_empty
                         else "Let me get the rest of it straight first."
                     ),
@@ -1279,11 +1351,21 @@ def compose_reply(
         escalated=True,
     )
 
-    body = (
-        "That one I can't answer properly, so I've passed it to the team "
-        "rather than guess at it — they'll come back to you.\n\n"
-        "Meanwhile, happy to go through what the product does or what it "
-        "costs. Which is more useful?"
+    body = _said_before(
+        rules_already_used,
+        RULE_UNKNOWN,
+        first=(
+            "That one I can't answer properly, so I've passed it to the team "
+            "rather than guess at it — they'll come back to you.\n\n"
+            "Meanwhile, happy to go through what the product does or what it "
+            "costs. Which is more useful?"
+        ),
+        again=(
+            "That's another one outside what I can answer for certain, so it's "
+            "gone to the team as well rather than getting a guess from me.\n\n"
+            "What I can be useful on is what I build and what it costs. Want to "
+            "start there?"
+        ),
     )
 
     # Mid-intake, "which is more useful?" is the wrong thing to say: the buyer
@@ -1296,10 +1378,21 @@ def compose_reply(
     if pending_question is not None:
         reasoning.add_signal("intake still open, so the pending question stands")
         body = (
-            "That one I'll pass to the team rather than guess at — they'll "
-            "come back to you on it.\n\n"
-            "Back to where we were, though:\n\n"
-            f"{pending_question}"
+            _said_before(
+                rules_already_used,
+                RULE_UNKNOWN,
+                first=(
+                    "That one I'll pass to the team rather than guess at — "
+                    "they'll come back to you on it.\n\n"
+                    "Back to where we were, though:"
+                ),
+                again=(
+                    "Passing that one on too — same reason, I'd rather not "
+                    "guess.\n\n"
+                    "Still need this from you before I can price anything:"
+                ),
+            )
+            + f"\n\n{pending_question}"
         )
 
     return AgentReply(

@@ -710,6 +710,12 @@ def test_a_two_product_telegram_quote_is_redeemable_for_both(service, storefront
 
     assert recomputed.products == (PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT)
 
+    # And the row knows which conversation it came out of. A quote reached over a
+    # messenger has the same provenance obligation as one reached on the web: the
+    # thread it was quoted in is the only record of what else the buyer was told.
+    assert _row.conversation_id == db.query(Conversation).one().id
+    assert _row.organization_id == storefront.id
+
 
 def test_two_products_cost_the_same_on_telegram_and_whatsapp(
     service, storefront, db

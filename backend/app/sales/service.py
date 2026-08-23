@@ -10,6 +10,7 @@ visitor as a CRM lead, and raising approval requests.
 # every ``list[...]`` return annotation declared after it.
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import datetime, timezone
 
@@ -191,6 +192,7 @@ class ConversationService:
             config=config,
             interested_plan_code=conversation.interested_plan_code,
             scope=Scope.from_json(conversation.scope_json),
+            rules_already_used=self._rules_already_used(conversation.id),
         )
 
         if reply.scope is not None:
@@ -205,10 +207,20 @@ class ConversationService:
             # the requirement that produced the number they were given — not a
             # requirement reassembled later from a transcript.
             #
+            # Stamped with the conversation and the org it was quoted in. Without
+            # those, a stored quote is a price with no provenance: nothing can
+            # answer "where did this figure come from" or "what else was this
+            # buyer told", which is the audit trail the whole computed-pricing
+            # design rests on.
+            #
             # It lands in interested_plan_code as ``quote_<reference>`` because
             # that is the form CheckoutService and ProvisioningService already
             # understand, so a computed price needs no second path to payment.
-            quote_row = QuoteService(self.db).issue(reply.scope.to_requirement())
+            quote_row = QuoteService(self.db).issue(
+                reply.scope.to_requirement(),
+                organization_id=conversation.organization_id,
+                conversation_id=conversation.id,
+            )
             conversation.interested_plan_code = plan_code_for(quote_row.reference)
 
         if reply.captured_email and not conversation.visitor_email:
@@ -273,6 +285,42 @@ class ConversationService:
         self.db.refresh(agent_message)
 
         return agent_message
+
+    def _rules_already_used(self, conversation_id: int) -> frozenset[str]:
+        """Which rules have already spoken in this thread.
+
+        Read back out of the reasoning trail the agent writes on every turn
+        anyway, rather than kept as a second piece of state that could disagree
+        with it. The agent uses it to avoid repeating a reply word for word; it
+        is wording only, and nothing about a price, a stage or a scope depends
+        on it.
+
+        Malformed rows are skipped rather than raised on. A reasoning blob that
+        cannot be read is a cosmetic loss — the reply is simply worded as if it
+        were the first — and is not worth failing a visitor's turn over.
+        """
+        rows = (
+            self.db.query(Message.reasoning_json)
+            .filter(
+                Message.conversation_id == conversation_id,
+                Message.role == ROLE_AGENT,
+                Message.reasoning_json.isnot(None),
+            )
+            .all()
+        )
+
+        rules = set()
+
+        for (raw,) in rows:
+            try:
+                rule = json.loads(raw).get("rule")
+            except (TypeError, ValueError):
+                continue
+
+            if rule:
+                rules.add(rule)
+
+        return frozenset(rules)
 
     def update_visitor_details(
         self,

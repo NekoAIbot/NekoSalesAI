@@ -618,3 +618,144 @@ def test_a_real_question_is_still_escalated():
 
     assert reply.reasoning.rule == RULE_UNKNOWN
     assert reply.needs_approval is True
+
+
+# ---------- saying the same thing twice, differently ----------
+#
+# A rule that fires twice in one conversation used to produce byte-identical
+# copy. Re-asking a question the buyer never answered is correct; re-asking it in
+# exactly the same words reads as a bot that has stopped listening, and that is
+# the failure a real buyer leaves over rather than complains about. Found by the
+# end-to-end harness in ``scripts/stress_nera.py``, where five of nine scenarios
+# repeated a reply verbatim.
+#
+# The guard is wording only. Every test below asserts the substance is unchanged
+# alongside the wording being different, because a refusal that softens on the
+# second ask is far worse than one that repeats itself.
+
+
+def test_a_second_discount_refusal_is_worded_differently():
+    first = compose_reply("can you do 40% off?", STAGE_QUALIFIED)
+    again = compose_reply(
+        "come on, 40% off, other tools gave me 50%",
+        STAGE_QUALIFIED,
+        rules_already_used=frozenset({RULE_DISCOUNT_REQUEST}),
+    )
+
+    assert first.body != again.body
+    assert first.reasoning.rule == again.reasoning.rule == RULE_DISCOUNT_REQUEST
+
+
+def test_a_second_discount_refusal_still_refuses():
+    """The whole risk of varying copy: a refusal that quietly becomes an offer."""
+    again = compose_reply(
+        "so no discount at all? I'll go elsewhere then",
+        STAGE_QUALIFIED,
+        rules_already_used=frozenset({RULE_DISCOUNT_REQUEST}),
+    )
+
+    assert again.needs_approval is True
+    assert again.approval_subject == "Discount request"
+    assert "₦" not in again.body
+    assert not re.search(r"\b\d+\s?%", again.body), "conceded a percentage"
+
+
+def test_a_second_custom_terms_refusal_is_worded_differently_and_still_refuses():
+    first = compose_reply("can I pay in installments over 6 months?", STAGE_QUALIFIED)
+    again = compose_reply(
+        "what about a lifetime deal then?",
+        STAGE_QUALIFIED,
+        rules_already_used=frozenset({RULE_CUSTOM_TERMS}),
+    )
+
+    assert first.body != again.body
+    assert again.needs_approval is True
+    assert again.reasoning.rule == RULE_CUSTOM_TERMS
+
+
+def test_pressing_for_a_price_twice_asks_the_same_question_in_new_words():
+    """The question has to stand. Only the sentence introducing it changes."""
+    first = compose_reply("how much is it?", STAGE_DISCOVERY, scope=Scope())
+    again = compose_reply(
+        "PRICE NOW!!!!!!",
+        STAGE_DISCOVERY,
+        scope=Scope(),
+        rules_already_used=frozenset({RULE_SCOPING}),
+    )
+
+    assert first.body != again.body
+    assert again.reasoning.rule == RULE_SCOPING
+
+    # Still no figure, and still the first intake question underneath.
+    assert "₦" not in again.body
+    assert Scope().question() in again.body
+
+
+def test_a_second_escalation_is_worded_differently_and_still_escalates():
+    question = "Kindly furnish the tensile modulus of your gearbox housing."
+
+    first = compose_reply(question, STAGE_READY_TO_BUY, scope=complete_scope())
+    again = compose_reply(
+        question,
+        STAGE_READY_TO_BUY,
+        scope=complete_scope(),
+        rules_already_used=frozenset({RULE_UNKNOWN}),
+    )
+
+    assert first.body != again.body
+    assert again.needs_approval is True
+    assert again.reasoning.rule == RULE_UNKNOWN
+
+
+def test_a_second_mid_intake_escalation_still_carries_the_pending_question():
+    """The path that matters most: an unreadable answer must not end the intake.
+
+    Varying the wording here risked dropping the question that follows it, which
+    would strand a buyer two answers from a price.
+    """
+    scope = Scope()
+    again = compose_reply(
+        "who is your CEO and what is his home address?",
+        STAGE_QUALIFIED,
+        scope=scope,
+        rules_already_used=frozenset({RULE_UNKNOWN}),
+    )
+
+    assert scope.question() in again.body
+    assert again.needs_approval is True
+
+
+def test_wording_variants_change_no_decision():
+    """Same message, both variants: only the text may differ.
+
+    Stage, scope, approval, captured email and quoted figure are all derived
+    before any of this, and this is the assertion that keeps it that way.
+    """
+    message = "can you do 40% off if I sign today?"
+
+    first = compose_reply(message, STAGE_QUALIFIED, scope=Scope())
+    again = compose_reply(
+        message,
+        STAGE_QUALIFIED,
+        scope=Scope(),
+        rules_already_used=frozenset({RULE_DISCOUNT_REQUEST}),
+    )
+
+    assert first.next_stage == again.next_stage
+    assert first.scope == again.scope
+    assert first.needs_approval == again.needs_approval
+    assert first.approval_subject == again.approval_subject
+    assert first.quoted == again.quoted
+    assert first.reasoning.rule == again.reasoning.rule
+
+
+def test_an_unrelated_rule_having_fired_changes_nothing():
+    """The variant is per rule, not "has anything been said before"."""
+    plain = compose_reply("can you do 40% off?", STAGE_QUALIFIED)
+    other = compose_reply(
+        "can you do 40% off?",
+        STAGE_QUALIFIED,
+        rules_already_used=frozenset({RULE_GREETING, RULE_CAPABILITY}),
+    )
+
+    assert plain.body == other.body

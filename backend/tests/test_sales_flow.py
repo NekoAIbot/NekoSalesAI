@@ -196,6 +196,46 @@ def test_the_whole_intake_reaches_a_computed_price_over_the_api(client, thread):
     assert thread_body["interested_plan_code"].startswith("quote_")
 
 
+def test_a_quote_records_the_conversation_it_was_given_in(client, thread, db):
+    """A stored price with no provenance cannot be defended.
+
+    ``Quote`` carries an org and a conversation precisely so that "where did this
+    figure come from" and "what else was this buyer told" are answerable months
+    later — from an approval queue, a dispute, or a support thread. Both columns
+    existed and were documented while the one call site that issues quotes from a
+    conversation passed neither, so every quote in the database was an orphan: the
+    right price, attributable to nobody.
+
+    It went unnoticed because nothing downstream reads them yet — the checkout
+    re-prices from ``requirement_json`` and works fine on an orphaned row. That is
+    exactly the kind of gap a passing suite hides, so it is asserted here on the
+    web path and again on the messenger path, since both go through the same
+    service and either could regress alone.
+    """
+    from app.models.conversation import Conversation
+    from app.models.quote import Quote
+    from app.pricing.quotes import reference_from_plan_code
+
+    for answer in (
+        "I need an AI sales representative",
+        "just my website",
+        "about 2,000 a month",
+        "none",
+    ):
+        send(client, thread, answer)
+
+    conversation = db.query(Conversation).filter(
+        Conversation.public_token == thread
+    ).one()
+    reference = reference_from_plan_code(conversation.interested_plan_code)
+    assert reference, "the intake did not reach a quote"
+
+    quote = db.query(Quote).filter(Quote.reference == reference).one()
+
+    assert quote.conversation_id == conversation.id
+    assert quote.organization_id == conversation.organization_id
+
+
 def test_every_agent_reply_carries_reasoning(client, thread):
     for message in ["what can it do?", "how much?", "I want to buy"]:
         data = send(client, thread, message).json()
