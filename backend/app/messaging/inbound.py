@@ -39,8 +39,19 @@ COMMAND_START = "start"
 COMMAND_HELP = "help"
 COMMAND_RESET = "reset"
 
+# A buyer who scrolled past their payment link, or closed the chat and came
+# back. On a messenger the link is a message in a thread rather than a page that
+# can be refreshed, so there has to be a way to ask for it again.
+COMMAND_PAY = "pay"
+
 # "/new" is the same intent as "/reset" and is what people try first.
-_COMMAND_ALIASES = {"new": COMMAND_RESET, "restart": COMMAND_RESET}
+# "/link" and "/checkout" are the same intent as "/pay".
+_COMMAND_ALIASES = {
+    "new": COMMAND_RESET,
+    "restart": COMMAND_RESET,
+    "link": COMMAND_PAY,
+    "checkout": COMMAND_PAY,
+}
 
 
 @dataclass(frozen=True)

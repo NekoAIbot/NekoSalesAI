@@ -74,6 +74,7 @@ RULE_NOT_SELLING_YET = "no_published_pricing_escalated"
 RULE_NOT_A_SELLER = "commercial_question_outside_role"
 RULE_SCOPING = "scoping_the_build"
 RULE_DYNAMIC_QUOTE = "computed_quote"
+RULE_COURTESY = "courtesy"
 RULE_UNKNOWN = "unknown_question_escalated"
 
 # Phrases that mean the visitor is asking us to depart from the price list.
@@ -482,6 +483,98 @@ def _capability_summary(config: ProductConfig) -> tuple[str, list[str]]:
             declared_index += 1
 
     return "\n".join(lines), citations
+
+
+# Whole messages that are an acknowledgement rather than a question. Matched
+# against the entire message, not searched for inside it: "thanks, but what does
+# it cost?" is a pricing question with a courtesy attached, and answering it with
+# "you're welcome" would be Nera hearing the manners and missing the buyer.
+_COURTESIES = frozenset(
+    """
+    thanks thank thanks! ta cheers
+    ok okay okay! ok! k kk alright alright! right
+    great great! nice nice! cool cool! perfect perfect! lovely lovely!
+    good good! brilliant brilliant! excellent excellent! wonderful
+    yes yes! yeah yep yup sure sure! noted noted! understood
+    bye goodbye later
+    """.split()
+)
+
+# Multi-word acknowledgements, checked after punctuation is stripped. Written
+# as a tuple of separate strings rather than one split string: a earlier version
+# used "a|b\n c|d".split("|") and the newlines silently glued "much appreciated"
+# to "got it", so "got it" — one of the commonest things a buyer says — never
+# matched and kept on escalating to a human.
+_COURTESY_PHRASES = frozenset((
+    "thank you",
+    "thanks a lot",
+    "thanks so much",
+    "thanks again",
+    "many thanks",
+    "much appreciated",
+    "appreciate it",
+    "got it",
+    "makes sense",
+    "sounds good",
+    "will do",
+    "no problem",
+    "all good",
+    "fair enough",
+    "thats great",
+    "thats perfect",
+    "thats fine",
+    "that works",
+    "see you",
+    "talk soon",
+    "speak soon",
+))
+
+
+def _is_courtesy(message: str) -> bool:
+    """Whether the whole message is an acknowledgement and nothing else.
+
+    Deliberately conservative. A false positive here is worse than a false
+    negative: a real question answered with "you're welcome" is a buyer being
+    brushed off, whereas a courtesy escalated is only noise in a queue. So this
+    matches the entire stripped message against a closed list, and anything with
+    a question mark in it is never a courtesy.
+    """
+    cleaned = message.strip().lower()
+
+    if not cleaned or "?" in cleaned:
+        return False
+
+    if len(cleaned) > 40:
+        return False
+
+    words = [word.strip(".,!;:'’\"") for word in cleaned.split()]
+    words = [word for word in words if word]
+
+    if not words:
+        return False
+
+    if all(word in _COURTESIES for word in words):
+        return True
+
+    return " ".join(words).replace("'", "") in _COURTESY_PHRASES
+
+
+def _courtesy_reply(scope: Scope | None) -> str:
+    """Acknowledge, then hand the turn back without inventing a new subject.
+
+    Mid-intake it re-asks the pending question, for the same reason the unknown
+    branch does: a buyer who says "ok" between questions should be asked the next
+    one, not congratulated.
+    """
+    pending = scope.question() if scope is not None else None
+
+    if pending is not None:
+        return f"Of course.\n\n{pending}"
+
+    return (
+        "Any time. I'm here if you need anything else — a change to what you "
+        "asked for, another look at the figure, or the payment link again."
+    )
 
 
 def _scoping_reply(
@@ -1057,9 +1150,9 @@ def compose_reply(
                 body=(
                     f"Got it — {captured_email}. That's everything I need on "
                     "my side.\n\n"
-                    "The payment itself is handled by Paystack rather than by "
-                    "me, so the next thing you'll see is their secure page. "
-                    "Nothing is charged until you're on it."
+                    "Paystack handles the payment rather than me, so your card "
+                    "details never reach me. I'm raising it now — nothing is "
+                    "charged until you're on their page."
                 ),
                 reasoning=Reasoning(rule=RULE_CONTACT_CAPTURED, signals=signals),
                 # Deliberately no next_stage: the close has been reached and
@@ -1085,9 +1178,25 @@ def compose_reply(
             captured_email=captured_email,
         )
 
-    # Nothing matched. Say so plainly rather than reaching for the nearest
-    # plausible answer — a wrong answer delivered confidently is the failure
-    # mode this whole design exists to avoid.
+    # Nothing matched. Before escalating, check whether there is actually a
+    # question here at all. "thanks" and "ok" are the commonest things a buyer
+    # says after being given a link, and treating them as unanswerable put a
+    # human's name on a queue item that reads "Unanswered question: thanks" —
+    # noise that trains whoever reads the queue to stop reading it.
+    if _is_courtesy(message):
+        return AgentReply(
+            body=_courtesy_reply(scope if dynamic else None),
+            reasoning=Reasoning(
+                rule=RULE_COURTESY,
+                signals=["message was an acknowledgement, not a question"],
+            ),
+            captured_email=captured_email,
+            scope=scope if dynamic else None,
+        )
+
+    # A real question with no answer in the config. Say so plainly rather than
+    # reaching for the nearest plausible answer — a wrong answer delivered
+    # confidently is the failure mode this whole design exists to avoid.
     reasoning = Reasoning(
         rule=RULE_UNKNOWN,
         signals=["no config entry covered the question"],

@@ -21,6 +21,7 @@ from app.products.config import Plan, ProductConfig
 from app.sales.agent import (
     RULE_BUY_INTENT,
     RULE_CAPABILITY,
+    RULE_COURTESY,
     RULE_CUSTOM_TERMS,
     RULE_DISCOUNT_REQUEST,
     RULE_GREETING,
@@ -507,3 +508,113 @@ def test_an_unreadable_answer_keeps_the_intake_open():
     # ...and the buyer is still asked the question that was pending.
     assert reply.scope == scope
     assert scope.question() in reply.body
+
+
+# --- manners are not questions -------------------------------------------
+#
+# Found by reading a real transcript: a buyer who said "thanks" after being
+# given a payment link was told the question had been passed to the team, and a
+# row appeared in the approval queue reading "Unanswered question: thanks". Two
+# costs. The buyer is brushed off at the friendliest moment in the conversation,
+# and whoever reads the queue learns to skim it — which is how the one row that
+# mattered gets missed.
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "thanks",
+        "Thanks!",
+        "thank you",
+        "thanks a lot",
+        "ok",
+        "Okay",
+        "great",
+        "perfect",
+        "got it",
+        "sounds good",
+        "makes sense",
+        "no problem",
+        "will do",
+        "cheers",
+        "bye",
+        "noted",
+    ],
+)
+def test_an_acknowledgement_is_never_escalated(message):
+    """The property that matters, stated over the rule that produces it.
+
+    Which rule catches a given word is not the point and is allowed to change —
+    at ``ready_to_buy`` "ok" is read as agreement, which is better than reading
+    it as manners. What must never happen is a human being paged about it.
+    """
+    reply = compose_reply(message, STAGE_READY_TO_BUY, scope=complete_scope())
+
+    assert reply.needs_approval is False, f"{message!r} paged a human"
+    assert reply.reasoning.escalated is False
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["thanks", "thank you", "cheers", "makes sense", "got it", "noted", "bye"],
+)
+def test_gratitude_is_answered_as_gratitude(message):
+    """The subset with no other sensible reading. "thanks" is not agreement to
+    buy and not a question — it is the end of a turn."""
+    reply = compose_reply(message, STAGE_READY_TO_BUY, scope=complete_scope())
+
+    assert reply.reasoning.rule == RULE_COURTESY
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        # The risk that makes this rule worth writing carefully. Each of these
+        # opens with manners and then asks something real, and answering any of
+        # them with "any time" would be Nera hearing the politeness and missing
+        # the buyer.
+        "thanks, but how much is it?",
+        "ok what does it include",
+        "great, can I get a discount",
+        "thanks — do you do WhatsApp too?",
+        "got it, what about support",
+        "sure, but I need it in French",
+    ],
+)
+def test_manners_in_front_of_a_real_question_do_not_swallow_it(message):
+    reply = compose_reply(message, STAGE_DISCOVERY, scope=complete_scope())
+
+    assert reply.reasoning.rule != RULE_COURTESY
+
+
+def test_an_acknowledgement_mid_intake_re_asks_the_question():
+    """"thanks" between questions should be met with the next question, not with
+    congratulations."""
+    first = compose_reply("I need an AI sales rep", STAGE_GREETING, scope=Scope())
+
+    reply = compose_reply("thanks", STAGE_QUALIFIED, scope=first.scope)
+
+    assert reply.reasoning.rule == RULE_COURTESY
+    assert first.scope.question() in reply.body
+
+
+def test_a_courtesy_does_not_move_the_stage_or_lose_the_scope():
+    """It is a turn that changes nothing, and must leave nothing changed."""
+    scope = complete_scope()
+
+    reply = compose_reply("thanks", STAGE_READY_TO_BUY, scope=scope)
+
+    assert reply.next_stage is None
+    assert reply.scope == scope
+
+
+def test_a_real_question_is_still_escalated():
+    """The courtesy rule narrows what escalates; it must not empty it."""
+    reply = compose_reply(
+        "Kindly furnish the tensile modulus of your gearbox housing.",
+        STAGE_READY_TO_BUY,
+        scope=complete_scope(),
+    )
+
+    assert reply.reasoning.rule == RULE_UNKNOWN
+    assert reply.needs_approval is True

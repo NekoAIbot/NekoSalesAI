@@ -474,3 +474,117 @@ def test_a_failing_send_does_not_stop_the_next_one(db, storefront):
     service.deliver(message, handled.replies)
 
     assert len(flaky.sent) == 2
+
+
+# ---------- one engine, priced the same on every channel ----------
+#
+# The storefront publishes no tiers. Every figure it quotes is computed from
+# four answers, and that intake lives in the agent — which means a messenger
+# inherits it or the messenger has no prices at all. These walk the whole thing
+# over Telegram rather than trusting that inheritance.
+#
+# The answers are imported from the web test on purpose. If the same four
+# answers ever reach a different number in a browser than on Telegram, that is
+# two engines wearing one name, and this is where it shows up.
+
+
+def walk_the_intake(service, storefront, answers):
+    """Send each answer as its own delivery, as a real buyer's phone would."""
+    replies = []
+
+    for answer in answers:
+        replies.extend(service.handle(storefront.id, inbound(answer)).replies)
+
+    return replies
+
+
+def test_a_telegram_buyer_reaches_a_computed_price(service, storefront, db):
+    """The whole intake, over the pipe, ending at a real figure."""
+    from tests.test_checkout import INTAKE_ANSWERS, SALES_QUOTE
+
+    replies = walk_the_intake(service, storefront, INTAKE_ANSWERS)
+
+    conversation = db.query(Conversation).one()
+    assert conversation.stage == "ready_to_buy"
+
+    # The figure the engine derives for this build, in the message that was
+    # actually sent to the phone.
+    assert SALES_QUOTE.display_total in replies[-1]
+
+
+def test_the_intake_advances_across_separate_deliveries(service, storefront, db):
+    """The failure a single-message test cannot see.
+
+    A messenger carries no session. If the scope were not written back to the
+    conversation, every delivery would re-ask question one and the buyer would
+    answer the same question forever.
+    """
+    from tests.test_checkout import INTAKE_ANSWERS
+
+    asked = walk_the_intake(service, storefront, INTAKE_ANSWERS[:3])
+
+    # Three distinct questions, not the same one three times.
+    questions = [line for line in asked if line.strip().endswith("?")]
+    assert len(set(questions)) == len(questions)
+
+    scope = db.query(Conversation).one().scope_json
+    assert scope, "the intake answers were not remembered between deliveries"
+
+
+def test_a_telegram_price_is_backed_by_a_redeemable_quote(service, storefront, db):
+    """A number on a phone that no checkout can re-derive is not a price.
+
+    Telegram has no payment step of its own yet. What it must not do is quote a
+    figure that exists only in a chat log — the quote behind it has to be the
+    same stored, recomputable row the web checkout redeems.
+    """
+    from app.pricing.quotes import QuoteService, reference_from_plan_code
+    from tests.test_checkout import INTAKE_ANSWERS, SALES_QUOTE
+
+    walk_the_intake(service, storefront, INTAKE_ANSWERS)
+
+    code = db.query(Conversation).one().interested_plan_code
+    reference = reference_from_plan_code(code)
+    assert reference, f"no quote reference behind the quoted price: {code!r}"
+
+    # Recomputed from the stored requirement, not read back from the row, so
+    # this also asserts the requirement itself survived the channel.
+    _row, recomputed = QuoteService(db).recompute(reference)
+    assert recomputed.total_minor == SALES_QUOTE.total_minor
+
+
+def test_the_same_answers_cost_the_same_on_telegram_and_whatsapp(
+    service, storefront, db
+):
+    """Two channels, one price. The cheapest guard against a per-channel fork."""
+    from tests.test_checkout import INTAKE_ANSWERS
+
+    def quoted_figure(channel, external_id):
+        replies = []
+        for answer in INTAKE_ANSWERS:
+            replies.extend(
+                service.handle(
+                    storefront.id,
+                    inbound(answer, channel=channel, external_id=external_id),
+                ).replies
+            )
+        return replies[-1]
+
+    on_telegram = quoted_figure(CHANNEL_TELEGRAM, "111")
+    on_whatsapp = quoted_figure(CHANNEL_WHATSAPP, "222")
+
+    assert on_telegram == on_whatsapp
+
+
+def test_no_retired_tier_can_be_bought_over_a_messenger(service, storefront, db):
+    """The tiers are gone from the storefront. Asking for one by name on
+    Telegram must not resurrect it — that would make the messenger the one
+    channel where a withdrawn price is still for sale."""
+    handled = service.handle(
+        storefront.id, inbound("I'll take the Founding User plan, 180,000")
+    )
+
+    body = " ".join(handled.replies)
+
+    assert "180,000" not in body
+    assert db.query(Conversation).one().interested_plan_code is None

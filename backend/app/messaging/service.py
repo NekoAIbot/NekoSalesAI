@@ -37,6 +37,7 @@ from app.config.settings import settings
 from app.messaging.clients import TelegramClient, WhatsAppClient
 from app.messaging.inbound import (
     COMMAND_HELP,
+    COMMAND_PAY,
     COMMAND_RESET,
     COMMAND_START,
     KIND_COMMAND,
@@ -53,6 +54,7 @@ from app.models.conversation import Conversation, Message
 from app.products.config import ROLE_BUILDER
 from app.products.resolver import resolve_config
 from app.repositories.organization_repository import OrganizationRepository
+from app.sales.closing import ClosingService
 from app.sales.service import ConversationError, ConversationService
 
 logger = get_logger(__name__)
@@ -104,6 +106,7 @@ class InboundMessagingService:
     ) -> None:
         self.db = db
         self.conversations = ConversationService(db)
+        self.closing = ClosingService(db)
         self._telegram = telegram
         self._whatsapp = whatsapp
 
@@ -280,6 +283,17 @@ class InboundMessagingService:
         # Sending anything at all would be the AI talking over its colleague.
         replies = [reply.body] if reply.body.strip() else []
 
+        if replies:
+            # A browser closes itself: the widget sees ready_to_buy, posts to the
+            # checkout route and redirects. A phone has no widget, so without
+            # this the agent's own words — "the next thing you'll see is their
+            # secure page" — were a promise nothing kept. The link comes from
+            # ClosingService, which every channel shares, so the price on it is
+            # the one the engine derived and not one this file assembled.
+            closed = self.closing.close(conversation)
+            if closed is not None:
+                replies.append(closed.message)
+
         return Handled(replies=replies, conversation=conversation)
 
     def _run_command(
@@ -305,6 +319,9 @@ class InboundMessagingService:
                 conversation=identity.conversation,
             )
 
+        if message.command == COMMAND_PAY:
+            return self._payment_link(identity.conversation)
+
         # Anything else — "/pricing", "/plans" — is a buyer asking a question
         # with a slash in front of it. The agent reads the words; refusing on
         # the punctuation would be pedantry.
@@ -326,6 +343,29 @@ class InboundMessagingService:
                 text=stripped,
                 sender_name=message.sender_name,
             ),
+        )
+
+    def _payment_link(self, conversation: Conversation) -> Handled:
+        """Answer "/pay": the link this thread has, or why there isn't one yet.
+
+        The wording of a link and the wording of a refusal both come from
+        ClosingService. What is decided here is only whether the buyer has got
+        far enough to be asking a sensible question — and "not yet" is answered
+        rather than ignored, because a buyer who types /pay and gets silence
+        cannot tell a broken bot from a bot that is waiting on them.
+        """
+        closed = self.closing.resend(conversation)
+
+        if closed is not None:
+            return Handled(replies=[closed.message], conversation=conversation)
+
+        return Handled(
+            replies=[
+                "There's nothing to pay for yet — we haven't settled on what "
+                "you're buying. Tell me what your business needs and I'll price "
+                "it, then /pay will bring up the link."
+            ],
+            conversation=conversation,
         )
 
     # ---------- the few strings that belong to the pipe ----------
@@ -412,6 +452,7 @@ class InboundMessagingService:
             "followed, and the line it priced from.\n\n"
             "WANT ONE?\n"
             "Tell me what your business needs and I'll price the build.\n\n"
+            "/pay — bring up your payment link again\n"
             "/reset — start over"
         )
 
