@@ -134,9 +134,20 @@ class Requirement:
     Every field is bounded. An unbounded requirement would either produce an
     unbounded price or make the quote depend on how much text someone pasted,
     and neither is a figure we could defend.
+
+    A buyer may want more than one of the things we build — a shop that both
+    sells and answers questions needs both agents — so ``products`` holds one or
+    more catalog product types. ``product_type`` is the same information for
+    callers that only ever deal in one: it is always ``products[0]``, maintained
+    by ``__post_init__`` rather than stored separately, so the two spellings
+    cannot disagree.
     """
 
     product_type: str = PRODUCT_SALES_AGENT
+
+    # Empty means "read it from product_type". Never empty after __post_init__.
+    products: tuple[str, ...] = ()
+
     channels: tuple[str, ...] = (CHANNEL_WEB,)
     integrations: tuple[str, ...] = ()
     languages: tuple[str, ...] = ()
@@ -148,10 +159,27 @@ class Requirement:
     discount_percent: int = 0
 
     def __post_init__(self) -> None:
-        if self.product_type not in PRODUCT_BASE_MINOR:
+        # One canonical list, whichever spelling the caller used. Deduplicated
+        # and put in catalog order so the same two products asked for in either
+        # order price identically and read back the same way — a buyer who says
+        # "support and sales" is not buying a different thing from one who says
+        # "sales and support".
+        asked = self.products or (self.product_type,)
+        products = tuple(
+            code for code in PRODUCT_BASE_MINOR if code in set(asked)
+        )
+
+        unknown = sorted(set(asked) - set(PRODUCT_BASE_MINOR))
+        if unknown:
             raise PricingError(
-                f"{self.product_type!r} is not a product this factory builds yet."
+                f"{unknown[0]!r} is not a product this factory builds yet."
             )
+
+        if not products:
+            raise PricingError("A build has to be for at least one product.")
+
+        object.__setattr__(self, "products", products)
+        object.__setattr__(self, "product_type", products[0])
 
         unknown = [c for c in self.channels if c not in CHANNEL_ADD_MINOR]
         if unknown:
@@ -201,6 +229,10 @@ class Requirement:
         return tuple(sorted(seen, key=list(CHANNEL_ADD_MINOR).index))
 
     @property
+    def product_names(self) -> tuple[str, ...]:
+        return tuple(PRODUCT_NAMES[code] for code in self.products)
+
+    @property
     def extra_languages(self) -> int:
         """Languages beyond the first. One language is included in the base."""
         return max(0, len(set(self.languages)) - 1)
@@ -216,6 +248,24 @@ class Quote:
     billing_period: str
     line_items: tuple[LineItem, ...] = field(default=())
     monthly_conversation_limit: int = 0
+
+    # Every product this quote covers. Empty means the single product named
+    # above, filled in by __post_init__ so a caller that knows about one product
+    # and a caller that knows about several read the same object.
+    products: tuple[str, ...] = field(default=())
+
+    def __post_init__(self) -> None:
+        if not self.products:
+            object.__setattr__(self, "products", (self.product_type,))
+
+    @property
+    def product_names(self) -> tuple[str, ...]:
+        return tuple(PRODUCT_NAMES[code] for code in self.products)
+
+    @property
+    def is_bundle(self) -> bool:
+        """More than one product on one bill."""
+        return len(self.products) > 1
 
     @property
     def subtotal_minor(self) -> int:
@@ -296,18 +346,44 @@ def _volume_line(monthly_conversations: int) -> tuple[LineItem | None, int]:
     )
 
 
+def bundle_name(products: tuple[str, ...]) -> str:
+    """What to call a build covering these products.
+
+    One product is its own name. Several are joined, rather than given a
+    marketing label like "Bundle", because the buyer is paying for two specific
+    things and the plan name is what appears on their receipt and their card
+    statement. "Growth Pack" on a statement tells them nothing about what they
+    bought; two product names do.
+    """
+    names = [PRODUCT_NAMES[code] for code in products]
+
+    if len(names) == 1:
+        return names[0]
+
+    return f"{' + '.join(names[:-1])} + {names[-1]}"
+
+
 def price(requirement: Requirement) -> Quote:
     """Score a requirement into a quote.
 
     Deterministic: the same requirement always produces the same figure, and
     the figure is always the sum of lines a buyer can read back.
+
+    Each product carries its own base line, so a buyer taking two of them sees
+    what each one costs rather than a single lump. Everything after the base —
+    channels, integrations, languages, volume, workflow steps — is charged once
+    however many products are on the quote. That is deliberate and it is the
+    reading that favours the buyer: it describes one deployment, and two agents
+    answering on the same WhatsApp number is one WhatsApp integration to build,
+    not two. Charging it per product would be billing twice for work done once.
     """
     items: list[LineItem] = [
         LineItem(
             dimension=DIMENSION_BASE,
-            label=PRODUCT_NAMES[requirement.product_type],
-            amount_minor=PRODUCT_BASE_MINOR[requirement.product_type],
+            label=PRODUCT_NAMES[product],
+            amount_minor=PRODUCT_BASE_MINOR[product],
         )
+        for product in requirement.products
     ]
 
     for channel in requirement.billable_channels:
@@ -371,7 +447,8 @@ def price(requirement: Requirement) -> Quote:
 
     return Quote(
         product_type=requirement.product_type,
-        product_name=PRODUCT_NAMES[requirement.product_type],
+        product_name=bundle_name(requirement.products),
+        products=requirement.products,
         currency=CURRENCY_NGN,
         billing_period=BILLING_MONTH,
         line_items=tuple(items),

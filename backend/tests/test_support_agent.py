@@ -372,9 +372,9 @@ def test_provisioning_reads_the_role_from_the_stored_quote(db):
     )
 
     order = _fake_order(f"quote_{quote.reference}")
-    role = ProvisioningService(db)._role_for_order(order)
+    roles = ProvisioningService(db)._roles_for_order(order)
 
-    assert role == ROLE_SUPPORT_AGENT
+    assert roles == (ROLE_SUPPORT_AGENT,)
 
 
 def test_provisioning_reads_a_sales_quote_as_a_sales_agent(db):
@@ -382,14 +382,44 @@ def test_provisioning_reads_a_sales_quote_as_a_sales_agent(db):
 
     order = _fake_order(f"quote_{quote.reference}")
 
-    assert ProvisioningService(db)._role_for_order(order) == ROLE_SALES_AGENT
+    assert ProvisioningService(db)._roles_for_order(order) == (ROLE_SALES_AGENT,)
+
+
+def test_a_quote_for_two_products_provisions_both_roles(db):
+    """The buyer paid for two agents. Handing them one is short delivery."""
+    quote = QuoteService(db).issue(
+        Requirement(products=(PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT))
+    )
+
+    order = _fake_order(f"quote_{quote.reference}")
+    roles = ProvisioningService(db)._roles_for_order(order)
+
+    assert roles == (ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT)
+
+
+def test_the_roles_are_read_from_the_requirement_not_the_summary_column(db):
+    """``quotes.product_type`` holds only the first of several products.
+
+    Reading it instead of the stored requirement would silently drop every
+    product after the first — a buyer charged for two agents, given one, with
+    nothing anywhere recording that it happened.
+    """
+    quote = QuoteService(db).issue(
+        Requirement(products=(PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT))
+    )
+
+    assert quote.product_type == PRODUCT_SALES_AGENT
+
+    order = _fake_order(f"quote_{quote.reference}")
+
+    assert len(ProvisioningService(db)._roles_for_order(order)) == 2
 
 
 def test_a_catalog_plan_provisions_the_sales_agent(db):
     """The storefront's three tiers all sell the sales agent."""
     order = _fake_order("starter_monthly")
 
-    assert ProvisioningService(db)._role_for_order(order) == ROLE_SALES_AGENT
+    assert ProvisioningService(db)._roles_for_order(order) == (ROLE_SALES_AGENT,)
 
 
 def test_a_missing_quote_refuses_to_provision_rather_than_guessing(db):
@@ -397,24 +427,45 @@ def test_a_missing_quote_refuses_to_provision_rather_than_guessing(db):
     order = _fake_order("quote_qt_000000000000000000000000")
 
     with pytest.raises(ProvisioningError):
-        ProvisioningService(db)._role_for_order(order)
+        ProvisioningService(db)._roles_for_order(order)
 
 
 def test_a_product_we_can_price_but_not_build_refuses_to_provision(db):
     """If pricing learns a product before provisioning does, this fails loudly
-    instead of handing the buyer whichever role sorts first."""
+    instead of handing the buyer whichever role sorts first.
+
+    The unbuildable product is written into the stored requirement, because that
+    is what provisioning reads — the ``product_type`` column is a summary of it
+    and editing only that would prove nothing about the path taken in anger.
+    """
     quote = QuoteService(db).issue(Requirement(product_type=PRODUCT_SALES_AGENT))
-    quote.product_type = "hologram_receptionist"
+
+    stored = json.loads(quote.requirement_json)
+    stored["product_type"] = "hologram_receptionist"
+    stored["products"] = ["hologram_receptionist"]
+    quote.requirement_json = json.dumps(stored)
     db.commit()
 
     order = _fake_order(f"quote_{quote.reference}")
 
     with pytest.raises(ProvisioningError):
-        ProvisioningService(db)._role_for_order(order)
+        ProvisioningService(db)._roles_for_order(order)
+
+
+def test_a_requirement_that_cannot_be_read_refuses_to_provision(db):
+    """Unreadable is not the same as absent, and neither is buildable."""
+    quote = QuoteService(db).issue(Requirement(product_type=PRODUCT_SALES_AGENT))
+    quote.requirement_json = "{not json"
+    db.commit()
+
+    order = _fake_order(f"quote_{quote.reference}")
+
+    with pytest.raises(ProvisioningError):
+        ProvisioningService(db)._roles_for_order(order)
 
 
 class _FakeOrder:
-    """Just the two fields ``_role_for_order`` reads."""
+    """Just the two fields ``_roles_for_order`` reads."""
 
     def __init__(self, plan_code: str):
         self.plan_code = plan_code

@@ -29,6 +29,7 @@ from app.products.resolver import resolve_config
 from app.sales.agent import compose_reply
 from app.sales.approvals import ApprovalService
 from app.sales.reasoning import Reasoning
+from app.sales.rephrase import Rephraser
 from app.sales.scoping import Scope
 
 logger = get_logger(__name__)
@@ -47,9 +48,12 @@ class ConversationError(ValueError):
 
 class ConversationService:
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, rephraser: Rephraser | None = None):
         self.db = db
         self.approvals = ApprovalService(db)
+        # Wording only, and off unless a key is configured. Injectable so tests
+        # can exercise both the improved and the rejected path without a network.
+        self.rephraser = rephraser or Rephraser()
 
     def start(self, organization_id: int) -> Conversation:
         """Open a thread and greet the visitor.
@@ -230,10 +234,24 @@ class ConversationService:
         if reply.next_stage:
             conversation.stage = reply.next_stage
 
+        # Wording, last, and only wording.
+        #
+        # Deliberately after every decision above has been made and recorded.
+        # The stage, the scope, the quote and the plan code are all derived from
+        # the reply the rules composed, so nothing a model returns can change
+        # what this conversation *is* — only how the next sentence reads. And it
+        # is here rather than in a channel, so the widget, Telegram and WhatsApp
+        # get the same wording instead of three drifting voices.
+        #
+        # What is stored is what the buyer saw. A transcript that shows the
+        # composed text while the buyer read something else would make every
+        # later dispute unanswerable.
+        body_for_visitor = self.rephraser.rephrase(reply.body)
+
         agent_message = Message(
             conversation_id=conversation.id,
             role=ROLE_AGENT,
-            body=reply.body,
+            body=body_for_visitor,
             reasoning_json=reply.reasoning.to_json(),
         )
 

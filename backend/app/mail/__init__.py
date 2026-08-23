@@ -4,7 +4,7 @@
 needs to know which backend is configured.
 """
 
-from app.mail.messages import credentials, follow_up, receipt
+from app.mail.messages import AgentCredentials, credentials, follow_up, receipt
 from app.mail.transport import (
     BACKEND_CONSOLE,
     BACKEND_MEMORY,
@@ -22,6 +22,7 @@ from app.mail.transport import (
 )
 
 __all__ = [
+    "AgentCredentials",
     "BACKEND_CONSOLE",
     "BACKEND_MEMORY",
     "BACKEND_SMTP",

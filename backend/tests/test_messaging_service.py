@@ -576,6 +576,185 @@ def test_the_same_answers_cost_the_same_on_telegram_and_whatsapp(
     assert on_telegram == on_whatsapp
 
 
+# ---------- advice and multi-select, on the pipe rather than in the agent ----------
+#
+# The advisor and the two-product order were built in ``app.sales.advisor`` and
+# ``app.sales.scoping``, which the messaging service never imports. That is the
+# design — one engine, and the messenger composes no product sentences of its own
+# — but "it should inherit it" is exactly the kind of claim that is true right up
+# until a channel grows a shortcut. So these walk it over the pipe.
+
+
+def test_a_telegram_buyer_who_describes_their_business_is_advised_first(
+    service, storefront, db
+):
+    """The consultative turn, on a phone.
+
+    A buyer who opens with what they do gets told which of the catalog fits and
+    why, before any figure. If this came back as the raw intake question, the
+    messenger would be the channel where Nera asks someone to choose between
+    products it never explained.
+    """
+    reply = service.handle(
+        storefront.id, inbound("I run a food store in Ijebu Ode")
+    ).replies[-1]
+
+    assert "AI Sales Representative" in reply
+    assert "₦" not in reply, "advice comes before pricing, not with it"
+
+
+def test_advice_over_a_messenger_does_not_choose_for_the_buyer(
+    service, storefront, db
+):
+    """A recommendation written into the scope is a product nobody picked.
+
+    Worse on a messenger than in a browser: there is no page to re-read, so the
+    first the buyer would know of it is the total.
+    """
+    service.handle(storefront.id, inbound("I run a food store"))
+
+    conversation = db.query(Conversation).one()
+    scope = conversation.scope_json or ""
+
+    assert "sales_agent" not in scope, "the advice selected a product by itself"
+
+
+def test_a_business_we_cannot_help_is_escalated_from_telegram_too(
+    service, storefront, db
+):
+    """The refusal and the approval row, both, on the channel a buyer used.
+
+    A need outside the catalog answered on Telegram with an encouraging greeting
+    is the same claim we refuse to make on the web — and there is a human whose
+    attention it is worth.
+    """
+    reply = service.handle(
+        storefront.id,
+        inbound("I need an AI that does my bookkeeping and files my taxes"),
+    ).replies[-1]
+
+    assert "right fit" in reply
+    assert db.query(ApprovalRequest).count() == 1
+
+
+def test_a_telegram_buyer_can_take_both_products_in_one_order(
+    service, storefront, db
+):
+    """Two products, one walk, one price — over the pipe.
+
+    The specific failure this catches: the multi-select answer is parsed in
+    scoping, but the *scope* has to survive the conversation row between
+    deliveries as a list rather than a single value. If it narrowed to one
+    product on the way to storage, this buyer would be quoted for one agent
+    having asked for two, and nothing before the payment page would say so.
+    """
+    from app.pricing.complexity import (
+        CHANNEL_WEB,
+        CHANNEL_WHATSAPP,
+        PRODUCT_SALES_AGENT,
+        PRODUCT_SUPPORT_AGENT,
+        Requirement,
+        price,
+    )
+
+    expected = price(
+        Requirement(
+            products=(PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT),
+            channels=(CHANNEL_WEB, CHANNEL_WHATSAPP),
+            monthly_conversations=2000,
+            integrations=(),
+        )
+    )
+
+    replies = walk_the_intake(
+        service,
+        storefront,
+        ("both", "my website and whatsapp", "about 2,000 a month", "none"),
+    )
+
+    conversation = db.query(Conversation).one()
+    assert conversation.stage == "ready_to_buy"
+
+    quoted = replies[-1]
+    assert expected.display_total in quoted
+
+    # Both names in the message that reached the phone. A bundle total with only
+    # one product named reads as a single agent that costs too much.
+    assert "AI Sales Representative" in quoted
+    assert "AI Support Agent" in quoted
+
+
+def test_a_two_product_telegram_quote_is_redeemable_for_both(service, storefront, db):
+    """What the buyer pays for has to be what provisioning reads.
+
+    The figure on the phone is only half of it. The stored requirement is what
+    the checkout re-prices and what provisioning reads to decide how many agents
+    to stand up, so if the second product did not survive the channel the buyer
+    would pay for two and be given one — with every internal signal reading
+    "delivered".
+    """
+    from app.pricing.complexity import PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT
+    from app.pricing.quotes import QuoteService, reference_from_plan_code
+
+    walk_the_intake(
+        service,
+        storefront,
+        ("both", "my website and whatsapp", "about 2,000 a month", "none"),
+    )
+
+    code = db.query(Conversation).one().interested_plan_code
+    reference = reference_from_plan_code(code)
+    assert reference, f"no quote reference behind the quoted price: {code!r}"
+
+    _row, recomputed = QuoteService(db).recompute(reference)
+
+    assert recomputed.products == (PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT)
+
+
+def test_two_products_cost_the_same_on_telegram_and_whatsapp(
+    service, storefront, db
+):
+    """The parity guard, for the order shape that is new.
+
+    The single-product version of this passes today. A bundle is where a
+    per-channel fork would show up first, because it is the path with the least
+    traffic over it.
+    """
+    answers = ("both", "just my website", "about 2,000 a month", "none")
+
+    def quoted_figure(channel, external_id):
+        replies = []
+        for answer in answers:
+            replies.extend(
+                service.handle(
+                    storefront.id,
+                    inbound(answer, channel=channel, external_id=external_id),
+                ).replies
+            )
+        return replies[-1]
+
+    assert quoted_figure(CHANNEL_TELEGRAM, "333") == quoted_figure(
+        CHANNEL_WHATSAPP, "444"
+    )
+
+
+def test_the_product_question_on_a_messenger_lists_the_whole_catalog(
+    service, storefront, db
+):
+    """Whatever we can price, a messenger buyer is offered.
+
+    The question is generated from the catalog, so a product added to pricing
+    appears here without anyone editing a channel. This asserts that rather than
+    trusting it.
+    """
+    from app.pricing.complexity import PRODUCT_NAMES
+
+    reply = service.handle(storefront.id, inbound("how much does it cost?")).replies[-1]
+
+    for name in PRODUCT_NAMES.values():
+        assert name in reply, f"{name} is priceable but never offered on Telegram"
+
+
 def test_no_retired_tier_can_be_bought_over_a_messenger(service, storefront, db):
     """The tiers are gone from the storefront. Asking for one by name on
     Telegram must not resurrect it — that would make the messenger the one

@@ -34,8 +34,12 @@ from app.models.order import Order
 from app.models.organization import Organization
 from app.models.quote import Quote
 from app.models.user import User
-from app.pricing.complexity import PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT
-from app.pricing.quotes import reference_from_plan_code
+from app.pricing.complexity import (
+    PRODUCT_NAMES,
+    PRODUCT_SALES_AGENT,
+    PRODUCT_SUPPORT_AGENT,
+)
+from app.pricing.quotes import reference_from_plan_code, requirement_from_json
 from app.models.workspace_profile import (
     PROVISION_FAILED,
     PROVISION_READY,
@@ -97,23 +101,55 @@ PRODUCT_TYPE_TO_ROLE = {
     PRODUCT_SUPPORT_AGENT: ROLE_SUPPORT_AGENT,
 }
 
+# The way back, for naming an agent in an email. Derived rather than written out
+# so it cannot fall out of step with the map above.
+ROLE_TO_PRODUCT_TYPE = {
+    role: product_type for product_type, role in PRODUCT_TYPE_TO_ROLE.items()
+}
+
 
 class ProvisioningError(RuntimeError):
     """We cannot tell what to build, so we will not build something."""
 
 
 @dataclass(frozen=True)
-class ProvisionResult:
-    """What provisioning produced.
+class ProvisionedAgent:
+    """One agent that was stood up, and the key that reaches it.
 
-    ``api_key`` is the only place the plaintext key ever exists. It is
+    ``api_key`` is the only place that plaintext key ever exists. It is
     returned to the caller for immediate display and then it is gone.
     """
 
     profile: WorkspaceProfile
     api_key: str | None
+
+
+@dataclass(frozen=True)
+class ProvisionResult:
+    """What provisioning produced.
+
+    An order may have bought more than one agent, so ``agents`` is the whole
+    truth and ``profile``/``api_key`` are the first of them. Both spellings
+    exist because most callers — the follow-up scheduler, the receipt — act
+    once per purchase rather than once per agent, and reading ``.profile`` is
+    what they mean. Anything that must touch every agent reads ``agents``.
+    """
+
+    agents: tuple[ProvisionedAgent, ...]
     temporary_password: str | None
     created: bool
+
+    @property
+    def profile(self) -> WorkspaceProfile:
+        return self.agents[0].profile
+
+    @property
+    def api_key(self) -> str | None:
+        return self.agents[0].api_key
+
+    @property
+    def profiles(self) -> tuple[WorkspaceProfile, ...]:
+        return tuple(agent.profile for agent in self.agents)
 
 
 def hash_api_key(key: str) -> str:
@@ -163,13 +199,21 @@ class ProvisioningService:
             )
 
         existing = self.db.execute(
-            select(WorkspaceProfile).where(WorkspaceProfile.order_id == order.id)
-        ).scalars().first()
+            select(WorkspaceProfile)
+            .where(WorkspaceProfile.order_id == order.id)
+            .order_by(WorkspaceProfile.id)
+        ).scalars().all()
 
-        if existing is not None:
+        if existing:
+            # Already done. The keys are not returned because they only ever
+            # existed in the first call's memory — a second call cannot produce
+            # them, and returning None says so rather than implying a lost key
+            # can be recovered.
             return ProvisionResult(
-                profile=existing,
-                api_key=None,
+                agents=tuple(
+                    ProvisionedAgent(profile=profile, api_key=None)
+                    for profile in existing
+                ),
                 temporary_password=None,
                 created=False,
             )
@@ -180,62 +224,78 @@ class ProvisioningService:
             company = order.buyer_email.split("@", 1)[0]
 
         steps: dict[str, str] = {}
-        profile: WorkspaceProfile | None = None
 
         try:
-            # Before anything is created: if we cannot tell which product was
+            # Before anything is created: if we cannot tell which products were
             # bought, there is nothing correct to build.
-            role = self._role_for_order(order)
-            agent_name = _AGENT_FIRST_NAME[role]
+            roles = self._roles_for_order(order)
 
             organization = self._create_organization(company, order)
             self._stamp(steps, STEP_WORKSPACE)
 
-            profile = WorkspaceProfile(
-                organization_id=organization.id,
-                order_id=order.id,
-                plan_code=order.plan_code,
-                role=role,
-                agent_name=agent_name,
-                company_name=organization.name,
-                greeting=_starting_greeting(agent_name, organization.name, role),
-                config_json=config_to_json(
-                    self._starting_config(organization.name, role)
-                ),
-            )
-            self.db.add(profile)
-            self.db.flush()
-
+            # One organization and one login however many agents were bought —
+            # the customer bought several agents, not several companies. Each
+            # agent gets its own profile, role, greeting and API key, because
+            # those are the things that differ between a sales rep and a support
+            # desk and sharing them would make one of the two wrong.
             temporary_password = self._create_admin(order, organization)
             self._stamp(steps, STEP_ADMIN)
 
-            api_key = self._issue_api_key(profile)
-            self._stamp(steps, STEP_API_KEY)
+            agents: list[ProvisionedAgent] = []
 
-            profile.widget_token = secrets.token_urlsafe(WIDGET_TOKEN_BYTES)
-            self._stamp(steps, STEP_WIDGET)
+            for role in roles:
+                agent_name = _AGENT_FIRST_NAME[role]
 
-            profile.steps_json = json.dumps(steps)
-            profile.status = PROVISION_READY
-            profile.ready_at = datetime.now(timezone.utc)
+                profile = WorkspaceProfile(
+                    organization_id=organization.id,
+                    order_id=order.id,
+                    plan_code=order.plan_code,
+                    role=role,
+                    agent_name=agent_name,
+                    company_name=organization.name,
+                    greeting=_starting_greeting(
+                        agent_name, organization.name, role
+                    ),
+                    config_json=config_to_json(
+                        self._starting_config(organization.name, role)
+                    ),
+                )
+                self.db.add(profile)
+                self.db.flush()
+
+                api_key = self._issue_api_key(profile)
+                self._stamp(steps, STEP_API_KEY)
+
+                profile.widget_token = secrets.token_urlsafe(WIDGET_TOKEN_BYTES)
+                self._stamp(steps, STEP_WIDGET)
+
+                profile.steps_json = json.dumps(steps)
+                profile.status = PROVISION_READY
+                profile.ready_at = datetime.now(timezone.utc)
+
+                agents.append(
+                    ProvisionedAgent(profile=profile, api_key=api_key)
+                )
 
             if plan is not None:
                 organization.subscription_plan = plan.code
                 organization.currency = plan.currency
 
             self.db.commit()
-            self.db.refresh(profile)
+
+            for agent in agents:
+                self.db.refresh(agent.profile)
 
             logger.info(
-                "Provisioned workspace %s for order %s (%s)",
+                "Provisioned workspace %s with %d agent(s) for order %s (%s)",
                 organization.slug,
+                len(agents),
                 order.paystack_reference,
                 order.buyer_email,
             )
 
             result = ProvisionResult(
-                profile=profile,
-                api_key=api_key,
+                agents=tuple(agents),
                 temporary_password=temporary_password,
                 created=True,
             )
@@ -288,8 +348,17 @@ class ProvisioningService:
             to=order.buyer_email,
             company_name=result.profile.company_name,
             temporary_password=result.temporary_password,
-            api_key=result.api_key,
-            widget_token=result.profile.widget_token,
+            agents=tuple(
+                mail.AgentCredentials(
+                    label=PRODUCT_NAMES.get(
+                        ROLE_TO_PRODUCT_TYPE.get(agent.profile.role, ""),
+                        agent.profile.role,
+                    ),
+                    api_key=agent.api_key,
+                    widget_token=agent.profile.widget_token,
+                )
+                for agent in result.agents
+            ),
             workspace_profile_id=result.profile.id,
         )
 
@@ -303,25 +372,28 @@ class ProvisioningService:
                 outcome.error,
             )
 
-    def _role_for_order(self, order: Order) -> str:
-        """Which product this order bought.
+    def _roles_for_order(self, order: Order) -> tuple[str, ...]:
+        """Which products this order bought, in the order they were quoted.
 
         A catalog plan is always the sales agent. A quote-backed order carries
-        ``quote_<reference>`` as its plan code, and the product type is read
-        from that stored quote — the row we wrote when we priced it, not
-        anything the buyer sent.
+        ``quote_<reference>`` as its plan code, and the products are read from
+        that stored quote's requirement — the JSON we wrote when we priced it,
+        which is also what the checkout re-priced to decide the amount. Not the
+        quote's ``product_type`` column, which holds only the first of them: a
+        buyer who paid for two agents and was handed one would be short-changed
+        by exactly the amount that column cannot represent.
 
-        Raises when the quote is missing or names a product we have no role
-        for. Guessing here would mean guessing what the customer paid for, and
-        both guesses are wrong in a way that matters: defaulting to the sales
-        agent hands a support buyer something that can take money on their
+        Raises when the quote is missing, unreadable, or names a product we have
+        no role for. Guessing here would mean guessing what the customer paid
+        for, and both guesses are wrong in a way that matters: defaulting to the
+        sales agent hands a support buyer something that can take money on their
         behalf, and defaulting to support silently under-delivers. The caller
         turns this into a recorded provisioning failure the desk can see.
         """
         reference = reference_from_plan_code(order.plan_code)
 
         if reference is None:
-            return CATALOG_ROLE
+            return (CATALOG_ROLE,)
 
         quote = self.db.execute(
             select(Quote).where(Quote.reference == reference)
@@ -334,15 +406,27 @@ class ProvisioningService:
                 "product to build."
             )
 
-        role = PRODUCT_TYPE_TO_ROLE.get(quote.product_type)
-
-        if role is None:
+        try:
+            requirement = requirement_from_json(quote.requirement_json)
+        except (ValueError, KeyError, TypeError) as exc:
             raise ProvisioningError(
-                f"Quote {reference} is for {quote.product_type!r}, which the "
-                "factory can price but cannot yet provision."
-            )
+                f"Quote {reference} has a requirement we cannot read, so we "
+                "cannot tell what to build."
+            ) from exc
 
-        return role
+        roles: list[str] = []
+        for product_type in requirement.products:
+            role = PRODUCT_TYPE_TO_ROLE.get(product_type)
+
+            if role is None:
+                raise ProvisioningError(
+                    f"Quote {reference} is for {product_type!r}, which the "
+                    "factory can price but cannot yet provision."
+                )
+
+            roles.append(role)
+
+        return tuple(roles)
 
     def _starting_config(self, company: str, role: str) -> ProductConfig:
         """The config a brand-new workspace begins with.

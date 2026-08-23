@@ -59,7 +59,12 @@ def build_reference() -> str:
 
 def _requirement_to_dict(requirement: Requirement) -> dict:
     return {
+        # Both spellings are written. ``products`` is what is read back;
+        # ``product_type`` is kept so a row written now stays readable by
+        # anything still reading the single-product field, including the
+        # ``RequirementIn`` shape this JSON is documented as matching.
         "product_type": requirement.product_type,
+        "products": list(requirement.products),
         "channels": list(requirement.channels),
         "integrations": list(requirement.integrations),
         "languages": list(requirement.languages),
@@ -70,8 +75,26 @@ def _requirement_to_dict(requirement: Requirement) -> dict:
 
 
 def _requirement_from_dict(data: dict) -> Requirement:
+    # A row written before quotes could cover more than one product has no
+    # ``products`` key. Falling back to the single field means those quotes
+    # re-price to exactly what they were sold at, rather than raising and
+    # stranding a customer who already paid.
+    products = data.get("products")
+    product_type = data["product_type"]
+
+    if products and product_type and product_type != products[0]:
+        # We write both keys from one requirement, so they cannot disagree in a
+        # row this code produced. A row where they do has been edited, and
+        # picking a winner would mean charging for whichever product the reader
+        # happened to prefer. Refusing is the only answer that cannot be wrong.
+        raise ValueError(
+            f"Stored requirement disagrees with itself: product_type is "
+            f"{product_type!r} but products begins {products[0]!r}."
+        )
+
     return Requirement(
-        product_type=data["product_type"],
+        product_type=product_type,
+        products=tuple(products) if products else (),
         channels=tuple(data.get("channels", ())),
         integrations=tuple(data.get("integrations", ())),
         languages=tuple(data.get("languages", ())),
@@ -79,6 +102,21 @@ def _requirement_from_dict(data: dict) -> Requirement:
         workflow_steps=int(data.get("workflow_steps", 0)),
         discount_percent=int(data.get("discount_percent", 0)),
     )
+
+
+def requirement_from_json(raw: str) -> Requirement:
+    """The requirement a stored quote was priced from.
+
+    Public because provisioning needs it: what a paid order entitles the buyer
+    to is every product on the quote, and the quote row's ``product_type``
+    column holds only the first of them. Reading the requirement is how
+    "what did they pay for" gets answered from the same JSON the checkout
+    re-priced, rather than from a summary column that cannot represent two.
+
+    Raises rather than guessing — a requirement we cannot read is not one we
+    can build.
+    """
+    return _requirement_from_dict(json.loads(raw))
 
 
 class QuoteService:
@@ -100,6 +138,10 @@ class QuoteService:
             organization_id=organization_id,
             conversation_id=conversation_id,
             requirement_json=json.dumps(_requirement_to_dict(requirement)),
+            # The first product, for display and indexing. The authoritative
+            # list is in requirement_json, which is also what the checkout
+            # re-prices and what provisioning reads to decide what to build —
+            # so this column being one of several is a summary, never a source.
             product_type=requirement.product_type,
             total_minor=computed.total_minor,
             currency=computed.currency,
@@ -112,7 +154,7 @@ class QuoteService:
         logger.info(
             "Quote %s issued: %s at %s",
             quote.reference,
-            requirement.product_type,
+            ", ".join(requirement.products),
             computed.display_total,
         )
 

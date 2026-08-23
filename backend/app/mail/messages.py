@@ -20,6 +20,8 @@ from — the same rule the agent follows, for the same reason.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from app.config.settings import settings
 from app.mail.transport import Message
 from app.products.config import format_money
@@ -27,6 +29,23 @@ from app.products.config import format_money
 
 def _signoff() -> str:
     return f"— {settings.MAIL_FROM_NAME}\n{settings.MAIL_FROM}"
+
+
+@dataclass(frozen=True)
+class AgentCredentials:
+    """One agent's own way in.
+
+    Each agent bought on one order gets its own key and its own widget token,
+    so this is per-agent rather than per-purchase. A shared key would mean a
+    customer could not revoke their support agent without silencing their sales
+    agent too.
+    """
+
+    # What the agent is, in the customer's terms: "AI Sales Representative".
+    label: str
+
+    api_key: str | None = None
+    widget_token: str | None = None
 
 
 def receipt(
@@ -72,8 +91,9 @@ def credentials(
     to: str,
     company_name: str,
     temporary_password: str | None,
-    api_key: str | None,
-    widget_token: str | None,
+    api_key: str | None = None,
+    widget_token: str | None = None,
+    agents: tuple[AgentCredentials, ...] = (),
     workspace_profile_id: int | None = None,
 ) -> Message:
     """The one email that carries secrets, and the only time they exist in full.
@@ -81,7 +101,16 @@ def credentials(
     Both the API key and the temporary password are shown once and stored only
     as hashes, so this message cannot be regenerated — which is exactly why it
     says so rather than letting someone discover it later.
+
+    ``agents`` carries one entry per agent bought. One order can buy several,
+    and each has its own key and widget token, so a single pair of kwargs cannot
+    describe the purchase: the second agent's credentials would simply be
+    missing from the only email that will ever contain them. ``api_key`` and
+    ``widget_token`` are the one-agent spelling of the same thing.
     """
+    if not agents and (api_key or widget_token):
+        agents = (AgentCredentials(label="", api_key=api_key, widget_token=widget_token),)
+
     lines = [
         f"Your workspace for {company_name} is ready.\n",
         f"Sign in at {settings.PUBLIC_BASE_URL}/desk with this email address.\n",
@@ -94,22 +123,31 @@ def credentials(
             f"stored only as a hash, so a replacement is a reset, not a copy.\n"
         )
 
-    if api_key:
-        lines.append(
-            f"  API key              {api_key}\n\n"
-            f"This is shown once and never again, for the same reason. It "
-            f"authenticates your own integrations; treat it like a password and "
-            f"keep it on your server, never in a web page.\n"
-        )
+    # Named only when there is more than one, so a customer who bought a single
+    # agent is not made to read a heading that distinguishes it from nothing.
+    name_them = len(agents) > 1
 
-    if widget_token:
-        lines.append(
-            "To put your agent on your website, paste this before </body>:\n\n"
-            f'  <script src="{settings.PUBLIC_BASE_URL}/static/js/widget.js"\n'
-            f'          data-token="{widget_token}" async></script>\n\n'
-            "Unlike the API key, this token is safe in your page source. It can "
-            "start a conversation and nothing else.\n"
-        )
+    for agent in agents:
+        if name_them and agent.label:
+            lines.append(f"--- {agent.label} ---\n")
+
+        if agent.api_key:
+            lines.append(
+                f"  API key              {agent.api_key}\n\n"
+                f"This is shown once and never again, for the same reason. It "
+                f"authenticates your own integrations; treat it like a password and "
+                f"keep it on your server, never in a web page.\n"
+            )
+
+        if agent.widget_token:
+            what = f"your {agent.label}" if name_them and agent.label else "your agent"
+            lines.append(
+                f"To put {what} on your website, paste this before </body>:\n\n"
+                f'  <script src="{settings.PUBLIC_BASE_URL}/static/js/widget.js"\n'
+                f'          data-token="{agent.widget_token}" async></script>\n\n'
+                "Unlike the API key, this token is safe in your page source. It can "
+                "start a conversation and nothing else.\n"
+            )
 
     lines.append(f"\n{_signoff()}\n")
 

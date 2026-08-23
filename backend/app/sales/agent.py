@@ -50,12 +50,19 @@ from app.sales.reasoning import (
     knowledge_reference,
     plan_reference,
 )
+from app.sales.advisor import (
+    advice_text,
+    describes_a_business,
+    recommend,
+)
 from app.sales.scoping import (
     SCOPE_STEPS,
+    STEP_PRODUCT,
     Scope,
     ScopingError,
     answer as answer_scope,
     channel_names,
+    parse_products,
 )
 
 # Rule names. These land in the reasoning trail and in tests, so they are
@@ -73,6 +80,7 @@ RULE_KNOWLEDGE = "customer_knowledge_match"
 RULE_NOT_SELLING_YET = "no_published_pricing_escalated"
 RULE_NOT_A_SELLER = "commercial_question_outside_role"
 RULE_SCOPING = "scoping_the_build"
+RULE_ADVICE = "recommended_from_business"
 RULE_DYNAMIC_QUOTE = "computed_quote"
 RULE_COURTESY = "courtesy"
 RULE_UNKNOWN = "unknown_question_escalated"
@@ -786,6 +794,74 @@ def compose_reply(
     # bounded questions and prices the answers.
     if dynamic:
         pending = scope.next_step
+
+        # Advice before intake, and only while nothing has been chosen yet.
+        #
+        # A buyer who says "I run a food store" has told us what they do, not
+        # which product they want — and the first intake question asks them to
+        # choose between things they have not been told the purpose of. So the
+        # advisor gets this turn: it says which of the catalog fits and why, and
+        # the question that follows is the same one, now answerable.
+        #
+        # Three gates, each of which is a way this would otherwise be worse than
+        # no advisor at all:
+        #
+        # - the product step is still open, because a description offered later
+        #   ("we're a clinic, by the way") is context, not a request to start
+        #   over;
+        # - they actually described a business or named what they want built,
+        #   because otherwise a pricing question is met with an opinion nobody
+        #   asked for;
+        # - and the message does not already name a product. "I need an AI sales
+        #   representative" is an *answer*, not a request for advice, and
+        #   recommending what they just asked for would cost them a turn and
+        #   read as not listening.
+        if (
+            pending == STEP_PRODUCT
+            and scope.is_empty
+            and describes_a_business(message)
+            and parse_products(text) is None
+        ):
+            recommendation = recommend(message)
+
+            reasoning = Reasoning(
+                rule=RULE_ADVICE,
+                signals=["visitor described their business"],
+            )
+            for code, matched in zip(
+                recommendation.recommended, recommendation.matched
+            ):
+                reasoning.add_signal(f"recommended {code} on {matched!r}")
+
+            if not recommendation.has_advice:
+                # Described clearly, and nothing we build addresses it. Said
+                # plainly and escalated — a business we cannot help is worth a
+                # human's attention, and the alternative is stretching a product
+                # to cover a need it does not meet.
+                reasoning.add_signal("no catalog product addresses this need")
+                reasoning.escalated = True
+
+                return AgentReply(
+                    body=advice_text(recommendation),
+                    reasoning=reasoning,
+                    needs_approval=True,
+                    approval_subject="Business we may not have a product for",
+                    approval_request=message.strip(),
+                    captured_email=captured_email,
+                    scope=scope,
+                )
+
+            return AgentReply(
+                body=advice_text(recommendation),
+                reasoning=reasoning,
+                next_stage=STAGE_QUALIFIED,
+                captured_email=captured_email,
+                # Handed back unchanged. The advice is a recommendation, never a
+                # selection: the buyer still has to say which they want, so
+                # writing their answer for them here would be putting a product
+                # on an order nobody chose.
+                scope=scope,
+            )
 
         if pending is not None:
             # An answer to the question actually on the table. Tried before the

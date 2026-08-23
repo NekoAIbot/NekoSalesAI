@@ -48,12 +48,46 @@ from app.pricing.complexity import (
 
 # The four things that have to be known before a build can be priced. Ordered:
 # the product decides the base, the rest add to it.
-STEP_PRODUCT = "product_type"
+STEP_PRODUCT = "products"
 STEP_CHANNELS = "channels"
 STEP_VOLUME = "monthly_conversations"
 STEP_INTEGRATIONS = "integrations"
 
 SCOPE_STEPS = (STEP_PRODUCT, STEP_CHANNELS, STEP_VOLUME, STEP_INTEGRATIONS)
+
+# What ``product_type`` was called in scopes stored before a buyer could choose
+# more than one. Read on the way in so a conversation that was mid-intake when
+# this shipped does not lose its answer and start over.
+LEGACY_STEP_PRODUCT = "product_type"
+
+
+def product_options() -> str:
+    """The catalog, as bullets, for the question that asks which to build.
+
+    Generated rather than written out. Two products today, and the sentence that
+    introduces them must not say "the two" — adding a third would otherwise mean
+    finding every place a count was spelled into copy, and the one that got
+    missed would be Nera telling a buyer there are two options while listing
+    three.
+    """
+    return "\n".join(
+        f"• {PRODUCT_NAMES[code]} — {_PRODUCT_BLURB[code]}"
+        for code in PRODUCT_NAMES
+    )
+
+
+# What each product does, in one clause, for the question that offers them.
+# Keyed by product type and checked against the catalog by the tests, so a
+# product the engine can price always has something to say about itself.
+_PRODUCT_BLURB: dict[str, str] = {
+    PRODUCT_SALES_AGENT: (
+        "answers buyers, quotes your prices, takes payment"
+    ),
+    PRODUCT_SUPPORT_AGENT: (
+        "answers questions from your own material, hands anything commercial "
+        "to you"
+    ),
+}
 
 
 # What each step asks. Kept here rather than in the agent because a question and
@@ -61,11 +95,9 @@ SCOPE_STEPS = (STEP_PRODUCT, STEP_CHANNELS, STEP_VOLUME, STEP_INTEGRATIONS)
 # invites an answer the parser cannot read is a conversation that dead-ends.
 QUESTIONS: dict[str, str] = {
     STEP_PRODUCT: (
-        "Which of the two do you need?\n\n"
-        "• An AI sales representative — answers buyers, quotes your prices, "
-        "takes payment\n"
-        "• An AI support agent — answers questions from your own material, "
-        "hands anything commercial to you"
+        "Which of these do you need? You can have more than one — I price "
+        "each separately so you can see what each is costing you.\n\n"
+        f"{product_options()}"
     ),
     STEP_CHANNELS: (
         "Where should it answer? Any combination of: your website, Telegram, "
@@ -85,6 +117,11 @@ QUESTIONS: dict[str, str] = {
 # Words a buyer uses for each product. Matched as whole words against the
 # lowercased message, longest phrases first so "support agent" is not read as
 # a request for an agent that does sales support.
+#
+# Every pattern is tried, not just the first that hits, because a buyer may want
+# both: "I need the sales one and the support one" is one answer naming two
+# products, and stopping at the first match would silently sell them half of
+# what they asked for.
 _PRODUCT_WORDS: tuple[tuple[str, str], ...] = (
     (r"\bsales (rep|representative|agent|person)\b", PRODUCT_SALES_AGENT),
     (r"\bsupport (agent|rep|representative|bot|desk)\b", PRODUCT_SUPPORT_AGENT),
@@ -95,6 +132,23 @@ _PRODUCT_WORDS: tuple[tuple[str, str], ...] = (
     (r"\bsupport\b", PRODUCT_SUPPORT_AGENT),
     (r"\bfirst (one|option)\b", PRODUCT_SALES_AGENT),
     (r"\bsecond (one|option)\b", PRODUCT_SUPPORT_AGENT),
+)
+
+# An explicit request for everything we build. "both" is here rather than in a
+# two-product special case: it means "all of them" to a buyer looking at a list
+# of two, and if the list ever grows the phrase stops matching what they can see
+# — so it resolves to the whole catalog either way, which is what they asked for.
+_ALL_PRODUCTS = re.compile(
+    r"\b(both|all (of )?(them|it|these|those)?|everything|the (lot|whole lot)|"
+    r"each|either)\b"
+)
+
+# "not the support one", "just sales, no support". A negation has to be found
+# before the products are read, because "I don't need support" contains the word
+# that would otherwise add a support agent to the order.
+_NEGATED_PRODUCT = re.compile(
+    r"\b(?:no|not|without|except|skip|drop|don'?t (?:need|want)|"
+    r"nothing? (?:but|except))\s+(?:the\s+)?(\w+(?:\s+\w+)?)"
 )
 
 _CHANNEL_WORDS: tuple[tuple[str, str], ...] = (
@@ -141,10 +195,21 @@ class Scope:
     integrations" would be asked again forever.
     """
 
-    product_type: str | None = None
+    # One or more products. A buyer may want the sales agent, the support agent,
+    # or both; each is priced separately on the same quote.
+    products: tuple[str, ...] | None = None
+
     channels: tuple[str, ...] | None = None
     monthly_conversations: int | None = None
     integrations: int | None = None
+
+    @property
+    def product_type(self) -> str | None:
+        """The first product chosen, for callers that deal in one.
+
+        Read-only and derived, so it can never disagree with ``products``.
+        """
+        return self.products[0] if self.products else None
 
     # ---------- where the conversation is ----------
 
@@ -185,7 +250,7 @@ class Scope:
             )
 
         return Requirement(
-            product_type=self.product_type,
+            products=self.products,
             channels=self.channels,
             integrations=tuple(f"system {n + 1}" for n in range(self.integrations)),
             monthly_conversations=self.monthly_conversations,
@@ -196,7 +261,7 @@ class Scope:
     def to_json(self) -> str:
         return json.dumps(
             {
-                STEP_PRODUCT: self.product_type,
+                STEP_PRODUCT: list(self.products) if self.products else None,
                 STEP_CHANNELS: list(self.channels) if self.channels else None,
                 STEP_VOLUME: self.monthly_conversations,
                 STEP_INTEGRATIONS: self.integrations,
@@ -224,9 +289,22 @@ class Scope:
 
         scope = cls()
 
-        product = data.get(STEP_PRODUCT)
-        if product in PRODUCT_NAMES:
-            scope = replace(scope, product_type=product)
+        # A list now; a bare string in scopes stored before a buyer could pick
+        # more than one. Both are read, so an in-flight conversation keeps the
+        # answer it already gave rather than being asked again.
+        products = data.get(STEP_PRODUCT)
+        if isinstance(products, str):
+            products = [products]
+        if not products:
+            legacy = data.get(LEGACY_STEP_PRODUCT)
+            products = [legacy] if isinstance(legacy, str) else None
+
+        if isinstance(products, list):
+            known = tuple(
+                code for code in PRODUCT_NAMES if code in set(products)
+            )
+            if known:
+                scope = replace(scope, products=known)
 
         channels = data.get(STEP_CHANNELS)
         if isinstance(channels, list):
@@ -248,12 +326,44 @@ class Scope:
 # ---------- reading one answer ----------
 
 
-def parse_product(text: str) -> str | None:
-    for pattern, product in _PRODUCT_WORDS:
-        if re.search(pattern, text):
-            return product
+def parse_products(text: str) -> tuple[str, ...] | None:
+    """Every product named in one answer, in catalog order.
 
-    return None
+    Returns None when nothing was recognised, which means ask again — not
+    "they want nothing". A buyer who genuinely wants none of it stops replying
+    or says so in words the agent's own rules handle; it is never inferred from
+    an answer we could not read.
+    """
+    if _ALL_PRODUCTS.search(text):
+        return tuple(PRODUCT_NAMES)
+
+    # Cut the negated phrase out before reading products from what is left, so
+    # "sales but not support" adds the sales agent only. Done by removal rather
+    # than by subtracting a matched set, because the words inside a negation are
+    # exactly the words that would otherwise be read as a request.
+    remaining = _NEGATED_PRODUCT.sub(" ", text)
+
+    found: list[str] = []
+    for pattern, product in _PRODUCT_WORDS:
+        if product in found:
+            continue
+        if re.search(pattern, remaining):
+            found.append(product)
+
+    if not found:
+        return None
+
+    return tuple(code for code in PRODUCT_NAMES if code in found)
+
+
+def parse_product(text: str) -> str | None:
+    """The single-product spelling, kept for callers that only want one.
+
+    Returns the first product named, in catalog order.
+    """
+    products = parse_products(text)
+
+    return products[0] if products else None
 
 
 def parse_channels(text: str) -> tuple[str, ...] | None:
@@ -351,7 +461,7 @@ def parse_integrations(text: str) -> int | None:
 
 
 _PARSERS = {
-    STEP_PRODUCT: parse_product,
+    STEP_PRODUCT: parse_products,
     STEP_CHANNELS: parse_channels,
     STEP_VOLUME: parse_volume,
     STEP_INTEGRATIONS: parse_integrations,
