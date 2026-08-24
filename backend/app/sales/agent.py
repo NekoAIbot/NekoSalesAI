@@ -53,6 +53,7 @@ from app.sales.reasoning import (
 from app.sales.advisor import (
     advice_text,
     describes_a_business,
+    names_a_need,
     recommend,
 )
 from app.sales.scoping import (
@@ -1018,15 +1019,25 @@ def compose_reply(
         # - they actually described a business or named what they want built,
         #   because otherwise a pricing question is met with an opinion nobody
         #   asked for;
-        # - and the message does not already name a product. "I need an AI sales
-        #   representative" is an *answer*, not a request for advice, and
-        #   recommending what they just asked for would cost them a turn and
-        #   read as not listening.
+        # - and the message does not already *name* a product as the thing they
+        #   want built. "I need an AI sales representative" is an answer, not a
+        #   request for advice, and recommending what they just asked for would
+        #   cost them a turn and read as not listening.
+        #
+        # That last condition used to be "no product word anywhere in the
+        # message", and the difference cost sales. "We sell shoes online" and "we
+        # run a pharmacy and sell drugs" contain the word "sell", so the product
+        # parser found the sales rep in them and the whole advisor was skipped:
+        # "Noted." and straight on to the channels question, with a product on
+        # the scope that the buyer never chose. A description of a shop has to
+        # beat an incidental keyword — so the parser only wins here when they
+        # actually named a need, which "the sales one" and "I want an AI sales
+        # rep" both do and "we sell shoes online" does not.
         if (
             pending == STEP_PRODUCT
             and scope.is_empty
             and describes_a_business(message)
-            and parse_products(text) is None
+            and (parse_products(text) is None or not names_a_need(message))
         ):
             recommendation = recommend(message)
 
@@ -1039,11 +1050,31 @@ def compose_reply(
             ):
                 reasoning.add_signal(f"recommended {code} on {matched!r}")
 
-            if not recommendation.has_advice:
-                # Described clearly, and nothing we build addresses it. Said
-                # plainly and escalated — a business we cannot help is worth a
+            if recommendation.needs_more_detail:
+                # Something real was said and it did not say which product would
+                # help — a trade with no keyword we know ("I have a bakery"), or
+                # an outcome ("profit and more customers"). Ask again.
+                #
+                # Emphatically not an escalation. This branch used to fall into
+                # the refusal below, so a bakery and a barbershop were both told
+                # we build nothing for them and both raised an approval row for a
+                # human. There is no question here a human answers better than
+                # the next turn does; the only thing missing is a detail we can
+                # ask for.
+                reasoning.add_signal("not enough detail to recommend yet")
+
+                return AgentReply(
+                    body=advice_text(recommendation),
+                    reasoning=reasoning,
+                    captured_email=captured_email,
+                    scope=scope,
+                )
+
+            if recommendation.unmet_need:
+                # They named what they wanted built and nothing we build does it.
+                # Said plainly and escalated — a need we cannot meet is worth a
                 # human's attention, and the alternative is stretching a product
-                # to cover a need it does not meet.
+                # to cover something it does not do.
                 reasoning.add_signal("no catalog product addresses this need")
                 reasoning.escalated = True
 

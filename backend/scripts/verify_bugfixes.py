@@ -1,6 +1,6 @@
-"""The three reported bugs, re-tested against the running deployment.
+"""The reported bugs, re-tested against the running deployment.
 
-Not a unit test. The suite already covers all three at the ``compose_reply``
+Not a unit test. The suite already covers all of these at the ``compose_reply``
 level, and it passed while the live bot was serving a withdrawn price — which is
 exactly the gap this script exists to close. It talks HTTP to whatever is actually
 listening on the port, so it exercises the deployed process, its imports, its
@@ -18,9 +18,20 @@ function the poller calls: it decides what to say and sends nothing, so this
 cannot message a real buyer. Its threads are keyed ``verify:<token>`` and deleted
 afterwards, following the convention ``stress_nera.py`` already established.
 
-Every conversation is started fresh, because all three bugs are about what Nera
-does with no prior context — a reused thread would carry a scope and hide the
-behaviour being checked.
+BUG 4 and 4b did not come from a report. They came from reading what two real
+strangers typed into the bot one evening, both of whom were handed to a human on
+their first message. That is the argument for this file existing at all: the
+checks below were written from transcripts, and no unit test was going to invent
+"my business is a barbershop" on its own.
+
+Every conversation is started fresh, because all of these bugs are about what
+Nera does with no prior context — a reused thread would carry a scope and hide
+the behaviour being checked.
+
+Each fix here narrowed something, so each has a control that fires the other way:
+the don't-know fallback, the honest refusal, and reading a named product as a
+choice all still have to work. A file of checks that only ever asserts Nera was
+friendly would pass most completely if it stopped refusing anything at all.
 
 Exit code is 0 only if every flow passes on every surface. Anything else means do
 not deploy.
@@ -110,6 +121,54 @@ class Client:
 
         return thread.json().get("interested_plan_code")
 
+    @property
+    def chosen_products(self) -> tuple[str, ...]:
+        """What the intake believes the buyer has chosen to buy.
+
+        Read from the database rather than the API, because the API does not
+        publish the scope and should not start doing so for the sake of a check —
+        a visitor-facing schema is a contract, not a debugging surface. The
+        conversation itself still arrives over HTTP; only this one piece of
+        internal state is read out of band, exactly as the Telegram buyer reads
+        its reasoning trail.
+        """
+        import json
+
+        from app.database.session import SessionLocal
+        from app.models.conversation import Conversation
+
+        db = SessionLocal()
+
+        try:
+            row = (
+                db.query(Conversation)
+                .filter(Conversation.public_token == self.token)
+                .first()
+            )
+
+            if row is None or not row.scope_json:
+                return ()
+
+            try:
+                stored = json.loads(row.scope_json)
+            except (ValueError, TypeError):
+                return ()
+        finally:
+            db.close()
+
+        if not isinstance(stored, dict):
+            return ()
+
+        products = stored.get("products")
+
+        if isinstance(products, str):
+            return (products,)
+
+        if isinstance(products, (list, tuple)):
+            return tuple(products)
+
+        return ()
+
     def transcript(self) -> str:
         return "\n\n".join(
             f"  buyer> {said}\n  nera > {heard}" for said, heard in self.turns
@@ -120,7 +179,7 @@ class Client:
 
 
 class TelegramBuyer:
-    """The same six checks, arriving the way a Telegram buyer arrives.
+    """Every check above, arriving the way a Telegram buyer arrives.
 
     Deliberately the same interface as ``Client`` so the checks below are written
     once and run twice. What differs is everything underneath: a channel identity,
@@ -234,6 +293,45 @@ class TelegramBuyer:
         self._db.refresh(self._conversation)
 
         return self._conversation.interested_plan_code
+
+    @property
+    def chosen_products(self) -> tuple[str, ...]:
+        """What the intake believes the buyer has chosen to buy.
+
+        Read from the stored scope rather than the reply, because the failure
+        this catches is invisible in prose: a description read as a selection
+        produces a perfectly reasonable-sounding "Noted." while a product nobody
+        named goes onto the order. The buyer meets it at the payment page.
+        """
+        import json
+
+        if self._conversation is None:
+            return ()
+
+        self._db.refresh(self._conversation)
+
+        raw = self._conversation.scope_json
+
+        if not raw:
+            return ()
+
+        try:
+            stored = json.loads(raw)
+        except (ValueError, TypeError):
+            return ()
+
+        if not isinstance(stored, dict):
+            return ()
+
+        products = stored.get("products")
+
+        if isinstance(products, str):
+            return (products,)
+
+        if isinstance(products, (list, tuple)):
+            return tuple(products)
+
+        return ()
 
     def transcript(self) -> str:
         return "\n\n".join(
@@ -473,13 +571,132 @@ def the_fallback_still_exists(new_buyer) -> None:
         buyer.close()
 
 
+def bug_4_an_ordinary_first_message(new_buyer) -> None:
+    """Nobody's opening line goes to a human.
+
+    Found in live traffic rather than in the report: two strangers who had found
+    the bot an hour earlier were both escalated on their first message. Four
+    separate causes, and the phrasings here are verbatim from those threads —
+    a progressive tense the verb list missed, a trade no signal list knew, and
+    the answer the greeting itself asks for.
+
+    Run against both surfaces because the cause was in the shared engine, which
+    is precisely why one channel's transcript was enough to condemn both.
+    """
+    opening_lines = (
+        "Im running a food store",
+        "i have a bakery",
+        "my business is a barbershop",
+        "Profit and more customers of course",
+    )
+
+    for line in opening_lines:
+        buyer = new_buyer()
+
+        try:
+            buyer.start()
+            reply = buyer.say(line)
+
+            if buyer.escalated:
+                raise Failure(
+                    f"{line!r} was escalated to a human on the first turn "
+                    f"(rule {buyer.rule!r}):\n{buyer.transcript()}"
+                )
+
+            if "the right fit" in reply:
+                raise Failure(
+                    f"{line!r} was told we build nothing for them:\n"
+                    f"{buyer.transcript()}"
+                )
+        finally:
+            buyer.close()
+
+
+def bug_4b_a_description_is_not_a_choice(new_buyer) -> None:
+    """Saying what your shop sells is not ordering a sales rep.
+
+    The same class as BUG 3b and the one that costs money rather than goodwill:
+    "we sell shoes online" contains a word the product parser knows, so the
+    advisor was skipped, "Noted." came back, and a product nobody named went onto
+    the scope. Priced, on the next screen, to a buyer who never chose it.
+
+    Checked on the stored scope, not the reply — the reply reads fine.
+    """
+    for line in ("we sell shoes online", "we run a pharmacy and sell drugs"):
+        buyer = new_buyer()
+
+        try:
+            buyer.start()
+            buyer.say(line)
+
+            chosen = buyer.chosen_products
+
+            if chosen:
+                raise Failure(
+                    f"{line!r} was recorded as choosing {chosen!r}:\n"
+                    f"{buyer.transcript()}"
+                )
+        finally:
+            buyer.close()
+
+
+def the_refusal_still_exists(new_buyer) -> None:
+    """The second negative control, guarding the fix above.
+
+    Separating "not enough detail yet" from "we do not build that" is only worth
+    doing if the second half still fires. A buyer who names the software they
+    want and gets a friendly question instead of an honest no has been sold a
+    hope — and finds out after paying.
+    """
+    buyer = new_buyer()
+
+    try:
+        buyer.start()
+        reply = buyer.say("I need an AI that does my bookkeeping")
+
+        if not buyer.escalated or "the right fit" not in reply:
+            raise Failure(
+                "A need we do not build was not refused "
+                f"(rule {buyer.rule!r}):\n{buyer.transcript()}"
+            )
+    finally:
+        buyer.close()
+
+
+def a_named_product_is_still_a_choice(new_buyer) -> None:
+    """The third negative control.
+
+    The mirror of BUG 4b. Making a description lose to the product parser must
+    not make a real selection lose with it: "I want to buy an AI sales
+    representative" is an answer, and answering it with advice costs the buyer a
+    turn and reads as not listening.
+    """
+    buyer = new_buyer()
+
+    try:
+        buyer.start()
+        buyer.say("I want to buy an AI sales representative")
+
+        if not buyer.chosen_products:
+            raise Failure(
+                "Naming a product was not read as choosing it "
+                f"(rule {buyer.rule!r}):\n{buyer.transcript()}"
+            )
+    finally:
+        buyer.close()
+
+
 CHECKS = (
     ("BUG 1  discovery before any price", bug_1_discovery_before_price),
     ("BUG 1b discovery survives a hurry", bug_1b_discovery_survives_a_hurry),
     ("BUG 2  withdrawn tier unreachable", bug_2_no_withdrawn_tier),
     ("BUG 3  answers about itself", bug_3_answers_about_itself),
     ("BUG 3b a question is not an answer", bug_3b_a_question_is_not_an_answer),
+    ("BUG 4  an ordinary first message", bug_4_an_ordinary_first_message),
+    ("BUG 4b a description is not a choice", bug_4b_a_description_is_not_a_choice),
     ("CONTROL the fallback still exists", the_fallback_still_exists),
+    ("CONTROL the refusal still exists", the_refusal_still_exists),
+    ("CONTROL a named product is a choice", a_named_product_is_still_a_choice),
 )
 
 

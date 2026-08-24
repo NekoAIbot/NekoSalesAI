@@ -550,3 +550,188 @@ def test_the_advisor_never_names_a_product_outside_the_catalog():
         for name in ("AI Sales Representative", "AI Support Agent"):
             if name in body:
                 assert name in allowed
+
+
+# ---------- what real buyers actually typed ----------
+#
+# Every string below is verbatim from live traffic, and every one of them was
+# answered wrongly. Two of the senders were strangers who had found the bot an
+# hour earlier; both were escalated to a human on their first message, which is
+# the failure that costs the sale rather than merely reading badly. The
+# phrasings are kept exactly as typed — apostrophes missing, capitalisation
+# arbitrary — because tidying them up is how they passed in the first place.
+
+
+ESCALATED_ON_TURN_ONE = [
+    # The progressive form. "I run a food store" matched the verb list and
+    # "I'm running a food store" matched nothing, so the same sentence in the
+    # tense people actually use fell through to the don't-know fallback.
+    "Im running a food store",
+    "I'm running a food store",
+    # A trade with no keyword in our signal lists. Nothing about a bakery says
+    # it cannot use a sales rep — only our vocabulary was silent — but the empty
+    # recommendation was read as "we build nothing for this business".
+    "i have a bakery",
+    "my business is a barbershop",
+    # The answer the greeting asks for. It asks what the business needs done,
+    # and then escalated the reply.
+    "Profit and more customers of course",
+    "I need more customers",
+]
+
+
+@pytest.mark.parametrize("text", ESCALATED_ON_TURN_ONE)
+def test_an_ordinary_first_message_is_never_escalated(text):
+    """The one property all four live defects violated.
+
+    A buyer's opening line is answered by Nera or asked about by Nera. It does
+    not go to a human — there is nothing here a human answers better than the
+    next turn does, and a stranger handed to a person on their first message
+    does not come back.
+    """
+    reply = compose_reply(text, "greeting", scope=Scope())
+
+    assert reply.reasoning.escalated is False
+    assert reply.needs_approval is False
+
+
+@pytest.mark.parametrize("text", ESCALATED_ON_TURN_ONE)
+def test_an_ordinary_first_message_is_never_refused(text):
+    """And is never told we build nothing for them.
+
+    Distinct from the escalation above and worth its own assertion: the refusal
+    copy is the most damaging thing in the module to send to the wrong person,
+    and a bakery was getting it.
+    """
+    body = compose_reply(text, "greeting", scope=Scope()).body
+
+    assert "the right fit" not in body
+
+
+@pytest.mark.parametrize("text", ESCALATED_ON_TURN_ONE)
+def test_an_ordinary_first_message_reaches_the_advisor(text):
+    """Answered or asked about — never a dead end.
+
+    Every one of these landed on the don't-know fallback, which apologises and
+    fetches a person. Asserting the rule rather than the prose because the rule
+    is the decision: the advisor either recommends something or asks for the
+    detail it is missing, and both are a conversation continuing.
+    """
+    reply = compose_reply(text, "greeting", scope=Scope())
+
+    assert reply.reasoning.rule == RULE_ADVICE
+
+
+# Descriptions that happen to contain a word the product parser knows. Read as
+# a *selection*, so the intake answered "Noted." and moved to channels with a
+# product on the scope the buyer never named.
+DESCRIBES_BUT_DOES_NOT_CHOOSE = [
+    "we sell shoes online",
+    "I sell clothes in Lagos",
+    "we run a pharmacy and sell drugs",
+]
+
+
+@pytest.mark.parametrize("text", DESCRIBES_BUT_DOES_NOT_CHOOSE)
+def test_a_description_containing_a_product_word_is_not_a_selection(text):
+    """"we sell shoes online" is a shop, not an order for a sales rep.
+
+    The keyword is incidental to the sentence, and treating it as an answer put
+    a product on the scope nobody chose — which the buyer would next meet at the
+    payment page, priced.
+    """
+    reply = compose_reply(text, "greeting", scope=Scope())
+
+    assert reply.scope is not None
+    assert reply.scope.products is None
+
+
+@pytest.mark.parametrize("text", DESCRIBES_BUT_DOES_NOT_CHOOSE)
+def test_a_description_containing_a_product_word_gets_advice(text):
+    """And is answered by the advisor, whose turn it was."""
+    reply = compose_reply(text, "greeting", scope=Scope())
+
+    assert reply.reasoning.rule == RULE_ADVICE
+
+
+# ---------- the refusal still has to work ----------
+
+
+def test_a_named_need_we_do_not_build_is_still_refused():
+    """The guard on the fix above.
+
+    Separating "not enough detail yet" from "we do not build that" is only worth
+    doing if the second half keeps working. A buyer who names the software they
+    want and gets a polite question instead of an honest no has been sold a
+    hope, and will find out after paying.
+    """
+    reply = compose_reply(
+        "I need an AI that does my bookkeeping", "greeting", scope=Scope()
+    )
+
+    assert reply.reasoning.escalated is True
+    assert reply.needs_approval is True
+    assert "the right fit" in reply.body
+
+
+def test_a_trade_we_have_no_keyword_for_is_not_a_refusal():
+    """The same shape, the other outcome, at the advisor level.
+
+    ``unmet_need`` is the thing that separates them, and it is not "the
+    recommendation is empty" — both of these are empty.
+    """
+    assert recommend("I need an AI that does my bookkeeping").unmet_need is True
+    assert recommend("i have a bakery").unmet_need is False
+    assert recommend("i have a bakery").needs_more_detail is True
+
+
+def test_naming_a_product_is_still_read_as_choosing_it():
+    """The advisor must not hijack an answer.
+
+    "I need an AI sales representative" names a need *and* a product we build.
+    Recommending what they just asked for costs them a turn and reads as not
+    listening.
+    """
+    reply = compose_reply(
+        "I want to buy an AI sales representative", "greeting", scope=Scope()
+    )
+
+    assert reply.scope is not None
+    assert reply.scope.products == (PRODUCT_SALES_AGENT,)
+
+
+def test_a_bare_selection_is_still_read_as_choosing_it():
+    """The short form, which names no business at all."""
+    reply = compose_reply("the sales one", "greeting", scope=Scope())
+
+    assert reply.scope is not None
+    assert reply.scope.products == (PRODUCT_SALES_AGENT,)
+
+
+def test_a_progressive_description_reaches_the_advisor():
+    """Defect A at the predicate level, where the cause was."""
+    assert describes_a_business("Im running a food store") is True
+    assert describes_a_business("I'm running a food store") is True
+    assert describes_a_business("we're setting up a delivery service") is True
+
+
+def test_wanting_an_outcome_counts_as_telling_us_something():
+    """Defect C at the predicate level.
+
+    Thin evidence, deliberately: it earns the advisor's turn, not a
+    recommendation. What it must not earn is silence.
+    """
+    assert describes_a_business("Profit and more customers of course") is True
+    assert describes_a_business("I need more customers") is True
+    assert describes_a_business("we want to stop losing sales") is True
+
+
+def test_a_pricing_question_is_not_a_business_description():
+    """The boundary that keeps the advisor from answering everything.
+
+    "how much is it" is three words with no product signal in them. Reading it
+    as a business would invent a refusal out of a pricing question.
+    """
+    assert describes_a_business("how much is it") is False
+    assert describes_a_business("hi") is False
+    assert describes_a_business("the sales one") is False

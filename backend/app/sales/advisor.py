@@ -193,12 +193,44 @@ _ASKS_FOR_OPTIONS = re.compile(
 # alternative is answering questions nobody asked: "how much is it?" is three
 # words with no product signal in them, and reading that as a business we cannot
 # help would be a refusal invented out of a pricing question.
+#
+# The progressive forms are here because of live traffic, not neatness. "I run a
+# food store" matched; "I'm running a food store" did not — the article branch
+# below wants "I'm a baker", and "running" is not an article — so the second
+# phrasing fell past every list in this module to the don't-know fallback and was
+# escalated to a human on the first turn. Two real buyers in one evening, one of
+# them a stranger. Nobody says only the tidy form.
 _DESCRIBES_A_BUSINESS = re.compile(
-    r"\b(i|we) (run|own|have|manage|operate|started|do)\b"
+    r"\b(i|we) (run|own|have|manage|operate|started|do|sell|make|bake|repair|"
+    r"rent|deliver|teach|train|supply)\b"
+    r"|\b(i'?m|i am|we'?re|we are) (running|operating|managing|starting|"
+    r"building|setting up|opening|selling|into)\b"
     r"|\b(my|our) (business|company|shop|store|startup|brand|firm|practice|"
     r"agency|clinic|school|team|outfit)\b"
     r"|\b(i'?m|i am|we'?re|we are) (a|an|the) \w+"
     r"|\bbusiness is\b|\bwe sell\b|\bi sell\b|\bwe deal in\b"
+)
+
+# What the buyer wants to *happen*, rather than what their business is.
+#
+# The greeting asks "tell me what your business needs done", and the two answers
+# it gets most often are "more customers" and "profit". Neither describes a
+# business and neither names software, so both fell through every list here and
+# were escalated — Nera asking a question and then handing the answer to a
+# person, which is the version of this that costs a sale.
+#
+# An outcome is thin evidence and is treated as such: it earns the advisor's turn,
+# not a recommendation. Wanting more customers does not say whether the problem is
+# winning the sale or answering the same question forty times, and that is the
+# question the advisor then asks.
+_WANTS_AN_OUTCOME = re.compile(
+    r"\b(more|increase|increasing|grow|growing|boost|double|improve|drive)\s+"
+    r"(my |our |the )?(customers?|clients?|sales|revenue|orders?|profits?|"
+    r"bookings?|leads?|enquir\w+|inquir\w+|business|patrons?|traffic)\b"
+    r"|\bprofits?\b|\bmake more money\b|\bgrow (my|our|the) business\b"
+    r"|\bstop (losing|missing)\b|\bsave (me |us )?time\b"
+    r"|\b(less|reduce|cut) (my |our )?(work|workload|admin|stress)\b"
+    r"|\btoo many (messages|questions|enquir\w+|inquir\w+|calls?|chats?)\b"
 )
 
 # Someone naming what they want built, rather than what their business is.
@@ -225,15 +257,32 @@ _NAMES_A_NEED = re.compile(
 def describes_a_business(text: str) -> bool:
     """Whether this message is someone telling us what they need.
 
-    Either what the business does, or what they want built. Public because the
-    agent has to decide whether the advisor gets the turn at all, and that
-    decision belongs to the same module that knows what counts as a description.
+    What the business does, what they want to happen, or what they want built.
+    Public because the agent has to decide whether the advisor gets the turn at
+    all, and that decision belongs to the same module that knows what counts as a
+    description.
     """
     lowered = (text or "").lower()
 
     return bool(
-        _DESCRIBES_A_BUSINESS.search(lowered) or _NAMES_A_NEED.search(lowered)
+        _DESCRIBES_A_BUSINESS.search(lowered)
+        or _WANTS_AN_OUTCOME.search(lowered)
+        or _NAMES_A_NEED.search(lowered)
     )
+
+
+def names_a_need(text: str) -> bool:
+    """Whether they named the software they want, rather than described a shop.
+
+    The distinction the agent needs, and it is not cosmetic. "I need an AI sales
+    representative" names a product and is an *answer* to the intake's first
+    question. "We sell shoes online" contains the word "sell" and is not: it is a
+    buyer saying what their shop does, and it was being read as choosing the sales
+    product — "Noted.", straight on to the channels question, with a product on
+    the scope that nobody picked. A description has to lose to nothing; it
+    certainly must not win the buyer a purchase they never made.
+    """
+    return bool(_NAMES_A_NEED.search((text or "").lower()))
 
 
 def product_names() -> tuple[str, ...]:
@@ -245,9 +294,20 @@ def product_names() -> tuple[str, ...]:
 class Recommendation:
     """What was advised, and on what basis.
 
-    ``recommended`` may be empty. That is a real outcome and the most important
-    one to get right: it means the business was described clearly and none of the
-    things we build address it. Saying so is the whole value of asking.
+    ``recommended`` may be empty, and *why* it is empty is the distinction this
+    class exists to carry. Two very different things produce no recommendation:
+
+    - a need was named and nothing we build addresses it — "an AI that does my
+      bookkeeping". Saying so plainly is the whole value of asking, and it is
+      worth a human's attention.
+    - a business was named and nothing in it said which product would help —
+      "I have a bakery". That is not a refusal, and it was being answered as one:
+      "I don't think what I build is the right fit", to a shop that sells things,
+      because the word "bakery" was not in a signal list. A real prospect turned
+      away and an approval row raised, both wrong.
+
+    The first is an answer. The second is a question that has not finished being
+    asked.
     """
 
     # The products worth buying for this business, catalog order.
@@ -265,9 +325,23 @@ class Recommendation:
     # business. Also different: they get the list, not advice.
     asked_for_options: bool = False
 
+    # True when they named software they want and nothing we build matched it.
+    # The one case here that is genuinely a refusal.
+    unmet_need: bool = False
+
     @property
     def has_advice(self) -> bool:
         return bool(self.recommended)
+
+    @property
+    def needs_more_detail(self) -> bool:
+        """Nothing to advise on yet, and nothing to refuse either.
+
+        Everything that is not a recommendation and not an unmet need. The agent
+        asks again on this rather than escalating, because there is no question
+        here that a human could answer better than the next turn can.
+        """
+        return not self.has_advice and not self.unmet_need
 
     @property
     def is_everything(self) -> bool:
@@ -301,6 +375,12 @@ def recommend(description: str) -> Recommendation:
                 recommended.append(code)
                 matched.append(found.group(0))
                 break
+
+    if not recommended:
+        # Nothing matched. Whether that is a refusal turns entirely on whether
+        # they told us what they wanted built: a named need we cannot meet is an
+        # answer, and a trade we have no keyword for is not.
+        return Recommendation(unmet_need=bool(_NAMES_A_NEED.search(text)))
 
     return Recommendation(
         recommended=tuple(recommended), matched=tuple(matched)
@@ -366,9 +446,29 @@ def advice_text(recommendation: Recommendation) -> str:
             f"{_option_lines(tuple(FITS))}"
         )
 
+    if recommendation.needs_more_detail:
+        # They told us something real — a trade, or what they want to happen —
+        # and it did not name which product would help. That is a question still
+        # being asked, so this asks it. It used to get the refusal below: a
+        # bakery told "I don't think what I build is the right fit", because the
+        # word "bakery" is in no signal list. Nothing about a bakery says it
+        # cannot use a sales rep; only our keywords were silent.
+        #
+        # The question is the one that actually splits the catalog — winning the
+        # sale versus answering the same thing repeatedly — asked without jargon
+        # and without listing products yet, so the answer is about their day
+        # rather than a menu.
+        return (
+            "Got it. One thing and I'll tell you what I'd build: where does "
+            "the time go — chasing people who might buy, or answering the same "
+            "questions from people who already have?\n\n"
+            "Either is fixable. Say a line about how customers reach you and "
+            "what usually goes wrong, and I'll name the build and price it."
+        )
+
     if not recommendation.has_advice:
-        # The case worth getting right. Nothing we build addresses what was
-        # described, and the honest answer is short.
+        # The case worth getting right. They named what they wanted built and
+        # nothing we build addresses it, and the honest answer is short.
         return (
             "I'll be straight with you: from what you've described, I don't "
             "think what I build is the right fit — and I'd rather say so than "
