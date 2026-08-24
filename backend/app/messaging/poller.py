@@ -30,11 +30,13 @@ from __future__ import annotations
 
 import argparse
 import signal
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 
+from app.config import build
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import settings
 from app.database.session import SessionLocal
@@ -59,6 +61,16 @@ ALLOWED_UPDATES = ("message",)
 # One 409 is a misconfiguration, not a blip: a webhook is set. Retrying would
 # hammer the API and never succeed.
 CONFLICT = 409
+
+# Backoff for a getUpdates that never reached Telegram. Starts at a second
+# because most outages here are a phone changing masts, and caps at half a minute
+# because a buyer who messaged during the outage is waiting behind it.
+FAILURE_BACKOFF_BASE = 1
+FAILURE_BACKOFF_MAX = 30
+
+# A sustained outage must not write a line per retry. The first failure is logged
+# and then every tenth, so the log records the outage without becoming it.
+QUIET_AFTER = 10
 
 
 class PollerError(RuntimeError):
@@ -112,6 +124,10 @@ class TelegramPoller:
         self.offset: int | None = None
         self._stopping = False
 
+        # Whether the last getUpdates actually reached Telegram, and how many in
+        # a row have not. See the backoff in ``run``.
+        self._failures = 0
+
     # ---------- the loop ----------
 
     def run(self, *, once: bool = False) -> PollReport:
@@ -135,8 +151,41 @@ class TelegramPoller:
             if once or self._stopping:
                 return total
 
-            # Nothing waiting and nothing to do: the next getUpdates blocks for
-            # LONG_POLL_SECONDS, which is the sleep. No timer needed.
+            # A successful poll needs no timer: getUpdates held the connection
+            # open for LONG_POLL_SECONDS, and that *was* the sleep.
+            #
+            # A failed one is the opposite. A DNS failure on a dropped uplink
+            # comes back instantly, so this loop used to spin as fast as
+            # resolution could fail — one and a quarter million log lines, and on
+            # a phone, the battery. The long poll being the sleep was true right
+            # up until the request stopped being made.
+            self._wait_after_failure()
+
+    def _wait_after_failure(self) -> None:
+        """Back off while Telegram is unreachable, and not otherwise.
+
+        Doubling, capped. The cap matters more than the curve: an uplink that
+        comes back should be noticed in under a minute, because the buyer who
+        messaged during the outage is waiting on the other side of it.
+        """
+        if not self._failures:
+            return
+
+        delay = min(FAILURE_BACKOFF_MAX, FAILURE_BACKOFF_BASE * 2 ** (self._failures - 1))
+
+        if self._failures == 1 or self._failures % QUIET_AFTER == 0:
+            logger.info(
+                "Telegram unreachable (%s in a row); waiting %ss before retrying.",
+                self._failures,
+                delay,
+            )
+
+        # Interruptible, so a SIGTERM during an outage does not have to wait out
+        # the whole backoff before the process can exit.
+        waited = 0.0
+        while waited < delay and not self._stopping:
+            time.sleep(min(1.0, delay - waited))
+            waited += 1.0
 
     def stop(self) -> None:
         """Finish the batch in hand, then return. Used by the signal handler."""
@@ -240,7 +289,10 @@ class TelegramPoller:
                 )
 
             logger.warning("getUpdates was refused: %s", description or body)
+            self._failures += 1
             return []
+
+        self._failures = 0
 
         result = body.get("result")
 
@@ -287,6 +339,13 @@ def main() -> int:
     args = parser.parse_args()
 
     configure_logging()
+
+    # First line in the log, every start. "Is the live process running current
+    # code?" is the question that cost the most time on this project, and it is
+    # unanswerable after the fact: a poller that never crashes never reloads, and
+    # nothing in the log distinguishes it from one started a minute ago. Now it
+    # does, and the answer sits above whatever the process goes on to do.
+    logger.info("Poller starting — %s", build.describe())
 
     poller = TelegramPoller()
 

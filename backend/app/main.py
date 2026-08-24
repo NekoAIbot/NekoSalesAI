@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.api import api_router
+from app.config import build
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import settings
 from app.web.routes import router as web_router
@@ -24,6 +25,12 @@ async def lifespan(app: FastAPI):
         settings.ENVIRONMENT,
         "sqlite" if settings.is_sqlite else "postgres",
     )
+
+    # The version above is a constant someone types; this is what is actually
+    # loaded. The two diverge silently, and it was the divergence that mattered:
+    # a live process serving withdrawn prices reported the same version string as
+    # the corrected source. See ``app.config.build``.
+    logger.info("Running %s", build.describe())
 
     if settings.SECRET_KEY.startswith("dev-only"):
         logger.warning(

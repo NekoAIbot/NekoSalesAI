@@ -41,8 +41,12 @@ bot, which is the failure the buyer actually notices.
 The personas use ``stress:<run>:`` external ids so they get their own
 conversations, never touch a real buyer's thread, and — because the run token is
 fresh each time — start clean on every run rather than resuming the last one's
-half-finished intake. ``--live`` mirrors the exchange into a Telegram chat for a
-human to read, buyer turns marked so the transcript is legible.
+half-finished intake. Their rows are removed when the run ends: a persona that
+closes is a name, an email, a quote and a real Paystack order, and in the leads
+list that is indistinguishable from a buyer. Failed scenarios are kept, because a
+failure is only diagnosable from what it left behind. ``--keep`` keeps everything,
+``--purge`` clears what earlier runs left. ``--live`` mirrors the exchange into a
+Telegram chat for a human to read, buyer turns marked so the transcript is legible.
 """
 
 from __future__ import annotations
@@ -56,6 +60,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.config.settings import settings  # noqa: E402
 from app.database.session import SessionLocal  # noqa: E402
 from app.messaging.clients import TelegramClient, WhatsAppClient  # noqa: E402
 from app.messaging.inbound import KIND_COMMAND, KIND_TEXT, InboundMessage  # noqa: E402
@@ -69,7 +74,10 @@ from app.models.channel_identity import (  # noqa: E402
     CHANNEL_WHATSAPP,
     ChannelIdentity,
 )
+from app.models.conversation import Message  # noqa: E402
+from app.models.follow_up import FollowUp  # noqa: E402
 from app.models.lead import Lead  # noqa: E402
+from app.models.order import Order  # noqa: E402
 from app.models.quote import Quote as QuoteRow  # noqa: E402
 from app.pricing.complexity import (  # noqa: E402
     CHANNEL_ADD_MINOR,
@@ -114,10 +122,25 @@ class Scenario:
     # Words that must not appear in any reply of this scenario, lowercased.
     forbidden: tuple[str, ...] = ()
 
+    # The buyer said yes, so they must finish holding a link they can pay.
+    # Everything else a close is checked on — the stage, the lead, the quote, the
+    # figure — can be right while the checkout silently failed and the last thing
+    # the buyer read was an apology. Only checked when a key is configured.
+    expect_payable: bool = False
+
 
 # Tier names that used to be real. Nothing may sell them, or name them as
 # though they were still on offer, on any channel.
 RETIRED_TIERS = ("founding user", "starter plan", "growth plan", "lifetime deal")
+
+
+# A persona that closes hands its address to Paystack, so it has to be one
+# Paystack will take. ``.example`` is the reserved TLD for documentation and the
+# unit tests use it freely — but a real provider validates, and this one answers a
+# reserved TLD with HTTP 400 '"email" must be a valid email'. A scenario failing
+# on that is a scenario failing for a reason that has nothing to do with Nera, so
+# the closing personas keep their identity in the local part and borrow a domain
+# that resolves. The ones that never reach a checkout are unaffected.
 
 
 SCENARIOS = [
@@ -132,7 +155,7 @@ SCENARIOS = [
             "about 2,000 a month",
             "none",
             "yes I want to start",
-            "Ada Nwosu, ada@brightfoods.example, Bright Foods",
+            "Ada Nwosu, ada.brightfoods@example.com, Bright Foods",
         ],
         # Turns 1 and 2 are a greeting and a business description. Neither has
         # been scoped, so neither may come back with a figure.
@@ -140,6 +163,7 @@ SCENARIOS = [
         expect_lead=True,
         expect_stage="ready_to_buy",
         expect_products=(PRODUCT_SALES_AGENT,),
+        expect_payable=True,
     ),
     Scenario(
         name="buys-both-products",
@@ -152,13 +176,14 @@ SCENARIOS = [
             "about 2,000 a month",
             "none",
             "let's do it",
-            "Chidi Okafor, chidi@okaforlogistics.example, Okafor Logistics",
+            "Chidi Okafor, chidi.okaforlogistics@example.com, Okafor Logistics",
         ],
         expect_lead=True,
         expect_stage="ready_to_buy",
         # The multi-product claim, checked end to end rather than in the agent:
         # one order, two bases, scope charged once.
         expect_products=(PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT),
+        expect_payable=True,
     ),
     Scenario(
         name="need-we-do-not-build",
@@ -456,7 +481,61 @@ def run(
             f"got {list(result.products)}"
         )
 
+    if scenario.expect_payable:
+        _check_they_can_actually_pay(db, conversation, result)
+
     return result
+
+
+def _check_they_can_actually_pay(db, conversation, result: Result) -> None:
+    """A buyer who said yes has to end up holding a payment link.
+
+    The check this was missing. A close was reported clean while the last thing
+    the buyer was told was that the payment could not be raised — the scenario
+    reached ``ready_to_buy`` with a lead and the right quote, and every
+    expectation passed, because nothing asked the one question that decides
+    whether there is any revenue: is there a link.
+
+    Both halves are asserted, because either alone can lie. An Order row with no
+    ``checkout_url`` is a sale nobody can complete, and a reply that never
+    carried the URL is a link the buyer cannot reach — the row would be right and
+    the deal still lost.
+
+    Deliberately silent about payments being switched off: with no key there is
+    nothing to assert and saying so on every scenario would train the eye to
+    scroll past it. ``main`` reports that once, up front.
+    """
+    if not settings.payments_enabled:
+        return
+
+    if conversation is None:
+        result.problems.append("expected a payment link; found no conversation")
+        return
+
+    order = (
+        db.query(Order)
+        .filter(Order.conversation_id == conversation.id)
+        .order_by(Order.id.desc())
+        .first()
+    )
+
+    if order is None:
+        result.problems.append(
+            "the buyer agreed and no order was raised, so there is nothing to pay"
+        )
+        return
+
+    if not order.checkout_url:
+        result.problems.append(
+            f"order {order.paystack_reference} has no checkout url, so it "
+            "cannot be paid"
+        )
+        return
+
+    if not any(order.checkout_url in turn.text for turn in result.turns):
+        result.problems.append(
+            "a payment link was raised but never given to the buyer"
+        )
 
 
 def _conversation_for(db, external_id: str):
@@ -507,6 +586,99 @@ class _Silent:
 
     def send_message(self, destination: str, text: str) -> None:
         return None
+
+
+def sweep(db, external_ids: list[str]) -> dict[str, int]:
+    """Delete the rows a persona created, and everything hanging off them.
+
+    Not housekeeping. A persona that closes ends up in the database as a name, an
+    email, a quote and a Paystack order — which in the leads list is
+    indistinguishable from someone who actually wants to buy something, and gets
+    followed up. 110 of them had accumulated by the time this was written, one per
+    scenario per run, and every one of them was a person who does not exist.
+
+    Children first, because the foreign keys are real: a follow-up points at an
+    order, an order at a conversation, and a conversation at the lead it created.
+    The lead goes last and only if this run made it — it is the one row here that
+    is not reachable from the conversation by cascade.
+
+    Returns what it removed, so the caller can say so rather than claim it.
+    """
+    removed = {"conversations": 0, "orders": 0, "quotes": 0, "leads": 0}
+
+    identities = (
+        db.query(ChannelIdentity)
+        .filter(ChannelIdentity.external_id.in_(external_ids))
+        .all()
+        if external_ids
+        else []
+    )
+
+    for identity in identities:
+        conversation = identity.conversation
+        db.delete(identity)
+
+        if conversation is None:
+            continue
+
+        order_ids = [
+            row.id
+            for row in db.query(Order).filter(Order.conversation_id == conversation.id)
+        ]
+
+        if order_ids:
+            db.query(FollowUp).filter(FollowUp.order_id.in_(order_ids)).delete(
+                synchronize_session=False
+            )
+            removed["orders"] += (
+                db.query(Order)
+                .filter(Order.id.in_(order_ids))
+                .delete(synchronize_session=False)
+            )
+
+        removed["quotes"] += (
+            db.query(QuoteRow)
+            .filter(QuoteRow.conversation_id == conversation.id)
+            .delete(synchronize_session=False)
+        )
+        db.query(ApprovalRequest).filter(
+            ApprovalRequest.conversation_id == conversation.id
+        ).delete(synchronize_session=False)
+        db.query(Message).filter(
+            Message.conversation_id == conversation.id
+        ).delete(synchronize_session=False)
+
+        lead_id = conversation.lead_id
+        db.delete(conversation)
+        removed["conversations"] += 1
+
+        if lead_id is not None:
+            # Only reached from here, so a lead orphaned by a previous run's
+            # half-deleted thread is left alone rather than guessed at.
+            db.flush()
+            removed["leads"] += (
+                db.query(Lead)
+                .filter(Lead.id == lead_id)
+                .delete(synchronize_session=False)
+            )
+
+    db.commit()
+
+    return removed
+
+
+def leftovers(db) -> list[str]:
+    """External ids from every stress run, this one or any before it."""
+    return [
+        identity.external_id
+        for identity in db.query(ChannelIdentity)
+        .filter(ChannelIdentity.external_id.like("stress:%"))
+        .all()
+    ]
+
+
+def _describe(removed: dict[str, int]) -> str:
+    return ", ".join(f"{count} {name}" for name, count in removed.items() if count)
 
 
 def mirror(client, chat_id: str, results: list[Result]) -> None:
@@ -560,11 +732,34 @@ def main() -> int:
         help="Which pipe to run the scenarios through.",
     )
     parser.add_argument("--only", help="Run one scenario by name.")
+    parser.add_argument(
+        "--keep",
+        action="store_true",
+        help="Leave the personas' rows in the database instead of removing them.",
+    )
+    parser.add_argument(
+        "--purge",
+        action="store_true",
+        help="Remove rows left by every previous stress run, then exit.",
+    )
     args = parser.parse_args()
 
     db = SessionLocal()
 
     try:
+        if args.purge:
+            stale = leftovers(db)
+
+            if not stale:
+                print("Nothing left over from any previous run.")
+                return 0
+
+            print(f"Removing {len(stale)} stress conversations from previous runs …")
+            removed = sweep(db, stale)
+            print(f"Removed {_describe(removed) or 'nothing'}.")
+
+            return 0
+
         organization_id = storefront_organization_id(db)
 
         if organization_id is None:
@@ -634,6 +829,35 @@ def main() -> int:
 
         for result in failed:
             print(f"  ❌ {result.scenario.name}: {len(result.problems)} problem(s)")
+
+        # Before --live, so an early return in the mirroring branch cannot leave a
+        # persona behind in the leads list.
+        if args.keep:
+            print(
+                f"\nKeeping this run's rows (run {run_token}). "
+                "Remove them later with:"
+                "\n    .venv/bin/python scripts/stress_nera.py --purge"
+            )
+        else:
+            evidence = {result.scenario.name for result in failed}
+            removed = sweep(
+                db,
+                [
+                    f"stress:{run_token}:{result.scenario.name}"
+                    for result in results
+                    if result.scenario.name not in evidence
+                ],
+            )
+
+            print(f"\nRemoved: {_describe(removed) or 'nothing to remove'}.")
+
+            if evidence:
+                # A failure is only diagnosable from the rows it produced, so the
+                # ones that failed stay until they have been looked at.
+                print(
+                    f"Kept {len(evidence)} failed conversation(s) for inspection: "
+                    + ", ".join(f"stress:{run_token}:{name}" for name in sorted(evidence))
+                )
 
         if args.live:
             chat_id = args.chat
