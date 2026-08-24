@@ -14,6 +14,7 @@ from app.models.conversation import (
     STAGE_AWAITING_APPROVAL,
     STAGE_DISCOVERY,
     STAGE_GREETING,
+    STAGE_NEGOTIATING,
     STAGE_QUALIFIED,
     STAGE_READY_TO_BUY,
 )
@@ -759,3 +760,272 @@ def test_an_unrelated_rule_having_fired_changes_nothing():
     )
 
     assert plain.body == other.body
+
+
+# --- the three bugs found testing Nera on Telegram ----------------------
+#
+# All three were reported together and two of them turned out to share a cause,
+# so they are kept together here. Each one is written to fail on the *behaviour*
+# rather than on the wording that happened to expose it, because the wording is
+# what a future edit will change first.
+
+
+# BUG 1 — a close must never happen before discovery finished.
+
+BUY_INTENT_PHRASINGS = (
+    "I want to buy an AI sales rep",
+    "I want to buy",
+    "I'd like to buy an AI sales representative",
+    "sign me up",
+    "take my money",
+    "how do I pay",
+    "let's start",
+    "ok I'll take it",
+    "yes let's do it",
+    "I want to purchase a sales agent",
+)
+
+
+@pytest.mark.parametrize("message", BUY_INTENT_PHRASINGS)
+def test_buy_intent_on_an_empty_scope_asks_before_it_closes(message):
+    """The reported bug: buy-intent reaching a price with no discovery done.
+
+    Parameterised over the phrasings rather than the one from the report,
+    because the report said the same phrase behaved differently on different
+    runs — so the property has to hold for the whole family, not the sample.
+    """
+    reply = compose_reply(message, STAGE_GREETING, scope=Scope())
+
+    assert reply.next_stage != STAGE_READY_TO_BUY
+    assert reply.quoted is None
+    assert reply.interested_plan_code is None
+    assert "₦" not in reply.body
+    # Asking for payment details before there is a figure is the other half of
+    # the same bug — it commits the buyer to a number nobody has computed.
+    assert "name, email and company" not in reply.body
+
+
+@pytest.mark.parametrize("message", BUY_INTENT_PHRASINGS)
+@pytest.mark.parametrize("stage", [STAGE_GREETING, STAGE_DISCOVERY, STAGE_QUALIFIED,
+                                  STAGE_NEGOTIATING, STAGE_READY_TO_BUY])
+def test_no_stage_lets_buy_intent_skip_discovery(message, stage):
+    """"Regardless of which turn the buy-intent phrase appears on."
+
+    The stage is conversation state, and state was what differed between the
+    run that worked and the run that did not. So every stage is tried against
+    every phrasing: none of them may buy the buyer out of the four questions.
+    """
+    reply = compose_reply(message, stage, scope=Scope())
+
+    assert reply.quoted is None
+    assert "₦" not in reply.body
+
+
+@pytest.mark.parametrize("message", BUY_INTENT_PHRASINGS)
+def test_a_half_answered_scope_still_will_not_close(message):
+    """Discovery half done is discovery not done.
+
+    The gate is on the scope being *complete*, which is stricter than the
+    business-type-and-channels the report asked for, and deliberately so: a
+    figure computed from two of four answers is a figure with two guesses in it.
+    """
+    half = Scope(products=("sales_agent",), channels=("web",))
+
+    reply = compose_reply(message, STAGE_QUALIFIED, scope=half)
+
+    assert reply.next_stage != STAGE_READY_TO_BUY
+    assert reply.quoted is None
+    assert "₦" not in reply.body
+
+
+def test_a_complete_scope_is_what_unlocks_the_close():
+    """The other side of the gate — it must actually open when discovery is done.
+
+    Without this, every assertion above could be satisfied by an agent that
+    never closes at all, which would pass the suite and earn nothing.
+    """
+    reply = compose_reply("yes let's do it", STAGE_NEGOTIATING, scope=complete_scope())
+
+    assert reply.next_stage == STAGE_READY_TO_BUY
+    assert reply.quoted is not None
+    assert "₦" in reply.body
+
+
+# BUG 2 — no flat price, from any path, on a dynamically-priced product.
+
+REMOVED_TIER_FIGURES = ("180,000", "180000", "Founding User", "founding_annual")
+
+
+@pytest.mark.parametrize("message", BUY_INTENT_PHRASINGS + (
+    "how much?",
+    "what does it cost",
+    "price?",
+    "what's the price of the founding user plan",
+    "I want the Founding User plan",
+    "give me the annual price",
+))
+def test_no_removed_tier_can_be_quoted(message):
+    """The figure from the report, and the tier it came from, are unreachable.
+
+    Checked against the *name* as well as the number. A tier that came back
+    under a new price would be the same bug — the buyer was quoted something
+    nobody scoped — and asserting only on ₦180,000 would miss it.
+    """
+    for scope in (Scope(), Scope(products=("sales_agent",)), complete_scope()):
+        for stage in (STAGE_GREETING, STAGE_QUALIFIED, STAGE_READY_TO_BUY):
+            body = compose_reply(message, stage, scope=scope).body
+
+            for figure in REMOVED_TIER_FIGURES:
+                assert figure not in body
+
+
+@pytest.mark.parametrize("message", BUY_INTENT_PHRASINGS + (
+    "how much?", "what does it cost", "price?", "how much again",
+))
+def test_no_flat_price_is_reachable(message):
+    """Every figure the storefront names carries the lines that produced it.
+
+    This is the invariant the reported bug violated, stated as a rule the engine
+    has to keep: on a dynamically-priced product, a message containing a price
+    must also contain the itemised breakdown. A bare total is indistinguishable
+    in a transcript from a static tier, which is exactly how ₦180,000 went
+    unnoticed until a buyer saw it.
+
+    Walked across every scope state, because the confirm path and the quote path
+    are reached from different ones and only one of them used to itemise.
+    """
+    for scope in (Scope(), Scope(products=("sales_agent",)),
+                  Scope(products=("sales_agent",), channels=("web",)),
+                  complete_scope()):
+        for stage in (STAGE_GREETING, STAGE_DISCOVERY, STAGE_QUALIFIED,
+                      STAGE_NEGOTIATING, STAGE_READY_TO_BUY):
+            body = compose_reply(message, stage, scope=scope).body
+
+            if "₦" not in body:
+                continue
+
+            assert "–" in body, (
+                f"named a price with no breakdown at {stage} for {message!r}:\n{body}"
+            )
+
+
+def test_the_confirmation_before_payment_is_itemised():
+    """The last figure before card details is the one most worth itemising.
+
+    It used to be the only bare total the engine could produce, and it read
+    word-for-word like the static-tier close that was reported.
+    """
+    reply = compose_reply("yes let's do it", STAGE_NEGOTIATING, scope=complete_scope())
+
+    assert "name, email and company" in reply.body
+    assert "₦" in reply.body
+    assert "–" in reply.body
+    assert "AI Sales Representative" in reply.body
+
+
+# BUG 3 — questions about Nera itself are answered, never escalated.
+
+ABOUT_NERA = (
+    "I want to know what you sell",
+    "what do you sell?",
+    "so what do you actually sell?",
+    "what do you offer",
+    "what are you",
+    "who are you",
+    "what is nera",
+    "are you a human?",
+    "are you an AI?",
+    "am I talking to a real person",
+    "what can you do for me",
+    "why should I use you",
+    "what makes you different",
+    "how do you work",
+    "what services do you provide",
+    "tell me about your company",
+    "what's your name",
+    "what products do you have",
+    "list your products",
+    "what else can you build",
+    "what are my options",
+)
+
+
+@pytest.mark.parametrize("message", ABOUT_NERA)
+@pytest.mark.parametrize("stage", [STAGE_GREETING, STAGE_DISCOVERY, STAGE_QUALIFIED,
+                                  STAGE_NEGOTIATING, STAGE_READY_TO_BUY])
+def test_nera_never_escalates_a_question_about_itself(message, stage):
+    """The reported bug, widened to every turn and every question of its kind.
+
+    It escalated from turn two onward because the greeting answered these and
+    the greeting only fires on turn one. Nothing about the *stage* changes
+    whether Nera knows its own name, so the stage is parameterised: the answer
+    has to be available on every one of them.
+    """
+    for scope in (Scope(), Scope(products=("sales_agent",)), complete_scope()):
+        reply = compose_reply(message, stage, scope=scope)
+
+        assert not reply.reasoning.escalated, (
+            f"escalated {message!r} at {stage}: {reply.body}"
+        )
+        assert reply.reasoning.rule != RULE_UNKNOWN
+        assert not reply.needs_approval
+
+
+@pytest.mark.parametrize("message", ABOUT_NERA)
+def test_a_question_about_nera_is_never_read_as_an_intake_answer(message):
+    """The symptom underneath the reported one, and the worse of the two.
+
+    "Sell" is how the sales product is described, so "what do you sell" scored
+    as the buyer *choosing* it: answered with "Noted." and a product recorded
+    that nobody picked. Silent, and it puts a line on the invoice.
+    """
+    reply = compose_reply(message, STAGE_QUALIFIED, scope=Scope())
+
+    assert reply.scope is None or reply.scope.is_empty, (
+        f"{message!r} was recorded as an intake answer: {reply.scope}"
+    )
+    assert not reply.body.startswith("Noted.")
+
+
+@pytest.mark.parametrize("message", ABOUT_NERA)
+def test_asking_about_nera_mid_intake_keeps_the_pending_question(message):
+    """A question costs the buyer nothing — they are still where they were.
+
+    Without this the answer arrives and the intake silently stalls, which reads
+    as Nera having lost the thread and is how a scoped conversation dies two
+    answers from a price.
+    """
+    half = Scope(products=("sales_agent",))
+
+    reply = compose_reply(message, STAGE_QUALIFIED, scope=half)
+
+    assert half.question() in reply.body
+    # And the answers already given survive being asked a question.
+    if reply.scope is not None:
+        assert reply.scope.products == ("sales_agent",)
+
+
+def test_asked_outright_whether_it_is_human_it_says_so_first():
+    """The one question where a true-but-oblique answer is the wrong answer."""
+    for message in ("are you a human?", "are you a bot", "am I talking to a real person"):
+        body = compose_reply(message, STAGE_QUALIFIED, scope=Scope()).body
+
+        opening = body.split("\n")[0].lower()
+        assert "not a person" in opening or "an ai" in opening, body
+
+
+def test_the_escalation_fallback_still_works_for_the_customers_business():
+    """The fallback was narrowed, not removed.
+
+    It exists for questions about a business Nera holds no data on, and that is
+    still exactly what it must do — a fix for BUG 3 that made Nera answer
+    everything would have replaced a visible failure with an invisible one.
+    """
+    reply = compose_reply(
+        "what time does your warehouse in Aba close on public holidays?",
+        STAGE_QUALIFIED,
+        scope=Scope(),
+    )
+
+    assert reply.reasoning.rule == RULE_UNKNOWN
+    assert reply.reasoning.escalated

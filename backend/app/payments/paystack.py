@@ -48,6 +48,37 @@ class PaystackError(RuntimeError):
     """Paystack was reached but refused, or answered something unusable."""
 
 
+class PaystackRejectedRequest(PaystackError):
+    """Paystack understood the request and refused it on its merits.
+
+    Split out from the general error because the two need opposite things said
+    to a buyer. An unreachable provider is worth retrying — "ask me again in a
+    minute" is true and useful. A 4xx is a verdict on *this* request: the same
+    request will be refused the same way forever, so telling that buyer to wait
+    a minute sends them round a loop that cannot end. The first one this caught
+    was a real address Paystack considers invalid, where the only thing that
+    helps is asking for a different one.
+
+    ``reason`` is Paystack's own message, kept because it is the only account of
+    what was actually wrong.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Paystack rejected the request: {reason}")
+        self.reason = reason
+
+    @property
+    def is_about_the_email(self) -> bool:
+        """Whether the buyer's address is what was refused.
+
+        Matched on Paystack's wording, which is why it is a property here and
+        not a branch at the call site: if they reword it, this is the one place
+        that needs to change, and the fallback is the generic refusal rather
+        than a wrong explanation.
+        """
+        return "email" in self.reason.lower()
+
+
 @dataclass(frozen=True)
 class Charge:
     """What Paystack says about one transaction."""
@@ -162,6 +193,13 @@ class PaystackClient:
             # Paystack puts the human-readable reason in "message" whether it
             # is a validation error or a rejected key.
             message = payload.get("message") or f"HTTP {status_code}"
+
+            # A 4xx is a verdict on this request and will not change on a
+            # retry; anything else may. The distinction exists so the buyer is
+            # told which of the two happened — see PaystackRejectedRequest.
+            if 400 <= status_code < 500:
+                raise PaystackRejectedRequest(message)
+
             raise PaystackError(f"Paystack rejected the request: {message}")
 
         data = payload.get("data")

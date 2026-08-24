@@ -11,6 +11,7 @@ from app.payments.paystack import (
     PaymentsNotConfigured,
     PaystackClient,
     PaystackError,
+    PaystackRejectedRequest,
     dump_payload,
 )
 
@@ -20,5 +21,6 @@ __all__ = [
     "PaymentsNotConfigured",
     "PaystackClient",
     "PaystackError",
+    "PaystackRejectedRequest",
     "dump_payload",
 ]

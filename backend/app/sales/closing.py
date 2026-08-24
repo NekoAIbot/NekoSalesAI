@@ -42,6 +42,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config.logging import get_logger
+from app.catalog import find_plan
 from app.models.conversation import (
     ROLE_AGENT,
     STAGE_READY_TO_BUY,
@@ -49,7 +50,11 @@ from app.models.conversation import (
     Message,
 )
 from app.models.order import ORDER_PENDING, Order
-from app.payments import PaymentsNotConfigured, PaystackError
+from app.payments import (
+    PaymentsNotConfigured,
+    PaystackError,
+    PaystackRejectedRequest,
+)
 from app.payments.checkout import CheckoutError, CheckoutService
 from app.pricing.quotes import reference_from_plan_code
 from app.products.config import format_money
@@ -120,11 +125,53 @@ class ClosingService:
         Deliberately strict about the stage. A buyer mid-intake has a scope but
         has not agreed to a figure, and sending them a live payment link would be
         asking for money for something they never said yes to.
+
+        Also strict about the code still meaning something. A thread remembers
+        what it settled on as a string, and a string outlives the thing it names:
+        threads from before the fixed tiers were withdrawn are still sitting at
+        ``ready_to_buy`` holding ``founding_annual``, a plan no catalog contains
+        any more. Without the check below they read as closeable, the checkout
+        cannot resolve the code, and ``_blocked`` hands the buyer the resulting
+        error — which is the sentence "There is no plan with the code
+        'founding_annual'." That is an internal identifier shown to a customer,
+        and it is the *only* thing they would get, because a thread in that state
+        produces it again on every turn.
+
+        Answering False instead drops the turn back to the agent, which is
+        dynamically priced and will re-scope from the four questions. Slower for
+        that buyer, and the only version of this that can still end in a sale.
         """
         if conversation.stage != STAGE_READY_TO_BUY:
             return False
 
-        return bool(conversation.interested_plan_code and conversation.visitor_email)
+        if not (conversation.interested_plan_code and conversation.visitor_email):
+            return False
+
+        return self._settled_on_something_payable(conversation)
+
+    def _settled_on_something_payable(self, conversation: Conversation) -> bool:
+        """Whether the remembered code still names something that can be priced.
+
+        A quote reference is taken on trust here: whether it is still live is a
+        question for ``QuoteService.redeem``, which re-prices it, and a quote
+        that has expired produces a ``CheckoutError`` written for a buyer to
+        read. A *plan* code is checked, because that failure is not.
+        """
+        code = conversation.interested_plan_code
+
+        if reference_from_plan_code(code) is not None:
+            return True
+
+        if find_plan(code) is not None:
+            return True
+
+        logger.warning(
+            "Conversation %s is at a close holding plan code %r, which no "
+            "longer exists; re-scoping instead of raising a link",
+            conversation.id,
+            code,
+        )
+        return False
 
     def existing_link(self, conversation: Conversation) -> Order | None:
         """A pending order on this thread that already has somewhere to pay."""
@@ -226,6 +273,36 @@ class ClosingService:
                 f"{exc}\n\nSay the word and I'll take the four questions "
                 "again — it's quicker the second time.",
                 f"checkout refused: {exc}",
+            )
+        except PaystackRejectedRequest as exc:
+            # Caught before PaystackError, which it subclasses. The provider did
+            # respond — it read this request and refused it — so telling the
+            # buyer to try again in a minute would be both untrue and a loop
+            # they cannot get out of. The one thing that changes the outcome is
+            # naming what was wrong.
+            logger.warning(
+                "Paystack refused the checkout for conversation %s: %s",
+                conversation.id,
+                exc.reason,
+            )
+
+            if exc.is_about_the_email:
+                return self._blocked(
+                    conversation,
+                    "The payment provider won't accept that email address, so "
+                    "I couldn't raise the link. Nothing has been charged.\n\n"
+                    "Send me another one — a different address entirely, not a "
+                    "retype of the same — and I'll raise it straight away.",
+                    f"the payment provider refused the buyer's email: {exc.reason}",
+                )
+
+            return self._blocked(
+                conversation,
+                "The payment provider turned that request down, so there's no "
+                "link yet and nothing has been charged. This one needs a person "
+                "rather than another attempt from me — someone will pick it up "
+                "and come back to you.",
+                f"the payment provider refused the request: {exc.reason}",
             )
         except PaystackError:
             logger.exception(

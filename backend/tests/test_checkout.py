@@ -641,14 +641,31 @@ def test_webhook_cannot_mark_an_order_paid_without_a_signature(
     assert order.status == ORDER_PENDING
 
 
-def test_checkout_config_reports_disabled_when_no_key_is_set(client):
+@pytest.fixture
+def no_paystack_key(monkeypatch):
+    """A deployment with payments switched off, stated rather than inherited.
+
+    These tests used to read whatever ``PAYSTACK_SECRET_KEY`` the developer's
+    ``.env`` happened to hold, so they passed on a machine with no keys and
+    failed on one with them — a suite result that depends on the environment is
+    a suite that cannot be trusted about the thing it claims to check. The
+    moment a real test key was added locally, three tests went red while the
+    code they cover was untouched and correct.
+    """
+    monkeypatch.setattr(settings, "PAYSTACK_SECRET_KEY", "", raising=False)
+    assert not settings.payments_enabled
+
+
+def test_checkout_config_reports_disabled_when_no_key_is_set(client, no_paystack_key):
     body = client.get("/api/v1/checkout/config").json()
 
     assert body["enabled"] is False
     assert body["live_mode"] is False
 
 
-def test_creating_an_order_without_keys_returns_503_not_500(client, storefront, quoted):
+def test_creating_an_order_without_keys_returns_503_not_500(
+    client, storefront, quoted, no_paystack_key
+):
     response = client.post(
         "/api/v1/checkout/orders",
         json={"quote_reference": quoted, "email": "buyer@example.com"},
@@ -867,7 +884,7 @@ def test_conversation_checkout_refuses_a_plan_that_does_not_exist(
     assert response.status_code == 400
 
 
-def test_conversation_checkout_without_keys_returns_503(client, thread):
+def test_conversation_checkout_without_keys_returns_503(client, thread, no_paystack_key):
     reach_buy_intent(client, thread)
 
     response = client.post(
@@ -876,3 +893,107 @@ def test_conversation_checkout_without_keys_returns_503(client, thread):
     )
 
     assert response.status_code == 503
+
+
+# ---------- buying both products, on the web ----------
+#
+# The two-product build is the newest thing the engine can price, and the widget
+# is where it was least proven: every web checkout test above orders a single
+# product. These walk the path a paying customer walks — the intake, the price
+# endpoint the buy panel reads, then the order — because the parts were each
+# tested and the joins between them were not.
+
+BOTH_PRODUCTS_ANSWERS = (
+    "both",
+    "my website and whatsapp",
+    "about 2,000 a month",
+    "none",
+)
+
+BOTH_PRODUCTS_BUILD = Requirement(
+    products=(PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT),
+    channels=(CHANNEL_WEB, CHANNEL_WHATSAPP),
+    monthly_conversations=2_000,
+)
+
+
+def reach_a_two_product_price(client, thread) -> dict:
+    for answer in BOTH_PRODUCTS_ANSWERS:
+        client.post(
+            f"/api/v1/sales/conversations/{thread}/messages",
+            json={"body": answer},
+        )
+
+    return client.get(f"/api/v1/sales/conversations/{thread}").json()
+
+
+def test_a_web_buyer_can_pay_for_both_products_at_once(
+    client, db, thread, storefront, monkeypatch, transport
+):
+    """Two products, one payment, and the amount Paystack is asked for is the
+    engine's own total — computed here rather than written down, so a pricing
+    change cannot leave this asserting a figure we no longer charge.
+    """
+    expected = price(BOTH_PRODUCTS_BUILD)
+
+    body = reach_a_two_product_price(client, thread)
+    assert body["stage"] == "ready_to_buy"
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.sales.CheckoutService",
+        lambda session: CheckoutService(
+            session, client=PaystackClient(secret_key=TEST_SECRET, transport=transport)
+        ),
+    )
+
+    response = client.post(
+        f"/api/v1/sales/conversations/{thread}/checkout",
+        json={"email": "buyer@brightfoods.example", "name": "Ada Nwosu"},
+    )
+
+    assert response.status_code == 201
+    order = response.json()
+
+    assert order["amount_minor"] == expected.total_minor
+    assert transport.requests[-1]["body"]["amount"] == expected.total_minor
+
+    # And more than either product alone on the same channels and volume, which
+    # is the only thing that makes "they bought both" observable in the amount.
+    one_only = price(
+        Requirement(
+            products=(PRODUCT_SALES_AGENT,),
+            channels=(CHANNEL_WEB, CHANNEL_WHATSAPP),
+            monthly_conversations=2_000,
+        )
+    )
+
+    assert order["amount_minor"] > one_only.total_minor
+
+
+def test_the_buy_panel_can_read_the_price_of_a_two_product_quote(
+    client, thread, storefront
+):
+    """What the buy panel fetches before it shows a figure.
+
+    ``chat.js`` unwraps ``quote_<reference>`` and GETs the quote to fill the
+    price in, unauthenticated — a buyer holds a conversation token, not a login.
+    If this needed auth the panel would show a form with no price; if it named
+    one product against two products' total, the buyer would only find out which
+    they were buying on Paystack's own page.
+    """
+    expected = price(BOTH_PRODUCTS_BUILD)
+
+    body = reach_a_two_product_price(client, thread)
+    reference = body["interested_plan_code"].removeprefix("quote_")
+
+    response = client.get(f"/api/v1/pricing/quotes/{reference}")
+
+    assert response.status_code == 200
+    quote = response.json()
+
+    assert quote["display_total"] == expected.display_total
+    assert quote["billing_period"]
+
+    # Both products named, so the price is not attributed to only one of them.
+    assert "Sales" in quote["product_name"]
+    assert "Support" in quote["product_name"]

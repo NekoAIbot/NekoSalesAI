@@ -18,7 +18,12 @@ from app.config.settings import settings
 from app.dependencies.database import get_db
 from app.followups.service import FollowUpService
 from app.models.order import Order
-from app.payments import PaymentsNotConfigured, PaystackClient, PaystackError
+from app.payments import (
+    PaymentsNotConfigured,
+    PaystackClient,
+    PaystackError,
+    PaystackRejectedRequest,
+)
 from app.payments.checkout import CheckoutError, CheckoutService
 from app.payments.provisioning import ProvisioningService
 from app.repositories.organization_repository import OrganizationRepository
@@ -152,6 +157,26 @@ def create_order(payload: CheckoutRequest, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        ) from exc
+    except PaystackRejectedRequest as exc:
+        # Caught before PaystackError, which it subclasses. A refusal of this
+        # request is not a provider outage: 502 and "try again" would blame the
+        # provider and send the caller round a loop that cannot succeed.
+        logger.warning("Paystack refused a checkout: %s", exc.reason)
+
+        detail = (
+            "Our payment provider will not accept that email address. "
+            "Nothing has been charged — try a different address."
+            if exc.is_about_the_email
+            else (
+                "Our payment provider turned this checkout down. Nothing has "
+                "been charged."
+            )
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
         ) from exc
     except PaystackError as exc:
         logger.warning("Paystack refused a checkout: %s", exc)

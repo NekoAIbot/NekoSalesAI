@@ -41,7 +41,7 @@ from app.models.conversation import (
     STAGE_READY_TO_BUY,
 )
 from app.products.config import Faq, Plan, ProductConfig
-from app.pricing.complexity import PricingError, Quote, price
+from app.pricing.complexity import PRODUCT_NAMES, PricingError, Quote, price
 from app.sales.reasoning import (
     Reasoning,
     capability_reference,
@@ -63,6 +63,7 @@ from app.sales.scoping import (
     answer as answer_scope,
     channel_names,
     parse_products,
+    product_options,
 )
 
 # Rule names. These land in the reasoning trail and in tests, so they are
@@ -192,6 +193,75 @@ _CAPABILITY_PATTERNS = (
     r"\bhow does (it|this) work\b",
     r"\bfeatures?\b",
     r"\bcapabilit(y|ies)\b",
+)
+
+# Asking what *we* offer. Its own list because these must never be read as an
+# answer to an intake question, and one of them very nearly is: "sell" is how
+# the sales agent is described, so "what do you sell" was being scored as the
+# buyer choosing the sales product. They were answered with "Noted." and a
+# choice recorded that nobody made — the worst reading available, because it is
+# silent and it puts a product on the scope.
+#
+# Kept separate from _CAPABILITY_PATTERNS rather than folded in, because these
+# have to be recognised *before* the pending-answer path and capability
+# questions do not: this list is deliberately short, anchored, and only about
+# our own offering.
+#
+# ``_HEDGE`` is why "so what do you actually sell?" is here at all. Written
+# without it, every pattern below wants the verb to sit flush against the
+# pronoun, and nobody types that way — the first real phrasing tested slipped
+# past the whole list on one adverb and was read as an intake answer again. It
+# is an optional run of filler, not a wildcard, so the patterns stay anchored:
+# "what do you actually sell" matches and "what do you tell customers who sell
+# online" still does not.
+_HEDGE = r"(?:actually|really|exactly|specifically|even|guys|folks|people)?\s*"
+
+_WHAT_WE_OFFER_PATTERNS = (
+    rf"\bwhat (do|can) (you|nera|u) {_HEDGE}(sell|offer|build|make|do|have)\b",
+    r"\bwhat (are|is) (you|nera) (selling|offering|building)\b",
+    r"\bwhat('?s| is) (on offer|available|your (product|products|catalog|catalogue))\b",
+    rf"\b(know|tell me|show me|list) what (you|nera) {_HEDGE}"
+    r"(sell|offer|build|make|do|have)\b",
+    r"\bwhat kind of (ai|ais|agents?|bots?|products?) (do you|can you|you) "
+    r"(build|make|sell|offer)\b",
+    r"\bwhich (ais?|agents?|products?) (do you|can you) (build|make|sell|offer)\b",
+    rf"\bwhat (else )?(do you|can you) {_HEDGE}(build|make)\b",
+    r"\bwhat are my options\b",
+    r"\b(list|show me) (your|the) products?\b",
+)
+
+# Asking who or what it is. These were the reported bug and the worst one on the
+# list: a buyer who asks "who are you" and gets "I'd rather not guess, I've
+# passed it to the team" has watched the agent fail to know its own name.
+#
+# They escalated because the greeting answers them, and the greeting only fires
+# on the first turn — after that nothing matched and the fallback took them. The
+# fallback is right to be cautious about the *customer's* business, which it
+# genuinely has no data on. It has no business being cautious about this: every
+# word of the answer is already in the config it was handed.
+_IDENTITY_PATTERNS = (
+    r"\bwho (are|r) (you|u|nera)\b",
+    r"\bwhat (are|r) (you|u)\b",
+    r"\bwhat is (nera|this|this company|your company)\b",
+    r"\bwhat('?s| is) your name\b",
+    r"\btell me about (yourself|nera|your (company|business|team))\b",
+    r"\bwhy should i (use|choose|pick|trust|buy from) (you|nera)\b",
+    r"\bwhat makes (you|nera) different\b",
+    r"\bwhat('?s| is) (special|different) about (you|nera)\b",
+    r"\bare you (nera|an agent|the ai)\b",
+)
+
+# Kept apart from the rest of identity because it deserves a straight yes. An
+# answer that opens "I'm Nera, I build AI for businesses" is true and still
+# dodges the question that was asked, and this is the one question where dodging
+# costs the most trust.
+_ASKED_IF_HUMAN_PATTERNS = (
+    r"\bare (you|u) (a |an )?(human|person|real person|robot|bot|ai|machine|"
+    r"computer|program)\b",
+    r"\b(am i|i'?m) (talking|speaking|chatting|dealing) (to|with) (a |an )?"
+    r"(human|person|bot|robot|ai|machine|computer|real person)\b",
+    r"\bis this (a |an )?(human|person|bot|robot|ai|machine|real person)\b",
+    r"\byou'?re (a |an )?(bot|robot|ai|human|person|machine)\b",
 )
 
 _EMAIL_PATTERN = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
@@ -613,15 +683,31 @@ def _scoping_reply(
     signals: list[str],
     lead_in: str = "",
     captured_email: str | None = None,
+    rule: str = RULE_SCOPING,
+    grounded_in: list[str] | None = None,
 ) -> AgentReply:
-    """Ask the next unanswered scoping question."""
+    """Ask the next unanswered scoping question.
+
+    ``rule`` is overridable because the question is sometimes the tail of a
+    reply whose real subject was something else — a buyer asking what we build
+    gets an answer *and* the question they were on. Recording that turn as
+    scoping would lose the reason it happened from the trail a human reads back.
+
+    ``grounded_in`` travels with it for the same reason. When the lead-in is a
+    claim about the product, that claim's citations belong on this turn — a
+    capability answer that cites nothing because it happened to arrive mid-intake
+    is a claim with its provenance dropped, which is the one thing every reply
+    here is supposed to carry.
+    """
     question = scope.question()
 
     body = f"{lead_in}\n\n{question}" if lead_in else question
 
     return AgentReply(
         body=body,
-        reasoning=Reasoning(rule=RULE_SCOPING, signals=signals),
+        reasoning=Reasoning(
+            rule=rule, signals=signals, grounded_in=grounded_in or []
+        ),
         next_stage=STAGE_QUALIFIED,
         scope=scope,
         # Carried even mid-intake. A buyer who volunteers their address while
@@ -692,6 +778,21 @@ def _confirm_reply(
     The figure is re-derived rather than remembered, for the same reason
     ``_quote_reply`` derives it: a price the engine cannot reproduce from the
     requirement is a price nobody can check.
+
+    Itemised, and that is a deliberate reversal. This used to confirm the total
+    alone — "Good, X at ₦31,000 per month" — on the reasoning that the buyer had
+    just seen the breakdown and would not want it read back. Two things are wrong
+    with that. It is the last figure anyone sees before typing in card details,
+    which is the worst moment in the conversation to be terse about arithmetic.
+    And it left the engine with one path that could emit a bare total, which is
+    indistinguishable in a transcript from the flat tier price this release
+    removed — the reported bug read exactly like this sentence, because it was
+    this sentence's plan-based twin.
+
+    With this itemised, every figure Nera can put in front of a buyer on a
+    dynamically-priced product carries the lines that produced it. That is a
+    property worth having as a rule rather than a habit, and
+    ``test_no_flat_price_is_reachable`` holds it to it.
     """
     try:
         quote = price(scope.to_requirement())
@@ -700,8 +801,8 @@ def _confirm_reply(
 
     return AgentReply(
         body=(
-            f"Good — {quote.product_name} at {quote.display_total} per "
-            f"{quote.billing_period}.\n\n"
+            "Good — here is that figure once more, with what makes it up:\n\n"
+            f"{_quote_summary(quote)}\n\n"
             "I'll need your name, email and company to raise the payment. "
             "What should I put down?"
         ),
@@ -851,6 +952,55 @@ def compose_reply(
     if dynamic:
         pending = scope.next_step
 
+        # "What do you sell?" — answered, whatever else is going on.
+        #
+        # First, and before the pending-answer path, because that path would
+        # otherwise consume it: "sell" is how the sales agent is described, so
+        # the question scored as the buyer *choosing* the sales product and got
+        # "Noted." with a selection recorded that nobody made. Escalating it was
+        # the other reported symptom, and no better — this is the one question
+        # about the catalog we can always answer from the catalog itself.
+        #
+        # Never touches the scope. It is a question, not an answer, so the same
+        # intake question stays on the table underneath and the buyer loses
+        # nothing by having asked.
+        if _matches(_WHAT_WE_OFFER_PATTERNS, text):
+            reasoning = Reasoning(
+                rule=RULE_CAPABILITY,
+                signals=[
+                    "visitor asked what we build",
+                    f"answered from the catalog ({len(PRODUCT_NAMES)} products)",
+                ],
+                grounded_in=[f"product:{code}" for code in PRODUCT_NAMES],
+            )
+
+            body = (
+                "Here's everything I build — and I price each one separately, "
+                "so you only pay for what you take:\n\n"
+                + product_options()
+                + "\n\nEvery figure is worked out from what yours has to do, "
+                "line by line. There's no fixed package to pick from."
+            )
+
+            if pending is not None:
+                # The intake was mid-flight. Put the question back rather than
+                # leaving the buyer to guess where they were.
+                return _scoping_reply(
+                    scope,
+                    reasoning.signals,
+                    lead_in=body,
+                    captured_email=captured_email,
+                    rule=RULE_CAPABILITY,
+                    grounded_in=reasoning.grounded_in,
+                )
+
+            return AgentReply(
+                body=body,
+                reasoning=reasoning,
+                captured_email=captured_email,
+                scope=scope,
+            )
+
         # Advice before intake, and only while nothing has been chosen yet.
         #
         # A buyer who says "I run a food store" has told us what they do, not
@@ -994,9 +1144,8 @@ def compose_reply(
                 )
 
         elif _matches(_BUY_PATTERNS, text) or _matches(_AGREEMENT_PATTERNS, text):
-            # Scope complete and they are saying yes. Confirm the total without
-            # re-reading the whole breakdown back at them — they have just seen
-            # it — but still derive it rather than recall it.
+            # Scope complete and they are saying yes. Confirm the figure with the
+            # lines that made it, and derive it rather than recall it.
             #
             # Plain agreement counts here and only here: completing a scope
             # always quotes, so a complete scope means a figure has been shown
@@ -1046,7 +1195,29 @@ def compose_reply(
             captured_email=captured_email,
         )
 
-    if _matches(_BUY_PATTERNS, text):
+    # ---------- fixed-price products, from a published plan list ----------
+    #
+    # Every branch below is gated on ``not dynamic``, and that word is the whole
+    # point of the gate. These are the only paths in the engine that can put a
+    # figure in front of a buyer without the complexity engine deriving it, and
+    # for a dynamically-priced product they must be unreachable — not unlikely,
+    # unreachable.
+    #
+    # They already were, but by accident: the dynamic block above falls through
+    # only when the message matched neither the buy nor the pricing patterns,
+    # which happens to be exactly what these branches then test for, so nothing
+    # ever arrived. That is a coincidence of two complementary conditions rather
+    # than a rule, it held only because the storefront publishes no plans, and it
+    # would break the day a dynamic config carried a plan list — the buyer would
+    # be quoted a flat tier price for a build nobody scoped.
+    #
+    # This is the bug that surfaced as "₦180,000 per year — Founding User" on a
+    # thread with no scope on it. The static tiers are gone from the catalog, so
+    # that figure cannot come back, but the *path* that quoted a flat price
+    # without discovery is what let a removed tier reach a buyer at all. Saying
+    # "not dynamic" out loud closes it for good, and for every product priced
+    # this way from here on.
+    if not dynamic and _matches(_BUY_PATTERNS, text):
         # In priority order: the plan named in *this* message, the plan this
         # conversation already settled on, then the default. The middle term is
         # the one that matters — "yes, let's start" names no plan, and without
@@ -1105,7 +1276,7 @@ def compose_reply(
             captured_email=captured_email,
         )
 
-    named_plan = _mentioned_plan(text, config)
+    named_plan = None if dynamic else _mentioned_plan(text, config)
 
     if named_plan is not None and config.can_sell:
         reasoning = Reasoning(
@@ -1126,7 +1297,7 @@ def compose_reply(
             captured_email=captured_email,
         )
 
-    if _matches(_PRICING_PATTERNS, text) and config.sells_anything:
+    if not dynamic and _matches(_PRICING_PATTERNS, text) and config.sells_anything:
         plans_text, citations = _plan_lines(config)
         reasoning = Reasoning(
             rule=RULE_PRICING,
@@ -1179,14 +1350,33 @@ def compose_reply(
             grounded_in=citations,
         )
 
+        body = f"Here's what it actually does today:\n\n{summary}"
+
+        # Mid-intake this used to answer and then quietly stop: no scope handed
+        # back, no question re-asked, and the four-question intake stalled with
+        # nothing on the table. From the buyer's side that reads as Nera having
+        # lost the thread, and it happens two answers from a price.
+        #
+        # Same treatment as the identity gate below, for the same reason — asking
+        # a question should never cost a buyer their place.
+        pending_question = scope.question() if dynamic else None
+
+        if pending_question is not None:
+            return _scoping_reply(
+                scope,
+                reasoning.signals,
+                lead_in=body,
+                captured_email=captured_email,
+                rule=RULE_CAPABILITY,
+                grounded_in=reasoning.grounded_in,
+            )
+
         return AgentReply(
-            body=(
-                f"Here's what it actually does today:\n\n{summary}\n\n"
-                "Anything there you want me to go deeper on?"
-            ),
+            body=f"{body}\n\nAnything there you want me to go deeper on?",
             reasoning=reasoning,
             next_stage=STAGE_DISCOVERY,
             captured_email=captured_email,
+            scope=scope if dynamic else None,
         )
 
     faq_hit = _match_faq(text, config)
@@ -1338,6 +1528,79 @@ def compose_reply(
                 rule=RULE_COURTESY,
                 signals=["message was an acknowledgement, not a question"],
             ),
+            captured_email=captured_email,
+            scope=scope if dynamic else None,
+        )
+
+    # Who and what it is. Never escalated, on any turn, for any config.
+    #
+    # This is the reported bug, and the placement is the fix: the greeting
+    # already answers these, but the greeting only fires on the first turn, so
+    # from turn two onward nothing matched and the fallback swallowed them. A
+    # buyer who asks "who are you" and is told "I'd rather not guess, I've
+    # passed it to the team" has watched the agent fail to know its own name —
+    # after it introduced itself moments earlier, which makes it look like
+    # something is broken rather than careful.
+    #
+    # The caution the fallback exists for is caution about the *customer's*
+    # business, which it genuinely holds no data on. It has no business being
+    # cautious here: every word below comes out of the config it was handed, so
+    # there is nothing to guess and nothing a human could add.
+    #
+    # Sits this late deliberately. Every rule that can match has already had the
+    # message, so this widens what gets answered without changing a single
+    # existing answer — and mid-intake it puts the pending question back rather
+    # than leaving the buyer to work out where they were.
+    if _matches(_ASKED_IF_HUMAN_PATTERNS, text) or _matches(_IDENTITY_PATTERNS, text):
+        reasoning = Reasoning(
+            rule=RULE_GREETING,
+            signals=[
+                "visitor asked who or what they are talking to",
+                "answered from the config's own identity, never escalated",
+            ],
+        )
+
+        # ``_intro_for`` returns the clause that follows "I'm <name>," — it may
+        # well open with "and" — so the name goes in front of it here rather
+        # than the sentence being assembled two different ways in two branches.
+        introduction = f"I'm {config.agent_name}, {_intro_for(config)}"
+
+        if _matches(_ASKED_IF_HUMAN_PATTERNS, text):
+            # Straight answer first, before the introduction. Opening with "I'm
+            # Nera, I build AI for businesses" is true and still dodges the
+            # question, and this is the one question where being dodged costs
+            # the most trust.
+            body = (
+                "Software — an AI, not a person. Said plainly because you "
+                f"asked plainly.\n\n{introduction}"
+            )
+            reasoning.add_signal("asked outright whether it is human")
+        else:
+            body = introduction
+
+        if config.capabilities:
+            first = config.capabilities[0]
+            reasoning.cite(
+                capability_reference(first.verified_by)
+                if first.is_verified
+                else declared_capability_reference(0)
+            )
+
+        pending_question = scope.question() if dynamic else None
+
+        if pending_question is not None:
+            return _scoping_reply(
+                scope,
+                reasoning.signals,
+                lead_in=body,
+                captured_email=captured_email,
+                rule=RULE_GREETING,
+                grounded_in=reasoning.grounded_in,
+            )
+
+        return AgentReply(
+            body=f"{body}\n\n{config.opening_question}",
+            reasoning=reasoning,
             captured_email=captured_email,
             scope=scope if dynamic else None,
         )

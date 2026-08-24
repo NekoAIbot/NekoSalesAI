@@ -422,3 +422,58 @@ def test_a_paid_order_is_not_offered_as_a_pending_link(service, storefront, db):
     db.commit()
 
     assert ClosingService(db).existing_link(db.query(Conversation).one()) is None
+
+
+# ---------- a plan code that outlived its plan ----------
+
+
+def test_a_retired_plan_code_is_not_treated_as_closeable(db, storefront):
+    """Threads from before the fixed tiers were withdrawn are still at the close.
+
+    Nine of them, in the live database, two at ``ready_to_buy`` holding
+    ``founding_annual`` — a code no catalog contains any more. Every ingredient
+    ``ready`` used to check for was present, so the thread read as closeable, the
+    checkout could not resolve the code, and the buyer was handed the resulting
+    error: "There is no plan with the code 'founding_annual'." An internal
+    identifier, shown to a customer, on every turn forever.
+    """
+    from app.models.conversation import STAGE_READY_TO_BUY
+
+    conversation = Conversation(
+        organization_id=storefront.id,
+        public_token="t_stale",
+        stage=STAGE_READY_TO_BUY,
+    )
+    conversation.interested_plan_code = "founding_annual"
+    conversation.visitor_email = "ada@example.com"
+    db.add(conversation)
+    db.commit()
+
+    closing = ClosingService(db)
+
+    assert closing.ready(conversation) is False
+    # And nothing is said to the buyer about it — the turn goes back to the
+    # agent, which re-scopes. A blocked message here would be the same dead end
+    # in politer words.
+    assert closing.close(conversation) is None
+    assert db.query(Order).count() == 0
+
+
+def test_a_live_quote_reference_at_the_close_is_still_honoured(db, storefront):
+    """The guard must not take working threads down with the retired ones.
+
+    A quote reference is trusted here on purpose — whether it is still live is
+    ``QuoteService.redeem``'s question, and its failure is already written for a
+    buyer to read. Only plan codes are checked, because theirs is not.
+    """
+    from app.models.conversation import STAGE_READY_TO_BUY
+
+    conversation = Conversation(
+        organization_id=storefront.id,
+        public_token="t_live",
+        stage=STAGE_READY_TO_BUY,
+    )
+    conversation.interested_plan_code = "quote_qt_0123456789abcdef01234567"
+    conversation.visitor_email = "ada@example.com"
+
+    assert ClosingService(db).ready(conversation) is True

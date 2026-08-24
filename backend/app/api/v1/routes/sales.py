@@ -13,7 +13,7 @@ from app.catalog import COMPANY, FAQS, STOREFRONT_CONFIG
 from app.config.settings import settings
 from app.dependencies.database import get_db
 from app.models.conversation import Conversation
-from app.payments import PaymentsNotConfigured, PaystackError
+from app.payments import PaymentsNotConfigured, PaystackError, PaystackRejectedRequest
 from app.payments.checkout import CheckoutError, CheckoutService
 from app.pricing.quotes import reference_from_plan_code
 from app.repositories.organization_repository import OrganizationRepository
@@ -261,6 +261,27 @@ def checkout_from_conversation(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        ) from exc
+    except PaystackRejectedRequest as exc:
+        # Before PaystackError, which it subclasses. The provider answered and
+        # refused this request on its merits, so 502 would blame it for
+        # something the caller has to change, and "try again" would be advice
+        # that cannot work — the same request is refused the same way forever.
+        if exc.is_about_the_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Our payment provider will not accept that email address. "
+                    "Nothing has been charged — try a different address."
+                ),
+            ) from exc
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Our payment provider turned this checkout down. Nothing has "
+                "been charged."
+            ),
         ) from exc
     except PaystackError as exc:
         raise HTTPException(
