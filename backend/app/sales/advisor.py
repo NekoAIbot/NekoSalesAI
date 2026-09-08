@@ -124,6 +124,31 @@ FITS: dict[str, ProductFit] = {
             r"\btrade\b",
             r"\bretail\b",
             r"\bwholesale\b",
+            # Trades whose whole business is people buying things. Added because
+            # "AI for my clothing business" had no word in this list and so came
+            # back as "tell me more" at best — while the sentence in front of us
+            # said, plainly, that people buy clothes from them. A word missing
+            # from our vocabulary is not a business we cannot help.
+            r"\bcloth(es|ing)\b",
+            r"\bfashion\b",
+            r"\bapparel\b",
+            r"\bthrift\b",
+            r"\bshoes?\b",
+            r"\bfootwear\b",
+            r"\bbag(s)?\b",
+            r"\bjewel(le)?ry\b",
+            r"\bcosmetics\b",
+            r"\bskin ?care\b",
+            r"\bperfumes?\b",
+            r"\bfurniture\b",
+            r"\belectronics\b",
+            r"\bgadgets?\b",
+            r"\bphones?\b",
+            r"\blaptops?\b",
+            r"\bgrocer(y|ies)\b",
+            r"\bprovisions?\b",
+            r"\bbakery\b",
+            r"\bfabrics?\b",
             r"\bbookings?\b",
             r"\bappointments?\b",
             r"\breservations?\b",
@@ -200,13 +225,27 @@ _ASKS_FOR_OPTIONS = re.compile(
 # phrasing fell past every list in this module to the don't-know fallback and was
 # escalated to a human on the first turn. Two real buyers in one evening, one of
 # them a stranger. Nobody says only the tidy form.
+#
+# The possessive branch allows a word or two before the noun for the same reason.
+# It used to require them adjacent — "my shop", "our company" — and so "AI for my
+# clothing business, 2k conversations/month on WhatsApp and Telegram" matched
+# nothing here. That is the single most ordinary thing this product sells, typed
+# on the website by someone who had already told us the trade, the volume and both
+# channels; it was answered with "I don't think my products are the right fit" and
+# an offer to fetch a person. One adjective. Nobody writes "my business" when they
+# can write "my clothing business".
+#
+# The trades are in the same branch because "AI for my restaurant" has no business
+# noun in it at all, and a restaurant is not a harder case than a shop.
 _DESCRIBES_A_BUSINESS = re.compile(
     r"\b(i|we) (run|own|have|manage|operate|started|do|sell|make|bake|repair|"
     r"rent|deliver|teach|train|supply)\b"
     r"|\b(i'?m|i am|we'?re|we are) (running|operating|managing|starting|"
     r"building|setting up|opening|selling|into)\b"
-    r"|\b(my|our) (business|company|shop|store|startup|brand|firm|practice|"
-    r"agency|clinic|school|team|outfit)\b"
+    r"|\b(my|our)(\s+\w+){0,2}\s+(business|company|shop|store|startup|brand|"
+    r"firm|practice|agency|clinic|school|team|outfit|restaurant|salon|bakery|"
+    r"boutique|pharmacy|hotel|garage|studio|cafe|kitchen|stall|academy|"
+    r"workshop|dealership|gym|lounge|spa)\b"
     r"|\b(i'?m|i am|we'?re|we are) (a|an|the) \w+"
     r"|\bbusiness is\b|\bwe sell\b|\bi sell\b|\bwe deal in\b"
 )

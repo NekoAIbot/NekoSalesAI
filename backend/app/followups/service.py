@@ -320,6 +320,14 @@ class FollowUpService:
             conversation_count=conversation_count,
             support_email=COMPANY["support_email"],
             dashboard_url=f"{settings.PUBLIC_BASE_URL.rstrip('/')}/desk",
+            agent_name=profile.agent_name,
+            widget_token=profile.widget_token,
+            # Direct evidence, not an inference: the widget asks for its config
+            # every time it loads, and it can only load from a page carrying the
+            # snippet. Without this the install emails have to guess, and they
+            # guessed the same way for every customer including the ones whose
+            # install was already working.
+            widget_last_seen=profile.widget_last_seen_at,
         )
 
     # ---------- helpers ----------

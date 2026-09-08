@@ -24,6 +24,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -75,13 +76,31 @@ class WorkspaceProfile(BaseModel):
 
     __tablename__ = "workspace_profiles"
 
+    # One agent of each kind per workspace, and no more. This was
+    # ``unique=True`` on organization_id alone, from when a purchase meant one
+    # agent — which turned selling two products at once into a delivery failure:
+    # one organization, two profiles, and the second insert rejected. The buyer
+    # paid and received nothing.
+    #
+    # The pair keeps what the original was for. A retried provision cannot
+    # create a second sales rep in the same workspace, so the idempotency the
+    # constraint was really protecting still holds; what it no longer forbids is
+    # a sales rep and a support agent under one login, which is the thing the
+    # product sells.
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "role",
+            name="uq_workspace_profiles_organization_role",
+        ),
+    )
+
     # The customer's own organization — created during provisioning, distinct
     # from the storefront org that sold to them.
     organization_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
         index=True,
     )
 
@@ -144,6 +163,25 @@ class WorkspaceProfile(BaseModel):
         String(64),
         unique=True,
         index=True,
+        nullable=True,
+    )
+
+    # The last time the snippet on the customer's site actually ran.
+    #
+    # Written when the widget asks for its config, which only happens from a page
+    # that has the snippet on it. Null means the snippet has never executed, and
+    # that single fact is the difference between a guess and a diagnosis: "the
+    # code isn't on your site yet, or the page hasn't been republished" versus
+    # "I can see it loading, so it's running and we're looking at something
+    # else". Without it, every answer to "it isn't working" is the same generic
+    # checklist — which is what a customer who has already tried the checklist
+    # gets nothing from.
+    #
+    # Throttled by ``WIDGET_SEEN_INTERVAL`` rather than written per page view: the
+    # value is only ever read to the nearest few minutes, and a write on every
+    # request would make a busy customer's site pay for a diagnostic.
+    widget_last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
     )
 

@@ -72,6 +72,25 @@ class Conversation(BaseModel):
         nullable=False,
     )
 
+    # Which of the organization's agents this thread is talking to.
+    #
+    # An organization used to have exactly one workspace profile, so the org was
+    # enough to say whose rules applied. A customer who buys both products now
+    # has two — a sales agent and a support agent, in one workspace — and
+    # resolving by organization alone handed every thread whichever profile was
+    # created first. A buyer opening the support widget was answered by the sales
+    # agent under the sales agent's name, and worse, under the sales agent's
+    # *role*: the one permitted to quote prices and take money.
+    #
+    # Null for the storefront (no profile) and for threads that predate this
+    # column, both of which fall back to resolving by organization.
+    workspace_profile_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("workspace_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Populated as the visitor volunteers details. All optional: the agent
     # asks, it does not gate the conversation on collecting them.
     visitor_name: Mapped[str | None] = mapped_column(String(150), nullable=True)

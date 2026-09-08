@@ -216,3 +216,112 @@ def test_once_drains_what_is_waiting_and_returns(monkeypatch):
 
     assert calls["n"] == 1
     assert report.updates == 0
+
+
+# ---------- payments ----------
+#
+# The poller reconciles payments as well as answering messages, and the placement
+# is the fix rather than an implementation detail. A real buyer paid ₦148,000 on
+# Telegram and was told nothing: everything after payment ran inside a request the
+# *browser* made, so a buyer who paid from a chat had nothing in the loop acting
+# for them. This process is the only one that runs on its own.
+
+
+class FakeReconcile:
+    """Stands in for DeliveryService, and counts."""
+
+    def __init__(self, pushes=()) -> None:
+        self.calls = 0
+        self._pushes = list(pushes)
+
+    def __call__(self, db):
+        self.calls += 1
+        return self
+
+    def reconcile(self):
+        from app.payments.delivery import DeliveryReport
+
+        return DeliveryReport(delivered=len(self._pushes), pushes=list(self._pushes))
+
+
+def test_payments_are_reconciled_on_a_cycle_where_nobody_messaged(monkeypatch):
+    """The case the bug lived in.
+
+    A buyer taps the checkout link, pays in Paystack's tab and sends no further
+    message. Telegram has nothing to hand over, so ``drain`` returns early — and
+    if reconciliation lived inside ``drain``, the quieter the thread the longer
+    the buyer would wait for the thing they had already paid for.
+    """
+    reconciler = FakeReconcile()
+    monkeypatch.setattr("app.messaging.poller.DeliveryService", reconciler)
+
+    poller = TelegramPoller(
+        bot_token="test-token",
+        fetch=lambda _p: _ok(),
+        session_factory=lambda: _NullSession(),
+        push_clients={},
+    )
+
+    poller.run(once=True)
+
+    assert reconciler.calls == 1
+
+
+def test_a_confirmed_payment_is_pushed_to_the_buyers_chat(monkeypatch):
+    """End of the whole chain: money in, message out, on Telegram."""
+    from app.payments.delivery import Push
+
+    sent = []
+
+    class Chat:
+        def send_message(self, chat_id, text):
+            sent.append((chat_id, text))
+
+    reconciler = FakeReconcile(
+        pushes=[Push(channel="telegram", external_id="6851150519", text="Payment confirmed")]
+    )
+    monkeypatch.setattr("app.messaging.poller.DeliveryService", reconciler)
+
+    poller = TelegramPoller(
+        bot_token="test-token",
+        fetch=lambda _p: _ok(),
+        session_factory=lambda: _NullSession(),
+        push_clients={"telegram": Chat()},
+    )
+
+    poller.run(once=True)
+
+    assert sent == [("6851150519", "Payment confirmed")]
+
+
+def test_a_reconcile_that_explodes_does_not_stop_the_bot(monkeypatch):
+    """A payment problem must cost one buyer, not every buyer.
+
+    Raising out of the poll loop would take the process down, and the restart
+    loop in nera.sh would bring it back into the same failure — a bot that
+    answers nobody because one order is wrong.
+    """
+
+    class Exploding:
+        def __init__(self, db):
+            raise RuntimeError("the database is on fire")
+
+    monkeypatch.setattr("app.messaging.poller.DeliveryService", Exploding)
+
+    poller = TelegramPoller(
+        bot_token="test-token",
+        fetch=lambda _p: _ok(),
+        session_factory=lambda: _NullSession(),
+        push_clients={},
+    )
+
+    report = poller.run(once=True)
+
+    assert report.updates == 0
+
+
+class _NullSession:
+    """A session that is only ever opened and closed."""
+
+    def close(self) -> None:
+        pass

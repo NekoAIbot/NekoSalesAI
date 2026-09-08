@@ -38,8 +38,23 @@ def upgrade() -> None:
         sa.Column("reasoning_json", sa.Text(), nullable=True),
         sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("cancelled_reason", sa.String(length=255), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        # server_default matters: BaseModel declares both columns with
+        # server_default=func.now() and never sends a value, so a NOT NULL
+        # column without a default rejects every insert. Corrected here for
+        # databases built from scratch; a5271e0cb93d repairs the ones already
+        # created without it.
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(
             ["organization_id"], ["organizations.id"], ondelete="CASCADE"
         ),

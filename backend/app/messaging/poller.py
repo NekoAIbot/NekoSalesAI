@@ -40,8 +40,10 @@ from app.config import build
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import settings
 from app.database.session import SessionLocal
+from app.messaging.clients import TelegramClient, WhatsAppClient
 from app.messaging.inbound import parse_telegram_update
 from app.messaging.service import InboundMessagingService, storefront_organization_id
+from app.payments.delivery import DeliveryPusher, DeliveryReport, DeliveryService
 
 logger = get_logger(__name__)
 
@@ -112,12 +114,26 @@ class TelegramPoller:
         fetch=None,
         session_factory=SessionLocal,
         service_factory=InboundMessagingService,
+        push_clients=None,
     ) -> None:
         self._token = bot_token if bot_token is not None else settings.TELEGRAM_BOT_TOKEN
         self._base = (base_url or settings.TELEGRAM_BASE_URL).rstrip("/")
         self._fetch = fetch or self._http_fetch
         self._session_factory = session_factory
         self._service_factory = service_factory
+
+        # Where a post-payment message goes out. Injectable for the same reason
+        # ``fetch`` is: delivering a paid order is the most consequential thing
+        # this process does, and it has to be testable without a real bot token
+        # pointed at a real buyer.
+        self._pusher = DeliveryPusher(
+            push_clients
+            if push_clients is not None
+            else {
+                "telegram": TelegramClient(bot_token=bot_token),
+                "whatsapp": WhatsAppClient(),
+            }
+        )
 
         # None means "whatever Telegram still considers unacknowledged", which is
         # the right thing to ask for on a cold start.
@@ -147,6 +163,16 @@ class TelegramPoller:
             total.duplicates += report.duplicates
             total.failed += report.failed
             total.errors.extend(report.errors)
+
+            # Payments, every cycle, whether or not anybody messaged.
+            #
+            # Outside drain() on purpose. drain() returns early when Telegram had
+            # nothing, and a payment arrives with no Telegram update attached to
+            # it — a buyer taps the checkout link, pays in Paystack's tab, and
+            # sends no further message at all. Reconciling inside drain() would
+            # mean the quieter the thread, the longer the buyer waits, which is
+            # exactly backwards.
+            self.reconcile_payments()
 
             if once or self._stopping:
                 return total
@@ -190,6 +216,42 @@ class TelegramPoller:
     def stop(self) -> None:
         """Finish the batch in hand, then return. Used by the signal handler."""
         self._stopping = True
+
+    # ---------- payments ----------
+
+    def reconcile_payments(self) -> DeliveryReport:
+        """Turn confirmed payments into something the buyer can see.
+
+        This process is where reconciliation lives because it is the only one
+        that runs on its own. The web server acts when a browser asks it to, and
+        a buyer who paid from a chat has no browser in the loop — which is how a
+        real ₦148,000 order came to be paid, provisioned and emailed while the
+        person who paid for it heard nothing in the thread they were watching.
+
+        Never raises. A payment problem must not stop the bot answering
+        messages, and a reconcile that throws inside the poll loop would take the
+        whole process down and cost every buyer, not just the one whose order
+        failed.
+        """
+        db = self._session_factory()
+
+        try:
+            report = DeliveryService(db).reconcile()
+        except Exception:
+            logger.exception("Payment reconcile failed")
+            return DeliveryReport(errors=["reconcile raised"])
+        finally:
+            db.close()
+
+        self._pusher.send_all(report.pushes)
+
+        if not report.quiet:
+            logger.info("Payment reconcile: %s", report.summary())
+
+        for error in report.errors:
+            logger.warning("Payment reconcile: %s", error)
+
+        return report
 
     def drain(self) -> PollReport:
         """One getUpdates call, and every message in what came back."""

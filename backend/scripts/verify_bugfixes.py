@@ -18,7 +18,7 @@ function the poller calls: it decides what to say and sends nothing, so this
 cannot message a real buyer. Its threads are keyed ``verify:<token>`` and deleted
 afterwards, following the convention ``stress_nera.py`` already established.
 
-BUG 4 and 4b did not come from a report. They came from reading what two real
+LIVE 1 and LIVE 2 did not come from a report. They came from reading what two real
 strangers typed into the bot one evening, both of whom were handed to a human on
 their first message. That is the argument for this file existing at all: the
 checks below were written from transcripts, and no unit test was going to invent
@@ -571,7 +571,7 @@ def the_fallback_still_exists(new_buyer) -> None:
         buyer.close()
 
 
-def bug_4_an_ordinary_first_message(new_buyer) -> None:
+def live_1_an_ordinary_first_message(new_buyer) -> None:
     """Nobody's opening line goes to a human.
 
     Found in live traffic rather than in the report: two strangers who had found
@@ -612,7 +612,7 @@ def bug_4_an_ordinary_first_message(new_buyer) -> None:
             buyer.close()
 
 
-def bug_4b_a_description_is_not_a_choice(new_buyer) -> None:
+def live_2_a_description_is_not_a_choice(new_buyer) -> None:
     """Saying what your shop sells is not ordering a sales rep.
 
     The same class as BUG 3b and the one that costs money rather than goodwill:
@@ -692,8 +692,8 @@ CHECKS = (
     ("BUG 2  withdrawn tier unreachable", bug_2_no_withdrawn_tier),
     ("BUG 3  answers about itself", bug_3_answers_about_itself),
     ("BUG 3b a question is not an answer", bug_3b_a_question_is_not_an_answer),
-    ("BUG 4  an ordinary first message", bug_4_an_ordinary_first_message),
-    ("BUG 4b a description is not a choice", bug_4b_a_description_is_not_a_choice),
+    ("LIVE 1 an ordinary first message", live_1_an_ordinary_first_message),
+    ("LIVE 2 a description is not a choice", live_2_a_description_is_not_a_choice),
     ("CONTROL the fallback still exists", the_fallback_still_exists),
     ("CONTROL the refusal still exists", the_refusal_still_exists),
     ("CONTROL a named product is a choice", a_named_product_is_still_a_choice),

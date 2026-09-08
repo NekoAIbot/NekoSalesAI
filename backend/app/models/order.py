@@ -96,6 +96,22 @@ class Order(BaseModel):
         nullable=True,
     )
 
+    # When the buyer was told, in the conversation they bought from, that their
+    # workspace is live.
+    #
+    # Separate from paid_at and from the workspace's own ready_at because they
+    # are three different facts, and a buyer only experiences the third. A real
+    # order was paid, provisioned and emailed while the person who paid for it
+    # sat in Telegram hearing nothing — from the database's point of view that
+    # sale was complete. This column is the part that was missing, so it is
+    # stored rather than inferred: the reconciler needs to know whether the
+    # message went out before it decides to send one, and "we already emailed
+    # someone about something" is not the same question.
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     # Verbatim Paystack payload from the confirming webhook or verification
     # call. Kept because when a payment is disputed, the provider's own words
     # are the evidence, and a summary we wrote is not.
@@ -112,3 +128,13 @@ class Order(BaseModel):
     @property
     def is_paid(self) -> bool:
         return self.status == ORDER_PAID
+
+    @property
+    def is_delivered(self) -> bool:
+        """Whether the buyer has been told, where the buyer was.
+
+        Deliberately not "whether provisioning finished". Those came apart once
+        already, and the gap between them was a buyer who had paid, whose
+        workspace was live, and who had no way to know either.
+        """
+        return self.delivered_at is not None

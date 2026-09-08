@@ -11,7 +11,7 @@ reviewable Python; a web form that could rewrite them would be a way to change
 our prices without a diff.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -22,12 +22,57 @@ from app.products import interview
 from app.products.interview import InterviewError
 from app.products.intake import IntakeError, IntakeService
 from app.schemas.intake import IntakeIn, InterviewIn
-from app.schemas.intake_out import ConfigOut, InterviewOut, QuestionOut
+from app.schemas.intake_out import AgentOut, ConfigOut, InterviewOut, QuestionOut
 
 router = APIRouter(
     prefix="/product-config",
     tags=["Product Config"],
 )
+
+# Which agent to read or write, for a workspace that holds more than one.
+#
+# Optional, and omitting it keeps the single-agent behaviour every existing
+# caller relies on. It is not optional in effect for a customer who bought both
+# products: without it the service resolves to whichever profile is oldest, so
+# one of their two agents would be unreachable by any request they could make.
+_ROLE = Query(
+    default=None,
+    max_length=40,
+    description=(
+        "Which agent in this workspace. Omit when there is only one. "
+        "Get the valid values from GET /product-config/agents."
+    ),
+)
+
+
+@router.get(
+    "/agents",
+    response_model=list[AgentOut],
+)
+def list_agents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Every agent this workspace holds.
+
+    The first call a settings page makes, and the reason it can be correct for a
+    customer who bought both products: the ``role`` strings to send back are
+    published here rather than guessed. Reports ``configured`` per agent, which
+    is false for everything freshly provisioned — that is the honest starting
+    state and the whole reason this page exists.
+
+    Declared above the bare ``""`` routes so ``/agents`` is not read as a path
+    parameter of something else later.
+    """
+    service = IntakeService(db)
+
+    return [
+        AgentOut.from_profile(
+            profile,
+            service.current_config(current_user.organization_id, profile.role),
+        )
+        for profile in service.agents_for(current_user.organization_id)
+    ]
 
 
 @router.get(
@@ -35,11 +80,14 @@ router = APIRouter(
     response_model=ConfigOut,
 )
 def get_config(
+    role: str | None = _ROLE,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Read the caller's product config — what their agent will actually say."""
-    return ConfigOut.from_config(IntakeService(db).current_config(current_user.organization_id))
+    return ConfigOut.from_config(
+        IntakeService(db).current_config(current_user.organization_id, role)
+    )
 
 
 @router.put(
@@ -48,13 +96,16 @@ def get_config(
 )
 def put_config(
     payload: IntakeIn,
+    role: str | None = _ROLE,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Replace the caller's product config wholesale."""
     service = IntakeService(db)
     try:
-        saved = service.save(current_user.organization_id, payload.to_config())
+        saved = service.save(
+            current_user.organization_id, payload.to_config(), role
+        )
     except IntakeError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

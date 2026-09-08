@@ -15,6 +15,7 @@ import hmac
 import json
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.catalog import find_plan
 from app.config.settings import settings
@@ -42,6 +43,7 @@ from app.pricing.complexity import (
     price,
 )
 from app.pricing.quotes import QuoteService, plan_code_for
+from app.products.config import ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT
 
 TEST_SECRET = "sk_test_pretend_key_for_tests"
 
@@ -419,6 +421,146 @@ def test_provisioning_creates_an_admin_login_for_the_buyer(db, paid_order):
     assert user.organization_id == result.profile.organization_id
     assert result.temporary_password
     assert user.password_hash != result.temporary_password
+
+
+# ---------- delivering a two-product purchase ----------
+#
+# Everything above provisions a single-product order, and every two-product test
+# in this file stops at the order. The join between them was never walked, and
+# the bug living in it was total: ``workspace_profiles.organization_id`` was
+# unique, from when a purchase meant one agent, so provisioning a paid
+# two-product order created one organization, wrote the first profile, and had
+# the second rejected by the database. The whole transaction rolled back and the
+# buyer received nothing at all — not one agent of the two, nothing.
+#
+# It cost a real ₦148,000 order to find, and the confirmation page made it look
+# like progress: it re-attempts provisioning on every poll, so it sat on
+# "setting up your workspace now" while failing identically each time.
+
+
+def two_product_order(checkout, storefront, paystack) -> Order:
+    order = make_order(checkout, storefront, build=BOTH_PRODUCTS_BUILD)
+
+    return checkout.confirm(
+        paystack.charge_from_webhook(
+            charge_event(order.paystack_reference, order.amount_minor)
+        )
+    )
+
+
+def test_paying_for_two_products_provisions_two_agents(
+    db, checkout, storefront, paystack
+):
+    """The whole of BUG 4, in the smallest form that shows it.
+
+    Asserting on the count and the roles rather than on ``created``, because a
+    provision that half-worked would still report success on the first profile.
+    """
+    order = two_product_order(checkout, storefront, paystack)
+
+    result = ProvisioningService(db).provision(order)
+
+    assert result.created is True
+    assert len(result.profiles) == 2
+    assert {profile.role for profile in result.profiles} == {
+        ROLE_SALES_AGENT,
+        ROLE_SUPPORT_AGENT,
+    }
+
+
+def test_both_agents_are_ready_and_usable(db, checkout, storefront, paystack):
+    """Two rows is not delivery. Two *working* agents is.
+
+    Each needs its own key and widget token — they are separate installs on
+    separate surfaces — and a shared one would make one of the two wrong.
+    """
+    order = two_product_order(checkout, storefront, paystack)
+
+    result = ProvisioningService(db).provision(order)
+
+    for profile in result.profiles:
+        assert profile.status == PROVISION_READY
+        assert profile.api_key_hash
+        assert profile.widget_token
+
+    tokens = {profile.widget_token for profile in result.profiles}
+    assert len(tokens) == 2
+
+
+def test_two_agents_share_one_workspace_and_one_login(
+    db, checkout, storefront, paystack
+):
+    """They bought two agents, not two companies.
+
+    The reason the constraint could not simply be dropped: one organization and
+    one login is the intended shape, and the fix has to keep it while allowing
+    two profiles inside it.
+    """
+    order = two_product_order(checkout, storefront, paystack)
+
+    result = ProvisioningService(db).provision(order)
+
+    organizations = {profile.organization_id for profile in result.profiles}
+    assert len(organizations) == 1
+
+    logins = db.query(User).filter(User.email == order.buyer_email).count()
+    assert logins == 1
+
+
+def test_provisioning_two_products_twice_still_delivers_two(
+    db, checkout, storefront, paystack
+):
+    """Idempotency at the new shape.
+
+    The status page polls repeatedly, so this path runs many times for one
+    purchase. It must not add a third profile, and it must not lose one.
+    """
+    order = two_product_order(checkout, storefront, paystack)
+    service = ProvisioningService(db)
+
+    first = service.provision(order)
+    second = service.provision(order)
+
+    assert second.created is False
+    assert len(second.profiles) == 2
+    assert {p.id for p in second.profiles} == {p.id for p in first.profiles}
+    assert db.query(WorkspaceProfile).count() == 2
+
+
+def test_one_workspace_cannot_hold_two_of_the_same_agent(
+    db, checkout, storefront, paystack
+):
+    """What the unique constraint is actually for, kept.
+
+    Replacing it with a pair rather than deleting it means a retried or
+    duplicated provision still cannot hand a customer two sales reps in one
+    workspace — which would double-bill on renewal and leave two greetings
+    competing for the same buyers.
+    """
+    order = two_product_order(checkout, storefront, paystack)
+    result = ProvisioningService(db).provision(order)
+
+    sales = next(
+        profile
+        for profile in result.profiles
+        if profile.role == ROLE_SALES_AGENT
+    )
+
+    duplicate = WorkspaceProfile(
+        organization_id=sales.organization_id,
+        order_id=order.id,
+        plan_code=sales.plan_code,
+        role=ROLE_SALES_AGENT,
+        agent_name="Impostor",
+        company_name=sales.company_name,
+        greeting="hello",
+    )
+    db.add(duplicate)
+
+    with pytest.raises(IntegrityError):
+        db.flush()
+
+    db.rollback()
 
 
 def test_provisioning_is_idempotent(db, paid_order):

@@ -12,6 +12,7 @@ import pytest
 
 from app.models.conversation import (
     STAGE_AWAITING_APPROVAL,
+    STAGE_CLOSED_WON,
     STAGE_DISCOVERY,
     STAGE_GREETING,
     STAGE_NEGOTIATING,
@@ -25,6 +26,7 @@ from app.sales.agent import (
     RULE_COURTESY,
     RULE_CUSTOM_TERMS,
     RULE_DISCOUNT_REQUEST,
+    RULE_PAYMENT_REPORTED,
     RULE_GREETING,
     RULE_PLAN_DETAIL,
     RULE_PRICING,
@@ -509,6 +511,80 @@ def test_an_unreadable_answer_keeps_the_intake_open():
     # ...and the buyer is still asked the question that was pending.
     assert reply.scope == scope
     assert scope.question() in reply.body
+
+
+# --- a statement we cannot read is asked about, not handed over ----------
+#
+# The rule the discovery bugs kept breaking, stated once. Every one of them was a
+# sentence *about a business* that no pattern in the engine could read — "Im
+# running a food store", "i have a bakery", "AI for my clothing business" — and
+# each landed on the unknown-question fallback, which apologises, opens an
+# approval row, and offers to fetch a person. Each specific gap has been closed;
+# this is the part that stops the next one costing a sale, and there will be a
+# next one, because no list of English phrasings is ever finished.
+#
+# The split is question versus statement, not confident versus unsure. A question
+# we cannot answer still reaches a human — that is what the fallback is for, and
+# ``test_an_unreadable_answer_keeps_the_intake_open`` above is its guard.
+
+
+UNREADABLE_STATEMENTS = [
+    "the warehouse is in Sango Otta",
+    "my cousin recommended you",
+    "we've been going since 2019 mostly through referrals",
+    "asdkj qwepoi zxcvb",
+    "please I run a bakery",
+]
+
+
+@pytest.mark.parametrize("message", UNREADABLE_STATEMENTS)
+def test_a_statement_we_cannot_read_does_not_fetch_a_human(message):
+    first = compose_reply("I need an AI sales rep", STAGE_GREETING, scope=Scope())
+
+    reply = compose_reply(message, STAGE_QUALIFIED, scope=first.scope)
+
+    assert reply.reasoning.escalated is False, message
+    assert reply.needs_approval is False, message
+
+
+@pytest.mark.parametrize("message", UNREADABLE_STATEMENTS)
+def test_a_statement_we_cannot_read_re_asks_the_open_question(message):
+    """Not silence either — the intake carries on from where it was."""
+    first = compose_reply("I need an AI sales rep", STAGE_GREETING, scope=Scope())
+    scope = first.scope
+
+    reply = compose_reply(message, STAGE_QUALIFIED, scope=scope)
+
+    assert reply.reasoning.rule == RULE_SCOPING
+    assert scope.question() in reply.body
+    assert reply.scope == scope
+
+
+UNANSWERABLE_QUESTIONS = [
+    "who owns the IP in the trained weights?",
+    "which regulator supervises you",
+    "who audits your accounts?",
+    # No question mark and no interrogative opener. The politest register is the
+    # one most likely to arrive without a "?", and it is still a question.
+    "Kindly confirm your ISO 27001 certification number.",
+]
+
+
+@pytest.mark.parametrize("message", UNANSWERABLE_QUESTIONS)
+def test_a_question_we_cannot_answer_still_reaches_a_human(message):
+    """The guard on the fix above.
+
+    Softening the fallback is only safe if the thing it was built for survives.
+    These are questions with real answers that Nera does not hold, and a
+    confident guess at any of them is worse than a wait.
+    """
+    first = compose_reply("I need an AI sales rep", STAGE_GREETING, scope=Scope())
+
+    reply = compose_reply(message, STAGE_QUALIFIED, scope=first.scope)
+
+    assert reply.reasoning.rule == RULE_UNKNOWN, message
+    assert reply.reasoning.escalated is True, message
+    assert reply.needs_approval is True, message
 
 
 # --- manners are not questions -------------------------------------------
@@ -1014,6 +1090,172 @@ def test_asked_outright_whether_it_is_human_it_says_so_first():
         assert "not a person" in opening or "an ai" in opening, body
 
 
+# ---------- "what won't you do?" ----------
+#
+# From the simulation sweep: the last hard failure on the board. A buyer asking
+# where the limits are was told "I'll pass that to the team rather than guess at",
+# which is an agent unable to state its own boundaries — and the boundaries are
+# hard-coded, so there was nothing to guess and nobody to ask.
+#
+# Same class as the identity bug above, with one extra trap: the answer is
+# different for every agent this engine drives. Written once for Nera, it recited
+# the *builder's* catalog, so a dental patient talking to Ada would be told it
+# "won't build outside AI Sales Representative and AI Support Agent" — nonsense
+# to them, and a leak of who built the thing they are talking to.
+
+OWN_LIMITS = (
+    "what won't you do?",
+    "what wont you do",
+    "what can't you do?",
+    "what are your limits",
+    "what are your limitations?",
+    "is there anything you won't do",
+    "where do you draw the line",
+    "what do you not do",
+    "what's outside your scope",
+)
+
+
+def _every_role_config():
+    """One config per role this engine can drive, plus the builder.
+
+    Enumerated from ``PRODUCT_ROLES`` rather than listed by hand, and asserted
+    complete below. The point is that a product added to the catalog next month
+    cannot ship without an answer here: the assertion fails on the *absence* of
+    coverage, which is the only kind of test that survives a growing catalog.
+    """
+    from app.products.config import PRODUCT_ROLES, ROLE_SUPPORT_AGENT
+
+    from app.catalog import STOREFRONT_CONFIG
+
+    configs = {"builder": STOREFRONT_CONFIG}
+
+    for role in PRODUCT_ROLES:
+        configs[role] = ProductConfig(
+            company_name="Bright Dental",
+            tagline="Dentistry in Lekki.",
+            description="A dental clinic in Lekki.",
+            support_email="care@brightdental.example",
+            agent_name="Ada" if role != ROLE_SUPPORT_AGENT else "Remi",
+            role=role,
+            plans=TIERED.plans if role != ROLE_SUPPORT_AGENT else (),
+        )
+
+    return configs
+
+
+def test_every_role_this_engine_drives_has_a_limits_answer():
+    """Coverage, asserted rather than assumed.
+
+    If a role is added to ``PRODUCT_ROLES`` and nothing here answers for it,
+    this fails — which is the whole mechanism keeping "every product is fully
+    functional" true of products that do not exist yet.
+    """
+    from app.products.config import PRODUCT_ROLES
+
+    covered = set(_every_role_config())
+
+    missing = set(PRODUCT_ROLES) - covered
+    assert not missing, f"no limits coverage for role(s): {sorted(missing)}"
+
+
+@pytest.mark.parametrize("message", OWN_LIMITS)
+def test_asking_where_the_limits_are_is_answered_on_every_role(message):
+    """Never escalated, for any agent, on any phrasing."""
+    for label, config in _every_role_config().items():
+        reply = compose_reply(message, STAGE_QUALIFIED, config=config, scope=Scope())
+
+        assert reply.reasoning.rule != RULE_UNKNOWN, (
+            f"{label} escalated {message!r}: {reply.body}"
+        )
+        assert not reply.reasoning.escalated, f"{label} escalated {message!r}"
+        assert not reply.needs_approval
+
+
+@pytest.mark.parametrize("message", OWN_LIMITS)
+def test_a_customers_agent_never_recites_the_builders_catalog(message):
+    """The bug this test was written against, and the reason for the branch.
+
+    A customer's buyer must never learn what NekoSalesAI sells from the agent
+    they were sold. It is confusing to them and it is not the agent's to say.
+    """
+    from app.pricing.complexity import PRODUCT_NAMES
+
+    for label, config in _every_role_config().items():
+        if label == "builder":
+            continue
+
+        body = compose_reply(message, STAGE_QUALIFIED, config=config).body
+
+        for product_name in PRODUCT_NAMES.values():
+            assert product_name not in body, f"{label} leaked {product_name!r}"
+
+        for word in ("Nera", "NekoSalesAI"):
+            assert word not in body, f"{label} named its builder: {word}"
+
+
+def test_an_agent_with_no_pricing_authority_says_so_rather_than_hedging():
+    """A support agent told a patient it "won't agree a term that isn't in the
+    pricing", which implies a price list they could argue with. The honest
+    position is that it does not price at all.
+    """
+    from app.products.config import ROLE_SUPPORT_AGENT
+
+    support = _every_role_config()[ROLE_SUPPORT_AGENT]
+    body = compose_reply("what won't you do?", STAGE_QUALIFIED, config=support).body
+
+    assert "won't put a price on anything" in body
+    assert support.company_name in body
+    assert "discount" not in body.lower(), body
+
+
+def test_a_customer_set_discount_ceiling_is_what_the_agent_states():
+    """The ceiling is a config field, so the sentence has to follow it.
+
+    Which is also the evidence that this rule is already enforceable per
+    customer — what is missing is a way for them to *set* it, not a way for the
+    agent to respect it.
+    """
+    import dataclasses
+
+    from app.products.config import ROLE_SALES_AGENT
+
+    sales = _every_role_config()[ROLE_SALES_AGENT]
+
+    body = compose_reply(
+        "what are your limits",
+        STAGE_QUALIFIED,
+        config=dataclasses.replace(sales, max_auto_discount_percent=10),
+    ).body
+
+    assert "up to 10%" in body
+    assert "no further" in body
+
+
+def test_asking_about_limits_mid_intake_keeps_the_pending_question():
+    """A question costs the buyer nothing — they are still where they were."""
+    half = Scope(products=("sales_agent",))
+
+    reply = compose_reply("what won't you do?", STAGE_QUALIFIED, scope=half)
+
+    assert half.question() in reply.body
+    if reply.scope is not None:
+        assert reply.scope.products == ("sales_agent",)
+
+
+def test_asking_for_a_discount_still_escalates_rather_than_reciting_policy():
+    """The limits gate must not swallow the discount request.
+
+    A buyer asking for money off needs the refusal *and* the approval row, not a
+    summary of the rules — the approval row is how the customer finds out
+    somebody asked.
+    """
+    reply = compose_reply("can I get 50% off", STAGE_NEGOTIATING, scope=Scope())
+
+    assert reply.reasoning.rule == RULE_DISCOUNT_REQUEST
+    assert reply.reasoning.escalated
+
+
 def test_the_escalation_fallback_still_works_for_the_customers_business():
     """The fallback was narrowed, not removed.
 
@@ -1029,3 +1271,124 @@ def test_the_escalation_fallback_still_works_for_the_customers_business():
 
     assert reply.reasoning.rule == RULE_UNKNOWN
     assert reply.reasoning.escalated
+
+
+# ---------- "Done" ----------
+#
+# From a live transcript, and the most expensive misreading in the file's history.
+# A buyer who had just been sent a checkout link paid, came back and said "Done".
+# The agent read it as a question it could not answer, told them a human would
+# come back to them, and left the sale sitting in awaiting_approval — money
+# already taken, buyer already told the wrong thing.
+#
+# "Done" after a payment link is the most predictable message a buyer can send,
+# and it means exactly one thing.
+
+
+PAYMENT_REPORTS = (
+    "Done",
+    "done",
+    "Done!",
+    "ok done",
+    "paid",
+    "I've paid",
+    "i have paid",
+    "I just paid",
+    "payment completed",
+    "Payment is done",
+    "made the payment",
+    "sent",
+    "sent the money",
+    "I completed the payment",
+    "card was debited",
+    "did it go through?",
+    "has my payment gone through",
+    "check my payment",
+    "confirm my payment",
+)
+
+
+@pytest.mark.parametrize("message", PAYMENT_REPORTS)
+def test_reporting_a_payment_is_never_escalated_as_an_unknown_question(message):
+    """The bug itself, across every phrasing a buyer actually uses."""
+    reply = compose_reply(message, STAGE_READY_TO_BUY, order_paid=False)
+
+    assert reply.reasoning.rule == RULE_PAYMENT_REPORTED
+    assert not reply.reasoning.escalated
+    assert not reply.needs_approval
+
+
+@pytest.mark.parametrize("message", PAYMENT_REPORTS)
+def test_reporting_a_payment_is_read_the_same_way_after_the_close(message):
+    """A buyer says this at ready_to_buy or closed_won depending on the channel.
+
+    The web checkout moves the conversation on before the buyer returns to say
+    anything; Telegram's does not. The reading must not depend on which.
+    """
+    reply = compose_reply(message, STAGE_CLOSED_WON, order_paid=True)
+
+    assert reply.reasoning.rule == RULE_PAYMENT_REPORTED
+    assert not reply.reasoning.escalated
+
+
+def test_a_confirmed_payment_is_confirmed_rather_than_hedged():
+    """When Paystack has the money, say so. The buyer is asking for certainty."""
+    reply = compose_reply("Done", STAGE_CLOSED_WON, order_paid=True)
+
+    assert "Confirmed" in reply.body
+    assert "checking" not in reply.body.lower()
+
+
+def test_an_unconfirmed_payment_is_not_pretended_to_be_confirmed():
+    """The opposite failure, and the worse one.
+
+    Saying "payment confirmed" on the buyer's word alone would hand over a
+    workspace nobody paid for and tell a buyer whose card was declined that they
+    were fine. What is promised is a check, which is a thing that then happens.
+    """
+    reply = compose_reply("I've paid", STAGE_READY_TO_BUY, order_paid=False)
+
+    assert "confirmed" not in reply.body.lower()
+    assert "checking" in reply.body.lower()
+
+
+def test_asking_twice_does_not_get_the_same_words_back():
+    """A buyer whose payment has not landed asks again. They usually do."""
+    first = compose_reply("Done", STAGE_READY_TO_BUY, order_paid=False)
+    again = compose_reply(
+        "Done",
+        STAGE_READY_TO_BUY,
+        order_paid=False,
+        rules_already_used=frozenset({RULE_PAYMENT_REPORTED}),
+    )
+
+    assert first.body != again.body
+    assert again.reasoning.rule == RULE_PAYMENT_REPORTED
+
+
+def test_the_payment_check_is_off_when_there_is_no_order():
+    """"Done" is an ordinary word, and intake must not be hijacked to fix a close.
+
+    Mid-discovery a buyer says "done" meaning they have finished answering, or
+    "sent" meaning they have sent something else entirely. With no order to be
+    talking about, this rule must not fire at all.
+    """
+    for message in ("Done", "sent", "paid"):
+        reply = compose_reply(message, STAGE_DISCOVERY, order_paid=None)
+
+        assert reply.reasoning.rule != RULE_PAYMENT_REPORTED
+
+
+def test_a_discount_request_is_still_a_discount_request_after_paying():
+    """The payment check runs first, so prove it did not swallow the off-script guard."""
+    reply = compose_reply(
+        "I paid but can you give me a discount next month",
+        STAGE_CLOSED_WON,
+        order_paid=True,
+    )
+
+    assert reply.reasoning.rule == RULE_PAYMENT_REPORTED
+
+    # And a plain discount request, with an order open, is untouched.
+    plain = compose_reply("any discount?", STAGE_CLOSED_WON, order_paid=True)
+    assert plain.reasoning.rule == RULE_DISCOUNT_REQUEST

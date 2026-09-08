@@ -166,8 +166,20 @@ _CHANNEL_WORDS: tuple[tuple[str, str], ...] = (
 # real answer and not a vague one.
 _ALL_CHANNELS = re.compile(r"\b(everywhere|all of (them|it)|all four|all\b)")
 
+# Nothing, said as a whole answer.
+#
+# Anchored to the whole string on purpose: an unanchored "no" would read "no
+# evening slots" as zero systems, which is a silent wrong answer on a priced
+# line. The trailing group is the other half of that trade — people rarely stop
+# at the bare word, and "none of them" was returning None, which sent the intake
+# round the same question again. So the qualifiers are enumerated rather than
+# wildcarded: a listed tail keeps the anchor honest, `.*` would throw it away.
 _NONE_WORDS = re.compile(
-    r"^\s*(none|no|nope|zero|0|nothing|n/a|na|not (yet|now)|just the (basics|basic))\s*[.!]?\s*$"
+    r"^\s*(none|no|nope|zero|0|nothing|nil|n/a|na|not (yet|now)|"
+    r"just the (basics|basic))"
+    r"(?:\s+(?:of (?:them|these|those|it)|at all|at the moment|for now|yet|"
+    r"really|so far|right now|systems?|integrations?|apps?|tools?))*"
+    r"\s*[.!]?\s*$"
 )
 
 # A number, with or without thousands separators, and optionally scaled by k.
@@ -175,6 +187,71 @@ _NONE_WORDS = re.compile(
 # a volume band is not the kind of guess this module refuses — the bands are
 # themselves ranges, and the figure lands on a band boundary either way.
 _NUMBER = re.compile(r"(\d[\d,]*)\s*(k\b|thousand\b)?", re.IGNORECASE)
+
+# Counts as people actually write them, which is usually not in digits.
+#
+# "just one" was the live failure. It contains no digit, so the integrations
+# question came back unreadable, and the agent asked the same question again —
+# eleven times in a row in the simulation, until the buyer ran out of turns
+# without ever seeing a price. A word is not prose: "two" is exactly as precise
+# as "2", and refusing it was not caution, it was a parser gap.
+#
+# Only the unambiguous words are here. "a few", "several" and "a handful" stay
+# unreadable on purpose: each system costs ₦5,000, so reading "a few" as three
+# would invent ₦15,000 the buyer never agreed to. Asking again costs a sentence.
+_WORD_COUNTS = {
+    "zero": 0,
+    "one": 1,
+    "single": 1,
+    "two": 2,
+    "couple": 2,
+    "both": 2,
+    "pair": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
+
+_WORD_COUNT = re.compile(
+    r"\b(" + "|".join(sorted(_WORD_COUNTS, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
+# "five hundred", "a thousand", "ten thousand" — the same figures the volume
+# question asks for, written the way somebody says them out loud.
+_WORD_SCALE = {"hundred": 100, "thousand": 1_000}
+
+_WORD_VOLUME = re.compile(
+    r"\b(?:(" + "|".join(_WORD_COUNTS) + r"|a)\s+)?(hundred|thousand)\b",
+    re.IGNORECASE,
+)
+
+
+def parse_word_count(text: str) -> int | None:
+    """A small count written as a word, or None."""
+    match = _WORD_COUNT.search(text or "")
+
+    return _WORD_COUNTS[match.group(1).lower()] if match else None
+
+
+def parse_word_volume(text: str) -> int | None:
+    """"five hundred" → 500. None when no such figure is stated."""
+    match = _WORD_VOLUME.search(text or "")
+
+    if not match:
+        return None
+
+    multiplier = _WORD_SCALE[match.group(2).lower()]
+    word = (match.group(1) or "a").lower()
+    count = 1 if word == "a" else _WORD_COUNTS.get(word, 1)
+
+    return count * multiplier
+
 
 # Words that mean "a lot" without naming a number. Deliberately unparsed: the
 # volume bands are 500 to 50,000, and reading "loads" as any one of them would
@@ -400,17 +477,25 @@ def parse_volume(text: str) -> int | None:
 
     match = _NUMBER.search(text)
     if not match:
-        return None
+        # "about five hundred", "a thousand a month" — a real figure, spelled out.
+        # Vague words were already refused above, so anything reaching here names
+        # a number and only the notation is different.
+        spelled = parse_word_volume(text)
 
-    digits = match.group(1).replace(",", "")
+        if spelled is None:
+            return None
 
-    try:
-        value = int(digits)
-    except ValueError:
-        return None
+        value = spelled
+    else:
+        digits = match.group(1).replace(",", "")
 
-    if match.group(2):
-        value *= 1_000
+        try:
+            value = int(digits)
+        except ValueError:
+            return None
+
+        if match.group(2):
+            value *= 1_000
 
     if value <= 0:
         return None
@@ -437,7 +522,10 @@ def parse_integrations(text: str) -> int | None:
 
     match = _NUMBER.search(text)
     if not match:
-        return None
+        # "just one", "a couple" — a count with no digit in it. Ordinary phrasing,
+        # and until this was here it stalled the intake one question short of a
+        # price.
+        return parse_word_count(text)
 
     try:
         value = int(match.group(1).replace(",", ""))

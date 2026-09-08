@@ -96,6 +96,19 @@ SELLING_ROLES = frozenset({ROLE_SALES_AGENT, ROLE_BUILDER})
 # so an order asking for one fails loudly rather than shipping a second factory.
 BUILDABLE_ROLES = frozenset({ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT})
 
+# What to call each role when a customer reads it. The role strings are wire
+# values and appear in URLs; these are the words a settings page puts on a tab.
+#
+# Phrased as what the agent does for its owner rather than as a product name,
+# because by the time someone is reading this they have already bought it — the
+# question they have is "which of these two am I editing", not "what is it
+# called in the catalog".
+ROLE_LABELS = {
+    ROLE_SALES_AGENT: "Sales agent",
+    ROLE_SUPPORT_AGENT: "Support agent",
+    ROLE_BUILDER: "Builder",
+}
+
 
 @dataclass(frozen=True)
 class Capability:

@@ -66,6 +66,12 @@ from app.sales.scoping import (
     parse_products,
     product_options,
 )
+from app.sales.support import (
+    SetupFacts,
+    asks_for_a_person,
+    diagnose,
+    read_symptom,
+)
 
 # Rule names. These land in the reasoning trail and in tests, so they are
 # treated as a stable vocabulary rather than free text.
@@ -86,6 +92,62 @@ RULE_ADVICE = "recommended_from_business"
 RULE_DYNAMIC_QUOTE = "computed_quote"
 RULE_COURTESY = "courtesy"
 RULE_UNKNOWN = "unknown_question_escalated"
+RULE_PAYMENT_REPORTED = "buyer_reported_paying"
+
+# The post-purchase rules. Separate names because the question they answer is a
+# different question: not "should we sell this person something" but "what is
+# wrong with the thing they already bought".
+#
+# ``RULE_DIAGNOSED`` is the one that should fire most, and the count of it against
+# ``RULE_SUPPORT_ESCALATED`` is the honest measure of whether the support path is
+# resolving anything or just forwarding it politely.
+RULE_DIAGNOSED = "problem_diagnosed"
+RULE_SUPPORT_ESCALATED = "problem_needs_a_person"
+
+# A buyer telling us they have paid.
+#
+# From a live transcript: a buyer who had just been sent a checkout link said
+# "Done", and the agent read it as a question it could not answer, escalated to a
+# human and left the sale sitting in awaiting_approval. "Done" is not an unknown
+# question — after a payment link, it is the most predictable message a buyer can
+# possibly send, and it means one specific thing.
+#
+# Deliberately checked only when this conversation has an order (see
+# ``order_paid`` in compose_reply). Out of that context "done" is an ordinary
+# word — "done deal", "I'm done thinking about it", or the answer to a scoping
+# question — and hijacking it everywhere would break intake to fix a close.
+_PAID_PATTERNS = (
+    r"^\s*done\b",
+    r"^\s*paid\b",
+    r"^\s*sent\b",
+    r"^\s*ok(ay)?[ ,.!]*done\b",
+    # A bare acknowledgement, which is safe here only because this whole block is
+    # gated on an order existing in this conversation. At that point the buyer has
+    # a payment link in front of them and "confirmed" is about the money — and if
+    # it somehow is not, the cost is one sentence saying we are checking Paystack.
+    # The cost of the other reading is what a live buyer got: told a human would
+    # come back to them, with their money already taken.
+    r"^\s*confirm(ed)?\b",
+    r"^\s*complete(d)?\b",
+    r"^\s*success(ful)?\b",
+    r"^\s*transferred\b",
+    r"\bi('| ha)?ve paid\b",
+    r"\bi paid\b",
+    r"\bjust paid\b",
+    r"\balready paid\b",
+    r"\bpay(ment|ed|d)? (is )?(now )?(complete|completed|done|made|sent|successful)\b",
+    r"\bmade (the )?payment\b",
+    r"\bsent (the )?(money|payment|funds)\b",
+    r"\bcompleted (the )?(payment|checkout)\b",
+    r"\btransfer(red)? (the )?(money|funds)\b",
+    r"\bcard (was )?(charged|debited)\b",
+    r"\b(i|we) (have )?(now )?(bought|purchased) (it|this)\b",
+    r"\bcheck (my |the )?payment\b",
+    r"\bconfirm (my |the )?payment\b",
+    r"\bdid (it|the payment|my payment) (go|come) through\b",
+    r"\bhas (it|my payment) gone through\b",
+    r"\bpayment (has )?(gone|went) through\b",
+)
 
 # Phrases that mean the visitor is asking us to depart from the price list.
 # Matched on word boundaries so "discount" fires but "discounted rate we
@@ -169,6 +231,88 @@ _GREETING_PATTERNS = (
     r"^\s*(hi|hey|hello|good (morning|afternoon|evening)|yo|howdy)\b",
     r"^\s*(what is|what'?s|tell me about) (this|it)\b",
 )
+
+
+# Words a buyer uses to say "carry on" and nothing else. A message made up
+# entirely of these carries no information: it is not an answer to the pending
+# question and it is not a question of its own.
+#
+# It exists because "ok, what next?" was being escalated to a human. Nera had
+# just said "say the word and I'll price it — four quick questions", the buyer
+# said the word, and the reply was "that one I'll pass to the team rather than
+# guess at". Nothing was guessable and nothing needed a person: the buyer had
+# agreed to exactly what was offered.
+#
+# Matched as a whole-message vocabulary rather than a prefix, which is the whole
+# point. A prefix rule on "ok" would swallow "ok but how much is it" — a real
+# pricing question wearing a polite opener — and answer it by repeating a
+# question the buyer has already moved past.
+_CONTINUATION_WORDS = frozenset(
+    """
+    ok okay oke k kk sure yes yeah yep yup ya aye alright allright right fine
+    cool great perfect good nice deal agreed noted gotcha understood sounds
+    proceed continue carry on go ahead ahead next then now please thanks thank
+    you lets let us do it start begin and so well hmm mhm mm oh ok's what
+    """.split()
+)
+
+
+def _is_bare_continuation(text: str) -> bool:
+    """Is this message nothing but "carry on"?
+
+    Strict by construction: every word has to be in the vocabulary, so a single
+    word of real content — a number, a product name, a question word with
+    something after it — takes the message out of this branch and back to the
+    rules that can read it.
+    """
+    words = re.findall(r"[a-z']+", (text or "").lower())
+
+    if not words or len(words) > 5:
+        return False
+
+    return all(word in _CONTINUATION_WORDS for word in words)
+
+
+# Whether the buyer asked something, as opposed to told us something.
+#
+# The distinction decides whether an unreadable message is worth a person's
+# attention. A question we have no answer for is exactly what the escalation
+# fallback was written for. A *statement* we could not parse is not: it is a fact
+# about the buyer's business that our vocabulary happened to be silent about, and
+# the useful response is to ask, not to fetch someone. Every discovery escalation
+# found in live traffic so far has been a statement.
+#
+# Deliberately generous about what counts as a question — a false "this is a
+# question" costs an escalation that would have happened anyway, while a false
+# "this is a statement" swallows something a person should have seen.
+_ASKS_SOMETHING = re.compile(
+    r"\?"
+    r"|^\s*(who|what|when|where|why|how|which|can|could|would|will|do|does|did|"
+    r"is|are|am|was|were|should|may|might|have|has|any|anyone|anybody)\b"
+    r"|\b(do|does|can|could|would|will|is|are|have|has|any) (you|it|they|we|i|"
+    r"there|that|this)\b"
+    r"|\b(how much|how many|how long|how do|what about|what if|tell me if)\b"
+    # A request for information, phrased as a courtesy rather than a question.
+    # "Kindly furnish the tensile modulus of your gearbox housing." has no
+    # question mark and does not open with an interrogative, and it is
+    # unmistakably a question — the politest register is the one most likely to
+    # arrive without a "?".
+    #
+    # The verb is required rather than just the courtesy word, because "please"
+    # opening a plain statement is ordinary here: "please I run a bakery" is a
+    # description, and reading it as a question would escalate the exact kind of
+    # message this whole branch exists to keep out of the approval queue.
+    r"|^\s*(kindly|please|pls|plz)\b[^.!?]*\b(tell|let|explain|clarify|confirm|"
+    r"advise|furnish|provide|send|share|give|elaborate|describe|list|know|"
+    r"check)\b"
+    r"|\b(tell|let) (me|us) (know|the|what|whether|if|how|about|more)\b"
+    r"|\b(i|we) (want|need|would like|'?d like) to know\b"
+)
+
+
+def _asks_something(text: str) -> bool:
+    return bool(_ASKS_SOMETHING.search((text or "").lower()))
+
 
 
 def _greeting_patterns(config: ProductConfig) -> tuple[str, ...]:
@@ -263,6 +407,31 @@ _ASKED_IF_HUMAN_PATTERNS = (
     r"(human|person|bot|robot|ai|machine|computer|real person)\b",
     r"\bis this (a |an )?(human|person|bot|robot|ai|machine|real person)\b",
     r"\byou'?re (a |an )?(bot|robot|ai|human|person|machine)\b",
+)
+
+# Asking what it *won't* do. Its own list, and answered rather than escalated,
+# because this is the one self-question where escalating is actively absurd: a
+# buyer asking where the limits are was told "I'll pass that to the team rather
+# than guess at" — an agent unable to state its own boundaries, which reads as
+# either evasion or breakage and is both, since the boundaries are hard-coded.
+#
+# Kept out of _IDENTITY_PATTERNS because the answer is different in kind. Those
+# say what it is; this one has to name specific refusals, and a buyer who gets
+# an introduction instead has been dodged.
+#
+# Anchored on "you"/"nera" so a limit stated about the *product* being priced
+# ("what won't it handle") still reaches the capability rules, which answer from
+# that product's own config rather than from Nera's policy.
+_OWN_LIMITS_PATTERNS = (
+    r"\bwhat (won'?t|wont|can'?t|cant|cannot|do(n'?t|nt)) (you|u|nera)\b",
+    r"\bwhat (do|does|can) (you|u|nera) not (do|build|handle|offer)\b",
+    r"\bwhat (are|r) (your|nera'?s) (limits|limitations|boundaries|constraints)\b",
+    r"\bwhat('?s| is| are) (outside|beyond|not in) (your|nera'?s) "
+    r"(scope|remit|reach|control)\b",
+    r"\b(anything|something|is there anything) (you|nera) "
+    r"(won'?t|can'?t|cannot|cant|do(n'?t|nt)) (do|build|handle)\b",
+    r"\bwhat (can'?t|cannot|cant) (be|you) (done|do)\b",
+    r"\bwhere (do|does) (you|nera) draw the line\b",
 )
 
 _EMAIL_PATTERN = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
@@ -447,6 +616,174 @@ def _intro_for(config: ProductConfig) -> str:
         return config.agent_intro
 
     return f"the AI that handles enquiries here. {config.tagline}"
+
+
+def _own_limits_answer(config: ProductConfig) -> tuple[str, list[str]]:
+    """What this agent will not do, and the citations behind each refusal.
+
+    Every line is a rule with code enforcing it, not a modest-sounding sentence:
+    the discount ceiling is ``max_auto_discount_percent``, the catalog or plan
+    list is what the pricing rules will actually quote, and the last one is the
+    escalation fallback that fires whenever a question has no answer in the
+    config.
+
+    That grounding is the whole point. A buyer asking where the limits are is
+    really asking whether they are talking to something that will tell them what
+    they want to hear, and the useful answer names specifics — vague modesty
+    ("I have my limits!") answers the question no better than the escalation it
+    replaces, and is less honest, because it sounds like an answer.
+
+    Branches on the config rather than describing Nera, because this engine
+    serves every agent it builds. Written Nera-first, this told a dental
+    patient talking to Ada that it "won't build outside AI Sales Representative
+    and AI Support Agent" — reciting the builder's catalog to a customer's buyer,
+    which is both nonsense to them and a leak of who built it. What an agent
+    won't do depends on what it *is*: the builder won't work outside its catalog,
+    a sales agent won't price outside its published plans, and a support agent
+    won't price at all.
+    """
+    citations: list[str] = []
+    bullets: list[str] = []
+
+    # --- money, and who is allowed to move it -------------------------
+    #
+    # Skipped entirely for an agent with no pricing authority at all: telling a
+    # dental patient "I won't agree a term that isn't in the pricing" implies
+    # there is pricing they could argue with, when the honest position — stated
+    # by the scope bullet below — is that this agent does not price, full stop.
+    if config.sells_anything:
+        if config.max_auto_discount_percent:
+            bullets.append(
+                f"I can move on price up to "
+                f"{config.max_auto_discount_percent}% and no further — past "
+                "that it's a person's call, not mine."
+            )
+        else:
+            bullets.append(
+                "I won't agree a discount, a payment plan or any term that "
+                "isn't in the pricing — not because I'm being firm with you, "
+                "but because I'm genuinely not allowed to, and someone here "
+                "has to say yes to it."
+            )
+
+    # --- where a figure may come from ---------------------------------
+    if config.prices_dynamically:
+        # The builder. Nothing is published, so the refusal is about the
+        # calculator: it won't hand over a figure it has not worked out.
+        citations += [f"product:{code}" for code in PRODUCT_NAMES]
+        bullets.append(
+            "I won't invent a figure. Every price I give is worked out from "
+            "what you've told me the build has to do, so if I haven't asked "
+            "you enough yet, I'll ask rather than estimate."
+        )
+        bullets.append(
+            "I won't build outside what I actually build: "
+            f"{_catalog_sentence()}. Anything else and I'll tell you straight "
+            "that it isn't something I do."
+        )
+    elif config.plans:
+        # A sales agent with published plans. It may quote those and nothing
+        # else — the plan list *is* the boundary.
+        citations += [plan_reference(plan.code) for plan in config.plans]
+        names = ", ".join(plan.name for plan in config.plans)
+        bullets.append(
+            "I won't invent a figure. Every price I give comes straight from "
+            "what's published, exactly as it's written."
+        )
+        bullets.append(
+            f"I won't quote anything that isn't on that list. What I can price "
+            f"is {names} — if you need something outside it, I'll get you "
+            "someone who can put a number on it."
+        )
+    else:
+        # A support agent, or a sales agent with nothing published yet. Either
+        # way it has no authority over money and should say so plainly.
+        bullets.append(
+            "I won't put a price on anything or take a payment. That isn't me "
+            "being careful — I genuinely can't, so anything about money or "
+            f"terms goes to {config.company_name} rather than to a guess from "
+            "me."
+        )
+
+    bullets.append(
+        "I won't claim something works when I can't back it. Ask me something "
+        "I don't have the answer to and you'll get \"I don't know, let me get "
+        "someone who does\" rather than a confident guess."
+    )
+
+    body = (
+        "Fair question, and a short list:\n\n"
+        + "\n".join(f"• {bullet}" for bullet in bullets)
+        + "\n\nWhat I will do is stay with a problem — ask what's actually "
+        "happening, work through the likely causes with you, and only bring a "
+        "person in when it genuinely needs one."
+    )
+
+    return body, citations
+
+
+def _bare_capability_answer(config: ProductConfig) -> tuple[str, list[str]]:
+    """What this agent is for, when nothing has been declared about it yet.
+
+    Derived from the role, which is the one thing a config always has: it was
+    set when the customer paid and cannot be edited by them afterwards. So this
+    stays truthful for an otherwise empty workspace, which is precisely the
+    state a customer's agent is in between provisioning and Stage B intake.
+
+    Deliberately does not promise pricing unless the config can actually price.
+    A fresh sales agent has no plans, so "I can tell you what it costs" would be
+    a claim it cannot keep two messages later — the same dishonesty as inventing
+    a figure, just moved one turn earlier.
+
+    Returns no citations. There is nothing to cite, and that is the honest
+    signal: every line here is about the role, not about a stored fact.
+    """
+    name = (config.agent_name or "").split(" from ")[0].strip()
+    who = f"I'm {name}, and " if name else ""
+
+    if config.sells_anything:
+        # Something is published, so it may talk about buying.
+        body = (
+            f"{who}I'm here for anything to do with {config.company_name} — "
+            "what we offer, what it costs, and getting you sorted if you want "
+            "to go ahead.\n\nWhat are you after?"
+        )
+    elif config.can_sell:
+        # A sales agent whose owner has not published prices yet. It can talk
+        # about the business and take details; it must not imply it can quote.
+        body = (
+            f"{who}I look after enquiries for {config.company_name} — I can "
+            "talk you through what we do and take your details so the right "
+            "person picks it up.\n\nOn anything to do with price I'd rather get "
+            "you a real figure than guess at one, so that goes straight to "
+            "them.\n\nWhat can I do for you?"
+        )
+    else:
+        # A support agent. No authority over money, and says so up front rather
+        # than after the visitor has asked.
+        body = (
+            f"{who}I answer questions about {config.company_name} — how things "
+            "work, where something of yours stands, the things you'd otherwise "
+            "have to send an email about.\n\nAnything to do with prices or "
+            "payments I pass straight to the team rather than guess.\n\nWhat's "
+            "on your mind?"
+        )
+
+    return body, []
+
+
+def _catalog_sentence() -> str:
+    """The product names as prose, e.g. "an X and a Y".
+
+    Built from the catalog rather than written out, so the sentence cannot end
+    up claiming a count that a third product would make wrong.
+    """
+    names = list(PRODUCT_NAMES.values())
+
+    if len(names) == 1:
+        return names[0]
+
+    return ", ".join(names[:-1]) + f" and {names[-1]}"
 
 
 def _plan_lines(config: ProductConfig) -> tuple[str, list[str]]:
@@ -815,6 +1152,77 @@ def _confirm_reply(
     )
 
 
+def _support_reply(
+    message: str,
+    setup: SetupFacts,
+    rules_already_used: frozenset[str],
+) -> AgentReply | None:
+    """A customer's problem, answered — or None if this is not one.
+
+    Returning None is the common case and the important one: almost everything a
+    customer says is not a problem report, and this must hand those straight back
+    for the selling rules to answer. A support path that claimed messages it was
+    not sure about would break buying to fix support.
+
+    The two-step order matters. Money and unwinding a purchase are checked before
+    the symptom, so "I want a refund, the widget never worked" reaches a person
+    with the complaint attached rather than being answered with install steps —
+    which is the specific way support bots insult people.
+
+    Everything said here comes out of ``setup``, and ``setup`` came out of the
+    database. Nothing in this function knows anything about the customer that
+    somebody did not look up.
+    """
+    if asks_for_a_person(message):
+        return AgentReply(
+            body=_said_before(
+                rules_already_used,
+                RULE_SUPPORT_ESCALATED,
+                first=(
+                    "That one I'm not going to try to handle myself — it involves "
+                    "your payment, and I'd rather a person look at your account "
+                    "properly than have me guess at it.\n\n"
+                    "I've raised it with the team with your account attached. If "
+                    "there's anything else that isn't working in the meantime, "
+                    "tell me and I'll get straight on it."
+                ),
+                again=(
+                    "Still with the team — raising it twice doesn't move it "
+                    "faster, and I don't want to pretend otherwise. Anything "
+                    "about how the agent itself is working, though, I can take "
+                    "now."
+                ),
+            ),
+            reasoning=Reasoning(
+                rule=RULE_SUPPORT_ESCALATED,
+                signals=["billing or cancellation, which a person owns"],
+                escalated=True,
+            ),
+            needs_approval=True,
+            approval_subject="Billing or account request",
+            approval_request=message,
+        )
+
+    symptom = read_symptom(message)
+
+    if symptom is None:
+        return None
+
+    diagnosis = diagnose(symptom, setup)
+
+    return AgentReply(
+        body=diagnosis.render(),
+        reasoning=Reasoning(
+            rule=RULE_SUPPORT_ESCALATED if diagnosis.needs_human else RULE_DIAGNOSED,
+            signals=[f"reported: {symptom}", *diagnosis.signals],
+            escalated=diagnosis.needs_human,
+        ),
+        needs_approval=diagnosis.needs_human,
+        approval_subject=diagnosis.human_reason or None,
+        approval_request=message if diagnosis.needs_human else None,
+    )
+
+
 def compose_reply(
     message: str,
     stage: str,
@@ -822,6 +1230,8 @@ def compose_reply(
     interested_plan_code: str | None = None,
     scope: Scope | None = None,
     rules_already_used: frozenset[str] = frozenset(),
+    order_paid: bool | None = None,
+    setup: SetupFacts | None = None,
 ) -> AgentReply:
     """Decide what to say to one visitor message.
 
@@ -851,6 +1261,22 @@ def compose_reply(
     exactly the same words is not. Passed in rather than remembered, like the
     scope, so this stays pure.
 
+    ``order_paid`` is what this conversation's order says: True if Paystack has
+    confirmed it, False if an order exists and has not been confirmed, None if
+    there is no order at all. Passed in as a fact rather than looked up, because
+    this function does not touch a database — and answering "have you got my
+    money?" is exactly the question where guessing is unacceptable. None also
+    keeps the intent switched off outside a purchase, where "done" and "sent" are
+    ordinary words a buyer uses while answering scoping questions.
+
+    ``setup`` is what is true of this customer's provisioned workspace — whether
+    the build finished, whether their snippet has ever loaded, which channels are
+    actually live. Passed in for the same reason ``order_paid`` is, and it is the
+    difference between a diagnosis and a checklist: "I can see the code has never
+    loaded from your site" is only sayable if somebody looked. None means this
+    conversation is not a customer's, which switches the whole support path off —
+    a prospect saying "it's not working" is talking about something else.
+
     Pure: no database, no network, no clock. That is what makes the agent's
     behaviour — including its refusal to discount — directly testable.
     """
@@ -863,6 +1289,78 @@ def compose_reply(
 
     scope = scope or Scope()
     dynamic = config.can_sell and config.prices_dynamically
+
+    # A buyer saying they have paid, when there is an order to say it about.
+    #
+    # First, ahead of even the off-script checks, because this is the one message
+    # where every other reading is wrong and expensive. "Done" was read as an
+    # unanswerable question on a live sale: the buyer was told a human would come
+    # back to them, and the conversation stopped in awaiting_approval with their
+    # money already taken.
+    if order_paid is not None and _matches(_PAID_PATTERNS, text):
+        reasoning = Reasoning(
+            rule=RULE_PAYMENT_REPORTED,
+            signals=[
+                "buyer says they have paid",
+                "order is confirmed paid" if order_paid else "order not yet confirmed by Paystack",
+            ],
+        )
+
+        if order_paid:
+            # The confirmation itself is not written here. Delivery composes it
+            # from the workspace that was actually provisioned — see
+            # app.payments.delivery — so the buyer is told what they have rather
+            # than what this function assumes they have.
+            body = (
+                "Confirmed — Paystack has your payment. Your workspace is being "
+                "set up now and I'll send everything through here the moment it "
+                "is ready, which is usually seconds rather than minutes."
+            )
+        else:
+            body = _said_before(
+                rules_already_used,
+                RULE_PAYMENT_REPORTED,
+                first=(
+                    "Thanks — I'm checking with Paystack now. If it has gone "
+                    "through, your workspace and sign-in details will come "
+                    "through here on their own; you don't need to do anything "
+                    "else.\n\n"
+                    "If nothing arrives in a couple of minutes, the payment "
+                    "didn't complete on their end — tell me and I'll get a person "
+                    "to look at it with you."
+                ),
+                again=(
+                    "Still nothing confirmed from Paystack on my side, which "
+                    "means the charge hasn't settled rather than that I've missed "
+                    "it — I check continuously.\n\n"
+                    "Two things it usually is: the payment page was closed before "
+                    "it finished, or the bank held it. If you have a receipt or a "
+                    "reference from your bank, send it and I'll put it in front of "
+                    "a person."
+                ),
+            )
+
+        return AgentReply(body=body, reasoning=reasoning, scope=scope)
+
+    # A customer with a problem, before any of the selling rules get a look at it.
+    #
+    # This is where the post-purchase path begins, and it begins here rather than
+    # at the end because of what the end used to do: a paying customer who said
+    # "the widget is not showing on my site" was answered by the sales intake
+    # asking which product they would like to buy. Every rule below this line is
+    # written for somebody deciding whether to buy, and a customer reporting a
+    # broken install is not that person.
+    #
+    # Gated on ``setup`` being present at all, which means a prospect's
+    # conversation cannot reach any of this. That is deliberate and it is the
+    # cheap part of the safety: "it's not working" from someone mid-intake is
+    # about something else entirely, and a support module that read it would have
+    # broken the sales path to fix the support one.
+    if setup is not None and setup.is_customer:
+        support_reply = _support_reply(message, setup, rules_already_used)
+
+        if support_reply is not None:
+            return support_reply
 
     # Off-script requests are checked before anything else. A message that
     # both names a plan and asks for money off must be treated as the
@@ -1373,15 +1871,37 @@ def compose_reply(
             captured_email=captured_email,
         )
 
-    if _matches(_CAPABILITY_PATTERNS, text) and config.capabilities:
-        summary, citations = _capability_summary(config)
+    if _matches(_CAPABILITY_PATTERNS, text):
+        if config.capabilities:
+            summary, citations = _capability_summary(config)
+            body = f"Here's what it actually does today:\n\n{summary}"
+            signal = "visitor asked what the product does"
+            follow_up = "\n\nAnything there you want me to go deeper on?"
+        else:
+            # No claims on file, and this used to fall through to the escalation
+            # fallback — so "what can you help me with" was answered with "that
+            # one I can't answer properly, so I've passed it to the team". An
+            # agent unable to say what it is for, on the question a visitor is
+            # most likely to open with.
+            #
+            # A freshly provisioned workspace is exactly this case: Stage B has
+            # not run, so there are no capabilities, no plans and no FAQs. That
+            # is most of a new customer's first day, which made this the most
+            # likely first impression the product could give.
+            #
+            # Answered from the role instead. What an agent is *for* was decided
+            # when the customer paid, so it is knowable with an empty config —
+            # and it is the honest answer, where escalating implies the question
+            # was hard rather than that nobody had filled the config in.
+            body, citations = _bare_capability_answer(config)
+            signal = "visitor asked what it does; answered from its role, no claims on file"
+            follow_up = ""
+
         reasoning = Reasoning(
             rule=RULE_CAPABILITY,
-            signals=["visitor asked what the product does"],
+            signals=[signal],
             grounded_in=citations,
         )
-
-        body = f"Here's what it actually does today:\n\n{summary}"
 
         # Mid-intake this used to answer and then quietly stop: no scope handed
         # back, no question re-asked, and the four-question intake stalled with
@@ -1403,7 +1923,7 @@ def compose_reply(
             )
 
         return AgentReply(
-            body=f"{body}\n\nAnything there you want me to go deeper on?",
+            body=f"{body}{follow_up}",
             reasoning=reasoning,
             next_stage=STAGE_DISCOVERY,
             captured_email=captured_email,
@@ -1563,6 +2083,49 @@ def compose_reply(
             scope=scope if dynamic else None,
         )
 
+    # What it won't do. Answered from policy, never escalated.
+    #
+    # Sits immediately ahead of identity because it is the same class of
+    # question — about itself, answerable from what it was handed — but needs a
+    # different answer, and the introduction would otherwise swallow it: "who
+    # are you" and "what won't you do" are both about Nera, and only one of them
+    # is answered by saying its name.
+    #
+    # Late, like identity, so every rule that could match has already had the
+    # message. In particular the discount refusal is long behind us, so a buyer
+    # asking for money off still gets the refusal and the approval row rather
+    # than a policy summary.
+    if _matches(_OWN_LIMITS_PATTERNS, text):
+        body, citations = _own_limits_answer(config)
+
+        reasoning = Reasoning(
+            rule=RULE_CAPABILITY,
+            signals=[
+                "visitor asked where the limits are",
+                "answered from the rules the engine enforces, never escalated",
+            ],
+            grounded_in=citations,
+        )
+
+        pending_question = scope.question() if dynamic else None
+
+        if pending_question is not None:
+            return _scoping_reply(
+                scope,
+                reasoning.signals,
+                lead_in=body,
+                captured_email=captured_email,
+                rule=RULE_CAPABILITY,
+                grounded_in=reasoning.grounded_in,
+            )
+
+        return AgentReply(
+            body=body,
+            reasoning=reasoning,
+            captured_email=captured_email,
+            scope=scope if dynamic else None,
+        )
+
     # Who and what it is. Never escalated, on any turn, for any config.
     #
     # This is the reported bug, and the placement is the fix: the greeting
@@ -1635,6 +2198,70 @@ def compose_reply(
             captured_email=captured_email,
             scope=scope if dynamic else None,
         )
+
+    # "ok", "sure", "go ahead", "ok what next" — mid-intake, with a question
+    # already on the table. This is a buyer agreeing to continue, so continue.
+    #
+    # It has to sit ahead of the unknown fallback rather than inside it: the
+    # fallback escalates and raises an approval request, and a person being
+    # pulled in to read "ok" is worse than useless — it trains whoever reads the
+    # queue to ignore it, which is how a real escalation gets missed.
+    if dynamic and _is_bare_continuation(message):
+        pending_question = scope.question()
+
+        if pending_question is not None:
+            return _scoping_reply(
+                scope,
+                ["buyer agreed to carry on without answering anything yet"],
+                captured_email=captured_email,
+                rule=RULE_SCOPING,
+            )
+
+    # Something told to us, mid-intake, that no rule here could read. Asked
+    # about rather than handed over.
+    #
+    # This is the fallback that made every discovery bug expensive. Each of them
+    # was a sentence about a business that our vocabulary was silent on — "Im
+    # running a food store", "i have a bakery", "AI for my clothing business, 2k
+    # conversations/month on WhatsApp and Telegram" — and each one landed here,
+    # where the answer is an apology, an approval row, and an offer to fetch a
+    # person. The individual gaps are worth fixing and have been; this is the part
+    # that stops the next gap costing a sale, because there will be a next gap.
+    # No regex over English is ever finished.
+    #
+    # Escalation still exists and still fires for what it was written for: a
+    # *question* with no answer in the config. Someone asking whether we integrate
+    # with a system nobody has heard of should reach a human. Someone describing
+    # their shop should reach the next question.
+    #
+    # The reasoning still records that nothing could be read, so the turn is
+    # visible in the transcript — it just does not put a person in the loop for a
+    # sentence a person would answer by asking the same question we are about to.
+    if dynamic and not _asks_something(message):
+        pending_question = scope.question()
+
+        if pending_question is not None:
+            return _scoping_reply(
+                scope,
+                [
+                    "could not read this as an answer to the open question",
+                    "not a question, so answered rather than escalated",
+                ],
+                lead_in=_said_before(
+                    rules_already_used,
+                    RULE_SCOPING,
+                    first=(
+                        "Got it — thanks. I want to make sure I price this on what "
+                        "you actually need rather than what I guessed, so:"
+                    ),
+                    again=(
+                        "Noted. I still need this one before any figure I give you "
+                        "means anything:"
+                    ),
+                ),
+                captured_email=captured_email,
+                rule=RULE_SCOPING,
+            )
 
     # A real question with no answer in the config. Say so plainly rather than
     # reaching for the nearest plausible answer — a wrong answer delivered

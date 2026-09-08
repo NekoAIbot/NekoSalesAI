@@ -577,6 +577,12 @@ ESCALATED_ON_TURN_ONE = [
     # and then escalated the reply.
     "Profit and more customers of course",
     "I need more customers",
+    # Typed into the website chat. An AI Sales Representative for a shop, on two
+    # channels, with a volume band — the most ordinary order this product takes,
+    # with more detail up front than most buyers give — and it was told we did
+    # not think our products were the right fit. One adjective between "my" and
+    # "business" was the whole cause.
+    "AI for my clothing business, 2k conversations/month on WhatsApp and Telegram",
 ]
 
 
@@ -679,10 +685,29 @@ def test_a_trade_we_have_no_keyword_for_is_not_a_refusal():
 
     ``unmet_need`` is the thing that separates them, and it is not "the
     recommendation is empty" — both of these are empty.
+
+    "i have a bakery" used to be the example here, and is now in the vocabulary:
+    a bakery takes orders, so recommending the sales rep beats asking which of
+    the two they want. The property still needs a trade we genuinely have no word
+    for, because there will always be one.
     """
     assert recommend("I need an AI that does my bookkeeping").unmet_need is True
-    assert recommend("i have a bakery").unmet_need is False
-    assert recommend("i have a bakery").needs_more_detail is True
+    assert recommend("i run a survey and mapping outfit").unmet_need is False
+    assert recommend("i run a survey and mapping outfit").needs_more_detail is True
+
+
+def test_a_trade_we_do_have_a_keyword_for_is_recommended_on():
+    """The other half: a gap closed is a turn saved.
+
+    A bakery, a salon and a clothes shop all sell things to people who ask what
+    they cost. Asking "which of the two do you want?" of someone who has already
+    said is the reading that made a real visitor give up.
+    """
+    for description in ("i have a bakery", "AI for my clothing business"):
+        result = recommend(description)
+
+        assert result.recommended == (PRODUCT_SALES_AGENT,), description
+        assert result.needs_more_detail is False, description
 
 
 def test_naming_a_product_is_still_read_as_choosing_it():
@@ -735,3 +760,65 @@ def test_a_pricing_question_is_not_a_business_description():
     assert describes_a_business("how much is it") is False
     assert describes_a_business("hi") is False
     assert describes_a_business("the sales one") is False
+
+
+# ---------- Bug 5: one adjective ----------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AI for my clothing business",
+        "AI for my clothing business, 2k conversations/month on WhatsApp "
+        "and Telegram",
+        "chatbot for my online store",
+        "something for our small company",
+        "AI for my restaurant",
+        "I want AI for my salon",
+    ],
+)
+def test_a_word_between_the_possessive_and_the_noun_still_describes_a_business(
+    text,
+):
+    """The predicate, where Bug 5 actually was.
+
+    The rule wanted "my business" and "our shop" adjacent. Real buyers write "my
+    clothing business" and "our online store", and the trade is often the only
+    noun there at all — "AI for my restaurant". Every one of those fell past this
+    module to the escalation fallback.
+    """
+    assert describes_a_business(text) is True
+
+
+def test_a_shop_that_sells_a_thing_we_had_no_word_for_is_still_a_shop():
+    """And gets a recommendation, not "tell me more".
+
+    The sentence said people buy clothes from them. Our vocabulary happened not
+    to contain "clothing", and a gap in our vocabulary is not a business we
+    cannot help.
+    """
+    result = recommend("AI for my clothing business")
+
+    assert result.recommended == (PRODUCT_SALES_AGENT,)
+    assert result.needs_more_detail is False
+    assert result.unmet_need is False
+
+
+def test_the_whole_live_message_is_priced_rather_than_refused():
+    """End to end at the engine, in the buyer's exact words.
+
+    The reply a real visitor got began "I don't think my products are the right
+    fit" and offered to pass them to a person. Asserting the rule and the two
+    flags rather than the prose: the decision is what was wrong.
+    """
+    reply = compose_reply(
+        "AI for my clothing business, 2k conversations/month on WhatsApp "
+        "and Telegram",
+        "greeting",
+        scope=Scope(),
+    )
+
+    assert reply.reasoning.rule == RULE_ADVICE
+    assert reply.reasoning.escalated is False
+    assert reply.needs_approval is False
+    assert "the right fit" not in reply.body

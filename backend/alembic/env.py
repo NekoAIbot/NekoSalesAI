@@ -1,3 +1,4 @@
+import logging
 from logging.config import fileConfig
 
 from alembic import context
@@ -12,7 +13,20 @@ import app.models
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
-if config.config_file_name is not None:
+# Only configure logging when this migration owns the process.
+#
+# fileConfig() does not merge: it removes every handler on the root logger and
+# installs the ones in alembic.ini. That is what you want from `alembic upgrade`
+# on a terminal, and wrong every other time env.py is imported. Running a
+# migration in-process — from a test, or from a startup task that has already
+# called configure_logging() — silently unhooked whatever was listening. Two
+# tests asserting on seeded log output saw an empty buffer because a migration
+# test earlier in the run had removed pytest's capture handler, and the same
+# call inside the poller would have taken the poller's stdout handler with it,
+# leaving var/nera-poller.log to go quiet with nothing to explain why.
+#
+# An already-configured root logger is somebody else's decision, so leave it.
+if config.config_file_name is not None and not logging.getLogger().handlers:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata

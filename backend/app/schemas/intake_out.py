@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from app.products.config import ProductConfig, format_money
+from app.models.workspace_profile import WorkspaceProfile
+from app.products.config import ROLE_LABELS, ProductConfig, format_money
 
 
 class PlanOut(BaseModel):
@@ -49,6 +50,13 @@ class ConfigOut(BaseModel):
     support_email: str
     agent_name: str
 
+    # Which agent this is, and therefore what it is allowed to do. Read-only
+    # here by design: the role was decided by what the customer paid for, and a
+    # settings form that could change it would be a customer granting their own
+    # support agent permission to quote prices and take money. Reported so the
+    # page can stop offering a discount ceiling to an agent that cannot discount.
+    role: str
+
     plans: tuple[PlanOut, ...]
     capabilities: tuple[CapabilityOut, ...]
     faqs: tuple[QuestionAnswerOut, ...]
@@ -69,6 +77,7 @@ class ConfigOut(BaseModel):
             description=config.description,
             support_email=config.support_email,
             agent_name=config.agent_name,
+            role=config.role,
             plans=tuple(
                 PlanOut(
                     code=plan.code,
@@ -106,6 +115,57 @@ class ConfigOut(BaseModel):
         )
 
 
+class AgentOut(BaseModel):
+    """One agent in a workspace, as its owner's settings page lists it.
+
+    Exists so a customer who bought both products can be shown both. Their
+    delivery email names what they bought in prose; nothing in it tells a form
+    which role strings to send, and guessing wrong is how the earlier
+    ``.first()`` bugs configured the wrong agent silently.
+
+    ``widget_token`` is here deliberately. It is public by construction — it sits
+    in the page source of the customer's own site — and it is the one thing they
+    need in hand to install what they bought. Withholding it here would mean the
+    only copy lives in an email they may have lost. The secret ``X-API-Key`` is a
+    different credential and is not on this model.
+    """
+
+    role: str
+    label: str
+    agent_name: str
+    company_name: str
+    widget_token: str
+    status: str
+
+    # Whether this agent may talk about buying at all. The discount ceiling and
+    # the plans list are meaningless for one that cannot, so the page hides them
+    # rather than collecting settings that would never be read.
+    can_sell: bool
+
+    # True once this agent has something substantive to say. False is the state
+    # every freshly provisioned agent starts in, and saying so is the point: it
+    # is why the page exists and what the customer has to fix.
+    configured: bool
+
+    @classmethod
+    def from_profile(cls, profile: WorkspaceProfile, config: ProductConfig) -> AgentOut:
+        return cls(
+            role=profile.role,
+            label=ROLE_LABELS.get(profile.role, profile.role),
+            agent_name=profile.agent_name,
+            company_name=profile.company_name,
+            widget_token=profile.widget_token or "",
+            status=profile.status,
+            can_sell=config.can_sell,
+            configured=bool(
+                config.plans
+                or config.capabilities
+                or config.faqs
+                or config.knowledge
+            ),
+        )
+
+
 class QuestionOut(BaseModel):
     """The next thing to ask the customer, and what a usable answer looks like."""
 
@@ -114,7 +174,6 @@ class QuestionOut(BaseModel):
     help_text: str
     optional: bool
     multiline: bool
-
 
 class InterviewOut(BaseModel):
     """Where the interview stands: what to ask, or what went wrong.

@@ -30,6 +30,74 @@ class MessagingError(RuntimeError):
     """The platform was reached and refused, or answered something unusable."""
 
 
+# Telegram rejects a sendMessage body over 4,096 characters, and WhatsApp's text
+# body limit is the same figure. Left a little under it so a platform counting
+# code points differently than Python does cannot turn a borderline message into
+# a refusal.
+MESSAGE_LIMIT = 3_900
+
+
+def split_for_delivery(text: str, limit: int = MESSAGE_LIMIT) -> list[str]:
+    """Break a long message on a boundary a reader would have chosen.
+
+    A safety net rather than a formatter. Delivery already composes itself as
+    several right-sized messages, and callers with real copy should keep doing
+    that — but "the text got longer than the platform allows" must never be the
+    reason a buyer who paid hears nothing. Before this, an over-long send came
+    back as a rejection, was logged, swallowed, and looked exactly like a chat
+    platform being down.
+
+    Splits on the largest boundary that fits: blank lines first, then single
+    lines, and only cuts mid-line when one line is itself longer than the limit.
+    That keeps the widget snippet and the numbered install steps intact, which is
+    the whole point — instructions chopped through the middle of a ``<script>``
+    tag are worse than no instructions.
+    """
+    if len(text) <= limit:
+        return [text]
+
+    pieces: list[str] = []
+
+    for block in _grouped(text.split("\n\n"), limit, joiner="\n\n"):
+        if len(block) <= limit:
+            pieces.append(block)
+            continue
+
+        for line_group in _grouped(block.split("\n"), limit, joiner="\n"):
+            if len(line_group) <= limit:
+                pieces.append(line_group)
+                continue
+
+            # One unbroken line longer than the limit. Nothing to preserve, so
+            # cut it into limit-sized pieces rather than drop it.
+            pieces.extend(
+                line_group[start:start + limit]
+                for start in range(0, len(line_group), limit)
+            )
+
+    return [piece for piece in pieces if piece.strip()] or [text[:limit]]
+
+
+def _grouped(chunks: list[str], limit: int, *, joiner: str) -> list[str]:
+    """Pack chunks into as few groups as fit under the limit, in order."""
+    groups: list[str] = []
+    current = ""
+
+    for chunk in chunks:
+        candidate = f"{current}{joiner}{chunk}" if current else chunk
+
+        if current and len(candidate) > limit:
+            groups.append(current)
+            current = chunk
+        else:
+            current = candidate
+
+    if current:
+        groups.append(current)
+
+    return groups
+
+
 class Transport(Protocol):
     """Just enough of httpx for these clients, so tests can hand in a fake."""
 
@@ -66,20 +134,21 @@ class TelegramClient:
         if not self._token:
             raise MessagingNotConfigured("TELEGRAM_BOT_TOKEN is not set.")
 
-        response = self._transport.post(
-            f"{self._base}/bot{self._token}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": text,
-                # Plain text on purpose. Follow-up copy is written by
-                # app.followups.rules and can contain characters Telegram's
-                # Markdown parser would reject, which would fail the send over a
-                # stray underscore in a company name.
-                "disable_web_page_preview": True,
-            },
-        )
+        for piece in split_for_delivery(text):
+            response = self._transport.post(
+                f"{self._base}/bot{self._token}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": piece,
+                    # Plain text on purpose. Follow-up copy is written by
+                    # app.followups.rules and can contain characters Telegram's
+                    # Markdown parser would reject, which would fail the send over a
+                    # stray underscore in a company name.
+                    "disable_web_page_preview": True,
+                },
+            )
 
-        self._raise_for_response(response, chat_id)
+            self._raise_for_response(response, chat_id)
 
     @staticmethod
     def _raise_for_response(response: httpx.Response, chat_id: str) -> None:
@@ -133,20 +202,21 @@ class WhatsAppClient:
                 "WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID must both be set."
             )
 
-        response = self._transport.post(
-            f"{self._base}/{self._phone_number_id}/messages",
-            headers={"Authorization": f"Bearer {self._token}"},
-            json={
-                "messaging_product": "whatsapp",
-                "recipient_type": "individual",
-                "to": to_number,
-                "type": "text",
-                "text": {"preview_url": False, "body": text},
-            },
-        )
-
-        if response.status_code >= 400:
-            raise MessagingError(
-                f"WhatsApp refused a message to {to_number}: "
-                f"{response.status_code} {response.text[:200]}"
+        for piece in split_for_delivery(text):
+            response = self._transport.post(
+                f"{self._base}/{self._phone_number_id}/messages",
+                headers={"Authorization": f"Bearer {self._token}"},
+                json={
+                    "messaging_product": "whatsapp",
+                    "recipient_type": "individual",
+                    "to": to_number,
+                    "type": "text",
+                    "text": {"preview_url": False, "body": piece},
+                },
             )
+
+            if response.status_code >= 400:
+                raise MessagingError(
+                    f"WhatsApp refused a message to {to_number}: "
+                    f"{response.status_code} {response.text[:200]}"
+                )

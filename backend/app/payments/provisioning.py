@@ -230,7 +230,7 @@ class ProvisioningService:
             # bought, there is nothing correct to build.
             roles = self._roles_for_order(order)
 
-            organization = self._create_organization(company, order)
+            organization = self._organization_for(company, order)
             self._stamp(steps, STEP_WORKSPACE)
 
             # One organization and one login however many agents were bought —
@@ -245,6 +245,32 @@ class ProvisioningService:
 
             for role in roles:
                 agent_name = _AGENT_FIRST_NAME[role]
+
+                # A returning customer buying an agent they already have.
+                #
+                # Reused rather than duplicated, and its credentials left alone.
+                # The customer's site is serving the widget token they already
+                # pasted into it, so minting a replacement would take their live
+                # agent off their page as the reward for buying again. The key is
+                # theirs until they rotate it.
+                existing_profile = self._profile_for_role(organization.id, role)
+
+                if existing_profile is not None:
+                    existing_profile.order_id = order.id
+                    existing_profile.plan_code = order.plan_code
+                    existing_profile.status = PROVISION_READY
+
+                    logger.info(
+                        "Order %s renews the %s this workspace already has; "
+                        "keeping its key and widget token.",
+                        order.paystack_reference,
+                        role,
+                    )
+
+                    agents.append(
+                        ProvisionedAgent(profile=existing_profile, api_key=None)
+                    )
+                    continue
 
                 profile = WorkspaceProfile(
                     organization_id=organization.id,
@@ -452,6 +478,52 @@ class ProvisioningService:
             agent_name=f"{_AGENT_FIRST_NAME[role]} from {company}",
             role=role,
         )
+
+    def _organization_for(self, company: str, order: Order) -> Organization:
+        """The buyer's workspace: the one they already have, or a new one.
+
+        A second purchase on the same email used to create a second
+        organization. That is not what buying again means, and the consequence
+        was not cosmetic: the buyer's login points at their *first* organization,
+        so the agents they had just paid for were provisioned somewhere their
+        account could not see. Two real orders from one address did exactly this
+        — ``nekosalesai`` and ``nekosalesai-2`` — and the second purchase was
+        invisible from the dashboard it was billed to.
+
+        Matched on the buyer's login rather than on the organization's email
+        column, because the login is what decides what they can see, and that is
+        the thing that was wrong. An address with no account is a new customer,
+        whatever any organization row happens to say.
+        """
+        existing = self.db.execute(
+            select(User).where(User.email == order.buyer_email)
+        ).scalars().first()
+
+        if existing is not None and existing.organization_id:
+            organization = self.db.execute(
+                select(Organization).where(
+                    Organization.id == existing.organization_id
+                )
+            ).scalars().first()
+
+            if organization is not None:
+                logger.info(
+                    "Order %s is a returning buyer; adding to workspace %s "
+                    "rather than creating a second one.",
+                    order.paystack_reference,
+                    organization.slug,
+                )
+                return organization
+
+        return self._create_organization(company, order)
+
+    def _profile_for_role(self, organization_id: int, role: str) -> WorkspaceProfile | None:
+        return self.db.execute(
+            select(WorkspaceProfile).where(
+                WorkspaceProfile.organization_id == organization_id,
+                WorkspaceProfile.role == role,
+            )
+        ).scalars().first()
 
     def _create_organization(self, company: str, order: Order) -> Organization:
         organization = Organization(

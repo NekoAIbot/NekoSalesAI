@@ -25,6 +25,7 @@ from app.payments import (
     PaystackRejectedRequest,
 )
 from app.payments.checkout import CheckoutError, CheckoutService
+from app.payments.delivery import DeliveryPusher, DeliveryService
 from app.payments.provisioning import ProvisioningService
 from app.repositories.organization_repository import OrganizationRepository
 from app.schemas.checkout import (
@@ -88,12 +89,44 @@ def _provision_if_paid(order: Order, db: Session) -> WorkspaceOut | None:
         return WorkspaceOut.from_model(profile) if profile else None
 
     _schedule_follow_ups(result.profile, order, db)
+    _tell_the_buyer(order, db)
 
     return WorkspaceOut.from_model(
         result.profile,
         api_key=result.api_key,
         temporary_password=result.temporary_password,
     )
+
+
+def _tell_the_buyer(order: Order, db: Session) -> None:
+    """Say so in the conversation the order came from, wherever that was.
+
+    This used to be missing entirely, and the shape of the omission is worth
+    keeping in mind: everything after payment ran inside a request the *browser*
+    made, so a buyer who paid from a Telegram thread had nothing in the loop
+    acting for them. They paid, their workspace went live, their credentials were
+    emailed, and the thread they were watching stayed silent.
+
+    Called from here as well as from the poller because this is the faster of the
+    two paths when it is available — a buyer looking at the confirmation screen is
+    told in the same second rather than on the next poll cycle. Both go through
+    one service, and ``delivered_at`` means whichever arrives first is the only
+    one that speaks.
+
+    Cannot fail the request. The purchase succeeded; a notification problem is
+    ours, and surfacing it here would tell a buyer whose money is safe that
+    something went wrong with their payment.
+    """
+    try:
+        pushes = DeliveryService(db).deliver(order)
+    except Exception:
+        logger.exception(
+            "Could not tell the buyer of order %s", order.paystack_reference
+        )
+        return
+
+    if pushes:
+        DeliveryPusher().send_all(pushes)
 
 
 def _schedule_follow_ups(profile, order: Order, db: Session) -> None:
@@ -198,14 +231,42 @@ def order_status(reference: str, db: Session = Depends(get_db)):
     order = _load_order(reference, db)
 
     if not order.is_paid and settings.payments_enabled:
-        confirmed = CheckoutService(db).confirm_by_reference(reference)
-        if confirmed is not None:
-            order = confirmed
+        order = _verified(order, reference, db)
 
     return CheckoutStatusOut(
         order=OrderOut.from_model(order),
         workspace=_provision_if_paid(order, db),
     )
+
+
+def _verified(order: Order, reference: str, db: Session) -> Order:
+    """Ask Paystack about this order, and never fail the poll for asking.
+
+    The buyer is on the confirmation page, refreshing it. A DNS blip, a timeout
+    or a 502 from Paystack says nothing whatsoever about whether their money
+    moved — so letting one out of here would turn a transient network fault into
+    an error on the screen of someone who has just paid, which is both
+    frightening and false. Reporting the order exactly as it stands is the honest
+    answer: still pending, ask again in a moment.
+
+    Safe to be this forgiving because polling is not the only path. The
+    reconciler runs on a timer and asks the same question, so a payment that did
+    land is not lost by declining to panic here.
+    """
+    try:
+        confirmed = CheckoutService(db).confirm_by_reference(reference)
+    except PaymentsNotConfigured:
+        return order
+    except Exception:
+        # Rolled back before returning: the failure may have come partway
+        # through a write, and a poisoned session would take down the
+        # provisioning read below — which is the shape of the bug that left a
+        # real buyer watching a spinner after paying ₦148,000.
+        db.rollback()
+        logger.exception("Could not verify order %s while the buyer polls", reference)
+        return _load_order(reference, db)
+
+    return confirmed if confirmed is not None else order
 
 
 @router.post("/webhook", include_in_schema=False)

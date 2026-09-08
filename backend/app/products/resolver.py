@@ -4,10 +4,12 @@ The engine is one piece of code serving many products, so every request has to
 answer: whose rules apply here? Getting this wrong is not a cosmetic bug — it
 means one customer's agent quoting another customer's prices to a buyer.
 
-The rule is deliberately narrow. A conversation belongs to an organization. If
-that organization has a provisioned workspace with a stored config, that config
-governs. Otherwise it is the storefront's own organization, selling NekoSalesAI,
-and ``STOREFRONT_CONFIG`` governs.
+The rule is deliberately narrow. A conversation belongs to an organization and,
+once a workspace can hold more than one agent, to a profile within it. If the
+caller names the profile — the widget route always can, since a widget token
+belongs to exactly one agent — that profile's config governs. Otherwise the
+organization's single profile governs. Otherwise it is the storefront's own
+organization, selling NekoSalesAI, and ``STOREFRONT_CONFIG`` governs.
 
 Note what is *not* here: a fallback from a customer's org to the storefront's
 config. A provisioned workspace whose config row is missing or corrupt gets a
@@ -83,13 +85,32 @@ def _role_of(profile: WorkspaceProfile) -> str:
     return ROLE_SUPPORT_AGENT
 
 
-def resolve_config(db: Session, organization_id: int) -> ProductConfig:
-    """The config governing conversations owned by this organization."""
-    profile = db.execute(
-        select(WorkspaceProfile).where(
-            WorkspaceProfile.organization_id == organization_id
-        )
-    ).scalars().first()
+def resolve_config(
+    db: Session,
+    organization_id: int,
+    profile_id: int | None = None,
+) -> ProductConfig:
+    """The config governing this conversation.
+
+    ``profile_id`` says *which* of the organization's agents is being talked to,
+    and is the accurate answer whenever the caller knows it — the widget route
+    always does, because a widget token belongs to exactly one profile.
+
+    Resolving by organization alone was correct while an organization owned one
+    profile. A customer who buys both products owns two, in one workspace, and
+    then "the org's config" is not a thing that exists. What it did instead was
+    pick whichever profile was inserted first, which made a support widget answer
+    under the sales agent's name — and under the sales agent's *role*, the one
+    permitted to quote prices and take money. Guessing an identity is a cosmetic
+    bug; guessing it from a set that includes a more privileged one is not.
+    """
+    profile = None
+
+    if profile_id is not None:
+        profile = _profile_by_id(db, profile_id, organization_id)
+
+    if profile is None:
+        profile = _only_profile(db, organization_id)
 
     # No workspace profile means this org is not a provisioned customer — it is
     # the storefront, selling NekoSalesAI itself.
@@ -116,3 +137,69 @@ def resolve_config(db: Session, organization_id: int) -> ProductConfig:
         config = replace(config, role=role)
 
     return config
+
+
+def _profile_by_id(
+    db: Session,
+    profile_id: int,
+    organization_id: int,
+) -> WorkspaceProfile | None:
+    """The named profile, if it belongs to the organization that asked for it.
+
+    The ownership check is the point. A profile id arriving with the wrong
+    organization is either a bug in a caller or an attempt at one, and honouring
+    it would be cross-tenant: one customer's agent answering with another
+    customer's catalog, prices and claims. Refused, logged, and left to fall
+    through to organization resolution — which is scoped to the right tenant even
+    when it has to guess which of its agents.
+    """
+    profile = db.execute(
+        select(WorkspaceProfile).where(WorkspaceProfile.id == profile_id)
+    ).scalars().first()
+
+    if profile is None:
+        return None
+
+    if profile.organization_id != organization_id:
+        logger.error(
+            "Workspace %s belongs to organization %s, not %s. Ignoring it: a "
+            "config resolved across tenants would quote the wrong prices.",
+            profile_id,
+            profile.organization_id,
+            organization_id,
+        )
+        return None
+
+    return profile
+
+
+def _only_profile(db: Session, organization_id: int) -> WorkspaceProfile | None:
+    """This organization's profile, when there is no doubt which one it is.
+
+    Ordered by id so the answer is at least deterministic, and logged when it is
+    a guess. A workspace with two agents reaching here means some surface got to
+    the engine without saying which agent it is — that is a bug at the caller,
+    and the log line is how it gets found rather than lived with.
+    """
+    profiles = list(
+        db.execute(
+            select(WorkspaceProfile)
+            .where(WorkspaceProfile.organization_id == organization_id)
+            .order_by(WorkspaceProfile.id)
+        ).scalars().all()
+    )
+
+    if not profiles:
+        return None
+
+    if len(profiles) > 1:
+        logger.warning(
+            "Organization %s has %s agents and nothing said which one this "
+            "conversation is with; using %s (%s).",
+            organization_id,
+            len(profiles),
+            profiles[0].agent_name,
+            profiles[0].role,
+        )
+
+    return profiles[0]

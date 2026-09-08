@@ -22,16 +22,21 @@ their plans, their claims, their agent name. That is the whole point of Stage A
 arriving before this route: no code here decides what the agent says.
 """
 
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config.logging import get_logger
 from app.database.session import get_db
 from app.models.conversation import Conversation
 from app.models.workspace_profile import PROVISION_READY, WorkspaceProfile
 from app.products.config import ROLE_SALES_AGENT
 from app.sales.service import ConversationError, ConversationService
 from app.schemas.sales import ConversationOut, MessageOut, VisitorMessageIn
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/widget",
@@ -68,10 +73,27 @@ def _conversation(profile: WorkspaceProfile, token: str, db: Session) -> Convers
     unguessable, so this is not the only thing standing between two customers'
     threads — but "unguessable" is a property of the generator, and a route that
     relies on it alone would silently become cross-tenant the day that changes.
+
+    The profile check is the same argument one level in. A workspace can hold two
+    agents, and a thread that belongs to the support agent must not be continued
+    through the sales widget: the engine would answer it with the other agent's
+    identity and the other agent's permission to quote. Threads written before
+    that column existed carry no profile and are left continuable, which is the
+    old behaviour rather than a hole — they belong to workspaces that had one
+    agent for there to be any doubt about.
     """
     conversation = ConversationService(db).get_by_token(token)
 
     if conversation is None or conversation.organization_id != profile.organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found.",
+        )
+
+    if (
+        conversation.workspace_profile_id is not None
+        and conversation.workspace_profile_id != profile.id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found.",
@@ -89,6 +111,7 @@ def widget_config(widget_token: str, db: Session = Depends(get_db)):
     holding a copy it has no use for and could disagree with.
     """
     profile = _profile(widget_token, db)
+    _note_the_widget_ran(profile, db)
 
     return {
         "agent_name": profile.agent_name,
@@ -101,6 +124,44 @@ def widget_config(widget_token: str, db: Session = Depends(get_db)):
     }
 
 
+# How stale the last-seen stamp is allowed to get before it is rewritten. The
+# value is read to the nearest few minutes when diagnosing an install, so writing
+# per page view would charge a busy customer's site for a diagnostic nobody reads
+# that precisely.
+WIDGET_SEEN_INTERVAL = timedelta(minutes=5)
+
+
+def _note_the_widget_ran(profile: WorkspaceProfile, db: Session) -> None:
+    """Record that the snippet on the customer's site executed.
+
+    This request can only come from a page carrying the snippet, which makes it
+    the one thing we can observe about an install without asking. It is what lets
+    Nera answer "the chat isn't showing" with "the code has never loaded, so it is
+    almost certainly not saved or not republished" instead of a checklist.
+
+    Never allowed to fail the request. The customer is trying to render a chat
+    widget; a bookkeeping write must not be why their page has no chat on it.
+    """
+    now = datetime.now(UTC)
+    seen = profile.widget_last_seen_at
+
+    if seen is not None:
+        if seen.tzinfo is None:
+            seen = seen.replace(tzinfo=UTC)
+
+        if now - seen < WIDGET_SEEN_INTERVAL:
+            return
+
+    try:
+        profile.widget_last_seen_at = now
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Could not record a widget load for profile %s", profile.id
+        )
+
+
 @router.post(
     "/{widget_token}/conversations",
     response_model=ConversationOut,
@@ -110,9 +171,12 @@ def start_conversation(widget_token: str, db: Session = Depends(get_db)):
     profile = _profile(widget_token, db)
 
     service = ConversationService(db)
-    # The customer's organization, so resolve_config hands the engine the
-    # customer's catalog rather than the storefront's.
-    conversation = service.start(profile.organization_id)
+    # Both the organization and the profile. The organization is what makes the
+    # engine answer out of the customer's catalog rather than the storefront's;
+    # the profile is which of that customer's agents this widget *is*. A
+    # workspace with both products has two, and passing only the organization is
+    # what made a support widget open with "I'm Ada, the sales rep".
+    conversation = service.start(profile.organization_id, profile.id)
 
     return ConversationOut.from_model(
         conversation,
