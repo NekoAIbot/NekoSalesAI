@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block title %}Build — {{ company.name }}{% endblock %}
+
+{% block content %}
+<nav class="nav">
+  <div class="container nav-inner">
+    <a class="nav-logo" href="/">
+      <span class="nav-logo-mark">N</span>
+      <span>Nera</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="/products">Products</a>
+      <a class="nav-link" href="/workforce">Workforce</a>
+      <a class="nav-link" href="/demo">Demo</a>
+      <a class="nav-link is-active" href="/build">Build</a>
+      <a class="nav-link" href="/pricing">Pricing</a>
+      <a class="nav-link" href="/trust">Trust</a>
+    </div>
+    <div class="nav-actions">
+      <a class="nav-link" href="/login">Sign in</a>
+    </div>
+    <button class="nav-mobile-toggle" aria-label="Menu">
+      <span class="hamburger"><span></span><span></span><span></span></span>
+    </button>
+  </div>
+  <div class="nav-mobile-menu">
+    <div class="nav-mobile-links">
+      <a class="nav-mobile-link" href="/products">Products</a>
+      <a class="nav-mobile-link" href="/workforce">Workforce</a>
+      <a class="nav-mobile-link" href="/demo">Demo</a>
+      <a class="nav-mobile-link" href="/build">Build</a>
+      <a class="nav-mobile-link" href="/pricing">Pricing</a>
+      <a class="nav-mobile-link" href="/trust">Trust</a>
+      <a class="nav-mobile-link" href="/login">Sign in</a>
+    </div>
+  </div>
+</nav>
+
+<main id="main">
+<section class="section builder-hero">
+  <div class="container" style="max-width:780px;">
+    <div class="reveal">
+      <span class="eyebrow">Build your AI employee</span>
+      <h1 class="display" style="margin:12px 0 16px;">Configure Nera for your business</h1>
+      <p class="lead" style="margin-bottom:32px;">
+        Tell us what your business needs. Nera prices the build from what it has to
+        do — channels, traffic, languages, systems — and shows you every line before
+        anything is charged.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="section builder-section">
+  <div class="container" style="max-width:780px;">
+    <div class="builder-grid">
+      <div class="builder-module" data-module="products">
+        <div class="builder-module-head">
+          <div class="builder-module-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3zM9 5a3 3 0 0 1 6 0v1H9V5zM12 11v6M9 14h6"/></svg>
+          </div>
+          <div>
+            <h3 class="builder-module-title">Product</h3>
+            <p class="builder-module-sub">Which AI employee do you need?</p>
+          </div>
+        </div>
+        <div class="builder-product-list">
+          {% for product in builder.products %}
+          <label class="builder-product {% if product.code == 'sales_agent' %}is-selected{% endif %}">
+            <input type="radio" name="product" value="{{ product.code }}" data-builder-product="{{ product.code }}" {% if product.code == 'sales_agent' %}checked{% endif %}>
+            <span class="builder-product-check"></span>
+            <span class="builder-product-body">
+              <span class="builder-product-name">{{ product.name }}</span>
+              {% if product.description %}<span class="builder-product-desc">{{ product.description }}</span>{% endif %}
+            </span>
+            <span class="builder-product-price" data-price="{{ product.code }}">
+              {% if product.code == 'sales_agent' %}₦199,000{% elif product.code == 'support_agent' %}₦149,000{% elif product.code == 'workforce_agent' %}₦348,000{% else %}—{% endif %}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="builder-module" data-module="channels">
+        <div class="builder-module-head">
+          <div class="builder-module-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          </div>
+          <div>
+            <h3 class="builder-module-title">Channels</h3>
+            <p class="builder-module-sub">Where does your AI work?</p>
+          </div>
+        </div>
+        <div class="builder-channel-grid">
+          {% for channel in builder.channels %}
+          <label class="builder-channel {% if channel.included %}is-selected{% endif %}">
+            <input type="checkbox" name="channels" value="{{ channel.code }}" data-builder-channel="{{ channel.code }}" {% if channel.included %}checked{% endif %}>
+            <span class="builder-channel-box">
+              <span class="builder-channel-name">{{ channel.name }}</span>
+              <span class="builder-channel-price">
+                {% if channel.included %}included{% else %}+ ₦{{ (channel.add_minor // 100) | number_format }}{% endif %}
+              </span>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="builder-module" data-module="volume">
+        <div class="builder-module-head">
+          <div class="builder-module-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12M3 18l9-6 9 6M7 8h10M7 12h6"/></svg>
+          </div>
+          <div>
+            <h3 class="builder-module-title">Monthly conversations</h3>
+            <p class="builder-module-sub">How many chats per month?</p>
+          </div>
+        </div>
+        <div class="builder-volume-presets">
+          {% for vol in builder.volume_presets %}
+          <button type="button" class="builder-volume-preset {% if vol == 500 %}is-selected{% endif %}" data-vol="{{ vol }}">
+            {{ vol | number_format }}
+          </button>
+          {% endfor %}
+        </div>
+        <div class="builder-volume-input">
+          <input type="number" name="monthly_conversations" id="f-volume" value="500" min="1" max="{{ builder.max_volume }}" data-builder-volume>
+          <span>conversations / month</span>
+        </div>
+        <div class="builder-volume-total">
+          <span class="builder-volume-formula"><span id="vol-qty">500</span> × ₦5</span>
+          <span class="builder-volume-amount" id="vol-total">₦2,500</span>
+        </div>
+      </div>
+
+      <div class="builder-module" data-module="integrations">
+        <div class="builder-module-head">
+          <div class="builder-module-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </div>
+          <div>
+            <h3 class="builder-module-title">Integrations</h3>
+            <p class="builder-module-sub">Which systems to connect?</p>
+          </div>
+        </div>
+        <div class="builder-integration-grid">
+          {% for integration in builder.integration_labels %}
+          <label class="builder-integration">
+            <input type="checkbox" name="integrations" value="{{ integration.code }}" data-builder-integration="{{ integration.code }}">
+            <span class="builder-integration-box">
+              <span class="builder-integration-check">+</span>
+              <span class="builder-integration-name">{{ integration.name }}</span>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="builder-integration-foot">
+          <span id="integ-count">0</span> selected · +₦2,000 each
+        </div>
+      </div>
+
+      <div class="builder-module" data-module="languages">
+        <div class="builder-module-head">
+          <div class="builder-module-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </div>
+          <div>
+            <h3 class="builder-module-title">Languages</h3>
+            <p class="builder-module-sub">Which languages should your AI support?</p>
+          </div>
+        </div>
+        <div class="builder-language-grid">
+          {% for lang in builder.languages %}
+          <label class="builder-language {% if lang.code == 'en' %}is-locked{% endif %}">
+            <input type="checkbox" name="languages" value="{{ lang.code }}" data-builder-language="{{ lang.code }}" {% if lang.code == 'en' %}checked disabled{% endif %}>
+            <span class="builder-language-box {% if lang.code == 'en' %}is-selected{% endif %}">
+              <span class="builder-language-name">{{ lang.name }}</span>
+              <span class="builder-language-price">
+                {% if lang.code == 'en' %}included{% else %}+ ₦{{ (builder.language_price_minor // 100) | number_format }}{% endif %}
+              </span>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="builder-module" data-module="contact">
+        <div class="builder-module-head">
+          <div class="builder-module-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <div>
+            <h3 class="builder-module-title">Contact email</h3>
+            <p class="builder-module-sub">For your payment link and receipt</p>
+          </div>
+        </div>
+        <div class="builder-email-input">
+          <input type="email" name="email" id="f-email" placeholder="you@yourbusiness.com">
+        </div>
+      </div>
+
+      <div class="builder-quote">
+        <div class="builder-quote-head">
+          <div>
+            <h3 class="builder-quote-title">Your build</h3>
+            <span class="builder-quote-status" data-quote-status>live pricing</span>
+          </div>
+          <div class="builder-quote-total-wrap">
+            <span class="builder-quote-total-label">Total</span>
+            <span class="builder-quote-total" data-quote-total>₦201,500</span>
+            <span class="builder-quote-period">/month</span>
+          </div>
+        </div>
+        <div class="builder-quote-lines" data-quote-lines>
+          <div class="builder-quote-line">
+            <span>AI Sales Agent</span>
+            <span>₦199,000</span>
+          </div>
+          <div class="builder-quote-line">
+            <span>500 conversations</span>
+            <span>₦2,500</span>
+          </div>
+        </div>
+        <button type="button" id="b-submit" class="btn btn-primary btn-lg builder-quote-cta">
+          <span>Get a quote</span>
+        </button>
+        <p class="builder-quote-foot">
+          Price computed server-side. Nothing is charged until you approve the quote.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div>
+      <div class="footer-brand">
+        <span class="footer-brand-mark">N</span>
+        NekoSalesAI
+      </div>
+      <div style="color:var(--ink-3);font-size:0.78rem;line-height:1.5;margin-top:4px;">
+        Nera — the AI workforce for serious businesses.
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Product</div>
+      <div class="footer-links">
+        <a class="footer-link" href="/">Home</a>
+        <a class="footer-link" href="/products">Products</a>
+        <a class="footer-link" href="/workforce">Workforce</a>
+        <a class="footer-link" href="/demo">Demo</a>
+        <a class="footer-link" href="/build">Build</a>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Company</div>
+      <div class="footer-links">
+        <a class="footer-link" href="/pricing">Pricing</a>
+        <a class="footer-link" href="/trust">Trust</a>
+        <a class="footer-link" href="/login">Sign in</a>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Status</div>
+      <div class="footer-links">
+        <span class="footer-link" style="color:var(--signal-live);cursor:default;">All systems operational</span>
+        <span class="footer-link" style="cursor:default;color:var(--ink-3);">Pricing · ₦</span>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>&copy; NekoSalesAI. Nera is the AI workforce for businesses.</span>
+    <span class="mono" style="font-size:0.6rem;letter-spacing:0.1em;">PROVABLE RESTRAINT</span>
+  </div>
+</footer>
+
+<script src="/static/js/builder.js" defer></script>
+<script src="/static/js/page.js" defer></script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var toggle = document.querySelector(".nav-mobile-toggle");
+  var menu = document.querySelector(".nav-mobile-menu");
+  if (toggle && menu) {
+    toggle.addEventListener("click", function () {
+      menu.style.display = menu.style.display === "block" ? "none" : "block";
+    });
+  }
+})();
+</script>
+{% endblock %}

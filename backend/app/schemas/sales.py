@@ -166,3 +166,29 @@ class ConversationSummaryOut(BaseModel):
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
         )
+
+
+class CheckoutLinkOut(BaseModel):
+    """The payment link a conversation earned, as the widget returns it."""
+
+    checkout_url: str
+    amount_minor: int
+    currency: str
+    plan_name: str
+    billing_period: str
+    message: str
+
+
+class ConversationStatusOut(BaseModel):
+    """Whether a conversation has a price, a link, or still needs intake."""
+
+    stage: str
+    has_price: bool
+    has_payment_link: bool
+    visitor_email: str | None = None
+    visitor_name: str | None = None
+    payment_link: str | None = None
+    payment_amount_minor: int | None = None
+    payment_currency: str | None = None
+    payment_plan_name: str | None = None
+    payment_billing_period: str | None = None

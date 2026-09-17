@@ -37,7 +37,6 @@ def _requirement(**overrides) -> Requirement:
         "integrations": ("calendar",),
         "languages": (),
         "monthly_conversations": 2_000,
-        "workflow_steps": 0,
     }
     params.update(overrides)
     return Requirement(**params)
@@ -129,8 +128,7 @@ def test_a_requirement_edited_to_something_cheaper_is_refused(db):
             "integrations": [],
             "languages": [],
             "monthly_conversations": 0,
-            "workflow_steps": 0,
-            "discount_percent": 0,
+                        "discount_percent": 0,
         }
     )
     db.commit()

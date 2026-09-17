@@ -1,8 +1,9 @@
 /* Sales desk client.
  *
- * Talks to /api/v1/sales-desk with a bearer token held in sessionStorage —
- * cleared when the tab closes, and never written to localStorage where it
- * would outlive the session on a shared machine.
+ * Talks to /api/v1/sales-desk with a bearer token held in sessionStorage and
+ * localStorage — sessionStorage is cleared when the tab closes, localStorage
+ * persists across browser restarts. Both are written on login so the desk
+ * and other pages can find the token.
  *
  * As on the storefront, all buyer-supplied text goes in through textContent.
  * The desk renders strings a stranger typed, so treating any of it as markup
@@ -13,7 +14,8 @@
   "use strict";
 
   const API = "/api/v1";
-  const TOKEN_KEY = "nekosales.desk.token";
+  const TOKEN_KEY_LOCAL = "neko_token";
+  const TOKEN_KEY_SESSION = "nekosales.desk.token";
 
   const signinView = document.getElementById("signin-view");
   const deskView = document.getElementById("desk-view");
@@ -31,7 +33,23 @@
   const transcriptPanel = document.getElementById("transcript-panel");
   const transcriptBox = document.getElementById("transcript");
 
-  let token = sessionStorage.getItem(TOKEN_KEY);
+  // Get token from sessionStorage first (cleared when tab closes),
+  // fall back to localStorage (persists across browser restarts)
+  function getToken() {
+    return sessionStorage.getItem(TOKEN_KEY_SESSION) || localStorage.getItem(TOKEN_KEY_LOCAL);
+  }
+
+  function storeToken(token) {
+    localStorage.setItem(TOKEN_KEY_LOCAL, token);
+    sessionStorage.setItem(TOKEN_KEY_SESSION, token);
+  }
+
+  function clearToken() {
+    localStorage.removeItem(TOKEN_KEY_LOCAL);
+    sessionStorage.removeItem(TOKEN_KEY_SESSION);
+  }
+
+  let token = getToken();
 
   const STAGE_LABELS = {
     greeting: "New",
@@ -104,7 +122,7 @@
       });
 
       token = result.access_token;
-      sessionStorage.setItem(TOKEN_KEY, token);
+      storeToken(token);
       await enterDesk();
     } catch (e) {
       signinError.textContent = e.message;
@@ -114,7 +132,7 @@
 
   function signOut() {
     token = null;
-    sessionStorage.removeItem(TOKEN_KEY);
+    clearToken();
     deskView.classList.add("hidden");
     signinView.classList.remove("hidden");
     signOutBtn.classList.add("hidden");

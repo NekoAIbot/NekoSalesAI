@@ -34,7 +34,13 @@ from app.models.conversation import Conversation
 from app.models.workspace_profile import PROVISION_READY, WorkspaceProfile
 from app.products.config import ROLE_SALES_AGENT
 from app.sales.service import ConversationError, ConversationService
-from app.schemas.sales import ConversationOut, MessageOut, VisitorMessageIn
+from app.schemas.sales import (
+    CheckoutLinkOut,
+    ConversationOut,
+    ConversationStatusOut,
+    MessageOut,
+    VisitorMessageIn,
+)
 
 logger = get_logger(__name__)
 
@@ -162,6 +168,34 @@ def _note_the_widget_ran(profile: WorkspaceProfile, db: Session) -> None:
         )
 
 
+@router.get(
+    "/{widget_token}/conversations",
+)
+def list_conversations(widget_token: str, db: Session = Depends(get_db)):
+    """List conversations for this widget's workspace.
+
+    The widget token is public (embedded in page source), so this returns only
+    the opaque tokens and stages needed for the widget to render its own thread
+    list — never integer ids, never organization ids, never other workspaces'
+    conversations.
+    """
+    profile = _profile(widget_token, db)
+
+    service = ConversationService(db)
+    conversations = service.list(profile.organization_id)
+
+    return [
+        {
+            "token": conversation.public_token,
+            "stage": conversation.stage,
+            "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
+        }
+        for conversation in conversations
+        if conversation.workspace_profile_id is None
+        or conversation.workspace_profile_id == profile.id
+    ]
+
+
 @router.post(
     "/{widget_token}/conversations",
     response_model=ConversationOut,
@@ -223,3 +257,73 @@ def send_message(
         ) from exc
 
     return MessageOut.from_model(reply)
+
+
+@router.get(
+    "/{widget_token}/conversations/{token}/checkout",
+    response_model=CheckoutLinkOut,
+)
+def get_checkout_link(
+    widget_token: str,
+    token: str,
+    db: Session = Depends(get_db),
+):
+    """The payment link for a conversation that has reached a close.
+
+    This is the web-side equivalent of Telegram's ``/pay`` command — same
+    ``ClosingService``, same re-derived price, same shared state. A buyer who
+    did the whole intake on the widget gets the link here; a buyer who did it
+    on Telegram gets it there; both read from the same conversation.
+    """
+    profile = _profile(widget_token, db)
+    service = ConversationService(db)
+    conversation = _conversation(profile, token, db)
+
+    closing = ClosingService(db)
+    link = closing.resend(conversation)
+
+    if link is None or link.order is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=link.message if link else "This conversation does not have a payment link yet.",
+        )
+
+    return CheckoutLinkOut(
+        checkout_url=link.order.checkout_url,
+        amount_minor=link.order.amount_minor,
+        currency=link.order.currency,
+        plan_name=link.order.plan_name,
+        billing_period=link.order.billing_period,
+        message=link.message,
+    )
+
+
+@router.get(
+    "/{widget_token}/conversations/{token}/status",
+    response_model=ConversationStatusOut,
+)
+def conversation_status(
+    widget_token: str,
+    token: str,
+    db: Session = Depends(get_db),
+):
+    """Whether a conversation has a price, a payment link, or needs more intake."""
+    profile = _profile(widget_token, db)
+    service = ConversationService(db)
+    conversation = _conversation(profile, token, db)
+
+    closing = ClosingService(db)
+    link = closing.resend(conversation)
+
+    return ConversationStatusOut(
+        stage=conversation.stage,
+        has_price=conversation.interested_plan_code is not None,
+        has_payment_link=link is not None and link.order is not None,
+        visitor_email=conversation.visitor_email,
+        visitor_name=conversation.visitor_name,
+        payment_link=link.order.checkout_url if link and link.order else None,
+        payment_amount_minor=link.order.amount_minor if link and link.order else None,
+        payment_currency=link.order.currency if link and link.order else None,
+        payment_plan_name=link.order.plan_name if link and link.order else None,
+        payment_billing_period=link.order.billing_period if link and link.order else None,
+    )

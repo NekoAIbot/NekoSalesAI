@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-label="Nera — Concept D: minimal geometric">
+  <!-- Centre and orbit: the most reduced option. -->
+  <!-- Scales furthest, works in the smallest favicon, reads as deliberate. -->
+  <circle cx="32" cy="32" r="14" stroke="#1c5d43" stroke-width="2.8" fill="none" opacity="0.9"/>
+  <circle cx="32" cy="32" r="6" fill="#fbfaf9"/>
+  <circle cx="32" cy="18" r="3.4" fill="#1c5d43"/>
+  <path d="M32 24V18 M24 32H18 M32 40V46 M40 32H46"
+        stroke="#1c5d43" stroke-width="2.2" opacity="0.5"/>
+</svg>

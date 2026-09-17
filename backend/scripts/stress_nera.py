@@ -81,6 +81,7 @@ from app.models.order import Order  # noqa: E402
 from app.models.quote import Quote as QuoteRow  # noqa: E402
 from app.pricing.complexity import (  # noqa: E402
     CHANNEL_ADD_MINOR,
+    CONVERSATION_PRICE_MINOR,
     INTEGRATION_ADD_MINOR,
     LANGUAGE_ADD_MINOR,
     MAX_INTEGRATIONS,
@@ -89,7 +90,6 @@ from app.pricing.complexity import (  # noqa: E402
     PRODUCT_BASE_MINOR,
     PRODUCT_SALES_AGENT,
     PRODUCT_SUPPORT_AGENT,
-    VOLUME_BANDS,
     WORKFLOW_STEP_ADD_MINOR,
 )
 from app.pricing.quotes import (  # noqa: E402
@@ -305,7 +305,7 @@ def component_figures(db, organization_id: int) -> set[str]:
     """
     minors: set[int] = set(PRODUCT_BASE_MINOR.values())
     minors.update(amount for amount in CHANNEL_ADD_MINOR.values() if amount)
-    minors.update(amount for _limit, amount in VOLUME_BANDS if amount)
+    minors.add(CONVERSATION_PRICE_MINOR)
     minors.update(INTEGRATION_ADD_MINOR * n for n in range(1, MAX_INTEGRATIONS + 1))
     minors.update(LANGUAGE_ADD_MINOR * n for n in range(1, MAX_LANGUAGES + 1))
     minors.update(

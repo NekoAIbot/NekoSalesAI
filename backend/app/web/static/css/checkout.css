@@ -1,40 +1,58 @@
-/* Checkout return page.
+/* Checkout return page — Nera dark theme.
  *
  * Narrow measure, generous space, one thing to read at a time. A buyer on
  * this page has just spent money and is waiting; the layout's job is to be
  * legible and calm, not to celebrate.
- *
- * The step list is the only moving part. Steps settle in as they complete —
- * a 6px rise, the same motion the rest of the app uses — so progress is
- * visible without the page appearing to fidget.
  */
 
-.return-body { background: var(--surface-sunk); }
+/* State visibility gating — every panel is hidden until the JS reveals the
+ * one the API says is true. Without this, all five states render at once. */
+.hidden { display: none !important; }
+
+.return-body {
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-display);
+  min-height: 100vh;
+}
 
 .return-wrap {
   max-width: 620px;
   padding-top: 64px;
   padding-bottom: 96px;
+  padding-left: 20px;
+  padding-right: 20px;
+  margin: 0 auto;
 }
 
 .state {
   padding: 40px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  animation: rise var(--base) var(--ease) both;
+  background: var(--void-2);
+  border: 1px solid var(--void-border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--shadow-lg);
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .state h1 {
   margin-bottom: 10px;
   font-size: 1.5rem;
   letter-spacing: -.02em;
+  color: var(--ink);
 }
 
-.state .muted { margin-bottom: 24px; }
-.state .small { font-size: .8125rem; }
+.state .muted { margin-bottom: 24px; color: var(--ink-2); }
+.state .small { font-size: .8125rem; color: var(--ink-3); }
 
+.state a { color: var(--copper); text-decoration: none; }
+.state a:hover { text-decoration: underline; }
+
+/* Success state */
 .ready-mark {
   width: 44px;
   height: 44px;
@@ -42,9 +60,9 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 1.125rem;
+  background: var(--signal-live-soft);
+  color: var(--signal-live);
+  font-size: 1.5rem;
 }
 
 /* ---------- order summary ---------- */
@@ -52,9 +70,9 @@
 .order-summary {
   margin: 22px 0;
   padding: 18px 20px;
-  background: var(--surface-sunk);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  background: var(--void-3);
+  border: 1px solid var(--void-border);
+  border-radius: var(--r-xl);
 }
 
 .summary-row {
@@ -66,14 +84,16 @@
   font-size: .875rem;
 }
 
-.summary-row + .summary-row { border-top: 1px solid var(--line); }
+.summary-row + .summary-row { border-top: 1px solid var(--void-line); }
 
-.summary-key { color: var(--ink-faint); }
+.summary-key { color: var(--ink-3); }
 
 .summary-val {
   font-weight: 500;
   text-align: right;
   word-break: break-all;
+  color: var(--ink);
+  font-family: var(--font-mono);
 }
 
 /* ---------- provisioning steps ---------- */
@@ -89,12 +109,12 @@
   align-items: center;
   gap: 12px;
   padding: 11px 0;
-  color: var(--ink-faint);
+  color: var(--ink-3);
   font-size: .9375rem;
-  transition: color var(--base) var(--ease);
+  transition: color var(--base) var(--ease-out);
 }
 
-.step + .step { border-top: 1px solid var(--line); }
+.step + .step { border-top: 1px solid var(--void-line); }
 
 .step-mark {
   width: 22px;
@@ -103,18 +123,18 @@
   place-items: center;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--surface-sunk);
-  color: var(--ink-faint);
+  background: var(--void-3);
+  color: var(--ink-4);
   font-size: .75rem;
-  transition: background var(--base) var(--ease),
-              color var(--base) var(--ease);
+  transition: background var(--base) var(--ease-out),
+              color var(--base) var(--ease-out);
 }
 
 .step--done { color: var(--ink); }
 
 .step--done .step-mark {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--signal-live-soft);
+  color: var(--signal-live);
 }
 
 .steps--plain { counter-reset: item; }
@@ -122,7 +142,7 @@
 .steps--plain li {
   padding: 7px 0;
   border: none;
-  color: var(--ink-muted);
+  color: var(--ink-2);
   font-size: .9375rem;
   list-style: decimal;
   margin-left: 18px;
@@ -133,14 +153,14 @@
 .credentials {
   margin: 26px 0;
   padding: 20px;
-  border: 1px solid var(--warn-line, #e8ddc4);
-  border-radius: var(--radius-sm);
-  background: var(--warn-soft);
+  border: 1px solid var(--signal-warn-soft);
+  border-radius: var(--r-xl);
+  background: var(--signal-warn-soft);
 }
 
 .credentials-warn {
   margin-bottom: 16px;
-  color: var(--warn);
+  color: var(--signal-warn);
   font-size: .8125rem;
   font-weight: 500;
   line-height: 1.5;
@@ -150,7 +170,7 @@
 
 .cred-label {
   margin-bottom: 5px;
-  color: var(--ink-faint);
+  color: var(--ink-3);
   font-size: .75rem;
   text-transform: uppercase;
   letter-spacing: .05em;
@@ -159,12 +179,14 @@
 .cred-value {
   display: block;
   padding: 10px 13px;
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  background: var(--void-3);
+  border: 1px solid var(--void-border);
+  border-radius: var(--r-md);
   font-size: .875rem;
-  user-select: all;      /* one click selects the whole key */
+  user-select: all;
   word-break: break-all;
+  font-family: var(--font-mono);
+  color: var(--ink);
 }
 
 /* ---------- next steps ---------- */
@@ -172,12 +194,92 @@
 .next-steps {
   margin-top: 28px;
   padding-top: 24px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--void-line);
 }
 
-.next-steps h3 { margin-bottom: 10px; font-size: 1rem; }
+.next-steps h3 { margin-bottom: 10px; font-size: 1rem; color: var(--ink); }
 .next-steps .btn { margin-top: 18px; }
+
+/* ---------- thinking animation ---------- */
+
+.thinking {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.thinking span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--copper);
+  animation: thinking 1.4s infinite ease-in-out;
+}
+
+.thinking span:nth-child(1) { animation-delay: 0s; }
+.thinking span:nth-child(2) { animation-delay: 0.2s; }
+.thinking span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes thinking {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* ---------- payment states ---------- */
+
+.payment-success {
+  border-color: var(--signal-live-soft);
+}
+
+.payment-success h1 {
+  color: var(--signal-live);
+}
+
+.payment-failed {
+  border-color: rgba(212, 80, 80, 0.3);
+}
+
+.payment-failed h1 {
+  color: #d45050;
+}
+
+.payment-cancelled {
+  border-color: var(--void-border);
+}
+
+.payment-cancelled h1 {
+  color: var(--ink-3);
+}
+
+.payment-pending {
+  border-color: var(--copper-line);
+}
+
+.payment-pending h1 {
+  color: var(--copper);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 640px) {
+  .return-wrap {
+    padding-top: 32px;
+    padding-bottom: 48px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .state {
+    padding: 24px;
+  }
+
+  .state h1 {
+    font-size: 1.25rem;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .state { animation: none; }
+  .thinking span { animation: none; }
 }

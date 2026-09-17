@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Demo — {{ company.name }}{% endblock %}
+
+{% block content %}
+<!-- ============================================================
+   NAVIGATION
+   ============================================================ -->
+<nav class="nav">
+  <div class="container nav-inner">
+    <a class="nav-logo" href="/">
+      <span class="nav-logo-mark">N</span>
+      <span>Nera</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="/products">Products</a>
+      <a class="nav-link" href="/workforce">Workforce</a>
+      <a class="nav-link is-active" href="/demo">Demo</a>
+      <a class="nav-link" href="/build">Build</a>
+      <a class="nav-link" href="/pricing">Pricing</a>
+      <a class="nav-link" href="/trust">Trust</a>
+    </div>
+    <div class="nav-actions">
+      <a class="nav-cta magnetic-btn" href="/build">Get started</a>
+      <a class="nav-link" href="/login">Sign in</a>
+    </div>
+    <button class="nav-mobile-toggle" aria-label="Menu">
+      <span class="hamburger"><span></span><span></span><span></span></span>
+    </button>
+  </div>
+  <div class="nav-mobile-menu">
+    <div class="nav-mobile-links">
+      <a class="nav-mobile-link" href="/products">Products</a>
+      <a class="nav-mobile-link" href="/workforce">Workforce</a>
+      <a class="nav-mobile-link" href="/demo">Demo</a>
+      <a class="nav-mobile-link" href="/build">Build</a>
+      <a class="nav-mobile-link" href="/pricing">Pricing</a>
+      <a class="nav-mobile-link" href="/trust">Trust</a>
+      <a class="nav-mobile-link" href="/login">Sign in</a>
+      <a class="nav-mobile-link" href="/build">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================================================
+   DEMO — see Nera in action
+   ============================================================ -->
+<main id="main">
+<section class="section" style="padding-top:80px;">
+  <div class="container" style="max-width:720px;">
+    <div class="reveal">
+      <span class="eyebrow">Demo</span>
+      <h1 class="display" style="margin:12px 0 16px;">See Nera sell — in a real conversation</h1>
+      <p class="lead" style="margin-bottom:32px;">
+        Watch how Nera qualifies a buyer, recommends what to build, prices it
+        line by line, and stops when it needs a human. No scripts — the same
+        engine that runs the live product.
+      </p>
+    </div>
+
+    <!-- The scripted demo -->
+    <div class="reveal" style="margin-bottom:32px;">
+      <div class="demo-frame" style="background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-2xl);overflow:hidden;">
+        <!-- Demo toolbar -->
+        <div class="demo-toolbar" style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--void-line);">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="width:10px;height:10px;border-radius:50%;background:#ff5f57;"></span>
+            <span style="width:10px;height:10px;border-radius:50%;background:#febc2e;"></span>
+            <span style="width:10px;height:10px;border-radius:50%;background:#28c840;"></span>
+            <span style="margin-left:10px;font-family:var(--font-mono);font-size:0.7rem;color:var(--ink-4);">nera — live sales conversation</span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button id="demo-replay-btn" class="btn btn--ghost btn--sm">Replay</button>
+            <button id="demo-reset-btn" class="btn btn--ghost btn--sm">Reset</button>
+          </div>
+        </div>
+
+        <!-- Transcript -->
+        <div id="demo-transcript" style="padding:24px;min-height:320px;"></div>
+      </div>
+    </div>
+
+    <!-- Window selector dock -->
+    <div class="demo-dock" style="display:flex;gap:8px;justify-content:center;">
+      <div class="demo-indicator" style="width:10px;height:10px;border-radius:50%;background:var(--copper);cursor:pointer;transition:all 0.2s;" title="Conversation" data-demo-window="0"></div>
+      <div class="demo-indicator" style="width:10px;height:10px;border-radius:50%;background:var(--void-border);cursor:pointer;transition:all 0.2s;" title="Builder" data-demo-window="1"></div>
+      <div class="demo-indicator" style="width:10px;height:10px;border-radius:50%;background:var(--void-border);cursor:pointer;transition:all 0.2s;" title="Provisioning" data-demo-window="2"></div>
+    </div>
+
+    <!-- Windows -->
+    <div style="margin-top:24px;">
+      <div data-demo-window="0"></div>
+      <div data-demo-window="1" style="display:none;"></div>
+      <div data-demo-window="2" style="display:none;"></div>
+    </div>
+
+    <div style="text-align:center;margin-top:40px;">
+      <a class="btn btn-primary btn-lg magnetic-btn" href="/build">Build your own</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============================================================
+   FOOTER
+   ============================================================ -->
+<footer class="footer">
+  <div class="container footer-inner">
+    <div>
+      <div class="footer-brand">
+        <span class="footer-brand-mark">N</span>
+        NekoSalesAI
+      </div>
+      <div style="color:var(--ink-3);font-size:0.78rem;line-height:1.5;margin-top:4px;">
+        Nera — the AI workforce for serious businesses.
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Product</div>
+      <div class="footer-links">
+        <a class="footer-link" href="/">Home</a>
+        <a class="footer-link" href="/products">Products</a>
+        <a class="footer-link" href="/workforce">Workforce</a>
+        <a class="footer-link" href="/demo">Demo</a>
+        <a class="footer-link" href="/build">Build</a>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Company</div>
+      <div class="footer-links">
+        <a class="footer-link" href="/pricing">Pricing</a>
+        <a class="footer-link" href="/trust">Trust</a>
+        <a class="footer-link" href="/login">Sign in</a>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Status</div>
+      <div class="footer-links">
+        <span class="footer-link" style="color:var(--signal-live);cursor:default;">
+          <span class="status-live-dot" style="display:inline;width:6px;height:6px;margin-right:5px;vertical-align:middle;"></span>
+          All systems operational
+        </span>
+        <span class="footer-link" style="cursor:default;color:var(--ink-3);">Pricing · ₦</span>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>&copy; NekoSalesAI. Nera is the AI workforce for businesses.</span>
+    <span class="mono" style="font-size:0.6rem;letter-spacing:0.1em;">PROVABLE RESTRAINT</span>
+  </div>
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/demo.js" defer></script>
+<script src="/static/js/page.js" defer></script>
+{% endblock %}

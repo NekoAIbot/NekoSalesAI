@@ -3,6 +3,12 @@
  * Same design language as the storefront, arranged for scanning rather than
  * for persuasion: the queue of things needing a decision comes first, and
  * every request shows the buyer's exact words next to the decision buttons.
+ *
+ * .hidden is used by the desk JS to toggle views. */
+
+.hidden { display: none !important; }
+
+/*
  */
 
 .desk-body { background: var(--surface-sunk); }

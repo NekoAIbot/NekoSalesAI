@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" fill="none" aria-label="Nera — Concept A mark">
+  <rect width="200" height="300" fill="#1c5d43" rx="36"/>
+  <circle cx="64" cy="64" r="22" fill="#fbfaf9" opacity="0.95"/>
+  <circle cx="136" cy="64" r="22" fill="#fbfaf9" opacity="0.5"/>
+  <circle cx="64" cy="136" r="22" fill="#fbfaf9" opacity="0.5"/>
+  <circle cx="136" cy="136" r="22" fill="#fbfaf9"/>
+  <path d="M64 64 L136 64 M64 64 L64 136 M136 136 L64 136 M136 136 L136 64" stroke="#fbfaf9" stroke-width="6" opacity="0.25"/>
+  <circle cx="100" cy="100" r="10" fill="#fbfaf9"/>
+</svg>

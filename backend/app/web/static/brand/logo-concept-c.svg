@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-label="Nera — Concept C: typographic wordmark">
+  <!-- Nera set as the asset; a small geometric accent at the end. -->
+  <!-- The identity lives in the letterforms, not a separate symbol. -->
+  <text x="32" y="40" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="28" font-weight="400" fill="#1c5d43" letter-spacing="1.2">Nera</text>
+  <circle cx="40" cy="42" r="3.2" fill="#fbfaf9"/>
+</svg>

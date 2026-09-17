@@ -1,0 +1,336 @@
+/* app-v4-components.css — active helper classes + catalog (Phase C).
+   The .vs-*, .hero, .hero-left, .hero-kicker, .hero-lede, .hero-visual,
+   .price-tag, .hero-meta, .app-dock, .demo-*, .product-surface, .workflow-*,
+   .restraint-* and .builder-* vocabularies are unused by any template and were
+   removed in Phase B to stop them colliding with the real markup in app-v4.css
+   (notably .hero-grid, which is the background grid texture in app-v4.css, not
+   a layout grid). */
+
+/* ================================================================
+   CONTINUOUS ACTIVITY INDICATOR
+   ================================================================ */
+
+.activity-pulse {
+  animation: activityPulse 2.4s var(--ease) infinite;
+}
+
+@keyframes activityPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+
+/* ================================================================
+   COUNT UP (React Bits: CountUp adaptation)
+   ================================================================ */
+
+.count-up-number {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ================================================================
+   THE WORKFORCE MAP — living catalog of buildable AI workers
+   ================================================================ */
+
+.catalog-section {
+  position: relative;
+  background: var(--void-2);
+  border-top: 1px solid var(--void-line);
+  border-bottom: 1px solid var(--void-line);
+  padding: var(--section-pad);
+}
+
+.catalog-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 50% at 50% 0%, rgba(200, 146, 74, 0.05), transparent 60%);
+  pointer-events: none;
+}
+
+.catalog-wrap {
+  position: relative;
+  z-index: 1;
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.catalog-header {
+  text-align: center;
+  margin-bottom: var(--s-12);
+}
+
+.catalog-header .eyebrow {
+  justify-content: center;
+  margin-bottom: var(--s-4);
+}
+
+.catalog-header .eyebrow::before { display: none; }
+
+.catalog-title {
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  margin: 0 auto var(--s-4);
+  max-width: 22ch;
+  line-height: 1.15;
+}
+
+.catalog-sub {
+  font-size: 0.92rem;
+  color: var(--ink-3);
+  max-width: 48ch;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--s-4);
+  position: relative;
+}
+
+/* LIVE accent — subtle copper glow at the top edge */
+.catalog-card--live::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--copper-line), transparent);
+  opacity: 0.6;
+}
+
+.catalog-card {
+  position: relative;
+  background: var(--void-3);
+  border: 1px solid var(--void-border);
+  border-radius: var(--r-xl);
+  padding: var(--s-5);
+  box-shadow: var(--shadow-md);
+  transition: transform var(--mid) var(--ease-out), border-color var(--mid), box-shadow var(--mid);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  overflow: hidden;
+}
+
+.catalog-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--copper-line);
+  box-shadow: var(--shadow-lg);
+}
+
+.catalog-card--premium {
+  background: linear-gradient(160deg, var(--void-3), var(--void-2));
+  border-color: var(--copper-line);
+  box-shadow: var(--shadow-md), 0 0 24px var(--copper-soft);
+}
+
+.catalog-card--premium:hover {
+  border-color: var(--copper);
+  box-shadow: var(--shadow-lg), 0 0 32px var(--copper-soft);
+}
+
+.catalog-badge {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--r-xs);
+  border: 1px solid;
+}
+
+.catalog-badge--live {
+  color: var(--signal-live);
+  background: var(--signal-live-soft);
+  border-color: rgba(78, 205, 196, 0.2);
+  box-shadow: 0 0 8px var(--signal-live-soft);
+}
+
+.catalog-badge--configurable {
+  color: var(--ink-3);
+  background: rgba(138, 143, 156, 0.06);
+  border-color: var(--void-line);
+}
+
+.catalog-badge--conditional {
+  color: var(--copper);
+  background: var(--copper-soft);
+  border-color: var(--copper-line);
+}
+
+.catalog-badge--roadmap {
+  color: var(--ink-4);
+  background: transparent;
+  border-color: var(--void-line);
+}
+
+.catalog-num {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--ink-4);
+  letter-spacing: 0.14em;
+}
+
+.catalog-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  background: var(--void-4);
+  border: 1px solid var(--void-line);
+  display: grid;
+  place-items: center;
+  font-size: 0.9rem;
+  color: var(--copper);
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.catalog-icon--alt { color: var(--ink-2); }
+.catalog-icon--premium {
+  background: linear-gradient(135deg, var(--copper), var(--copper-2));
+  color: var(--void);
+  border-color: transparent;
+  box-shadow: 0 0 12px var(--copper-glow);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.catalog-name {
+  font-size: 1rem;
+  font-weight: 560;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.catalog-desc {
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  line-height: 1.5;
+  flex: 1;
+}
+
+.catalog-meta {
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--void-line);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.catalog-price {
+  color: var(--ink-2);
+  font-weight: 500;
+  font-size: 0.7rem;
+}
+
+.catalog-price .currency { font-size: 0.6rem; margin-right: 1px; }
+
+.catalog-sep { opacity: 0.4; }
+
+.catalog-channel { opacity: 0.75; }
+
+.catalog-status {
+  color: var(--ink-4);
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.65rem;
+  line-height: 1.4;
+}
+
+.catalog-note {
+  text-align: center;
+  margin-top: var(--s-10);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--ink-4);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  max-width: 40ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ================================================================
+   SCROLL REVEAL — horizontal variants
+   ================================================================ */
+
+.reveal--left {
+  opacity: 0;
+  transform: translateX(-20px);
+  transition: opacity var(--slow) var(--ease-out), transform var(--slow) var(--ease-out);
+}
+.reveal--left.reveal--in { transform: none; }
+.reveal--right {
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity var(--slow) var(--ease-out), transform var(--slow) var(--ease-out);
+}
+.reveal--right.reveal--in { transform: none; }
+
+/* ================================================================
+   REDUCED MOTION
+   ================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1 !important; transform: none !important; }
+  .stagger-children > * { opacity: 1 !important; transform: none !important; }
+  .hero-kicker .dot { animation: none; opacity: 1; }
+  .vs-nera-ring { animation: none; opacity: .4; }
+  .vs-nera-avatar { animation: none; }
+  .vs-arrow { animation: none; opacity: .5; }
+  .demo-bubble .typing span { animation: none; opacity: 1; }
+  .spotlight-card::after { display: none; }
+}
+
+/* ================================================================
+   CATALOG RESPONSIVE
+   ================================================================ */
+
+@media (max-width: 1024px) {
+  .catalog-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .catalog-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--s-3);
+  }
+  .catalog-card { padding: var(--s-4); }
+  .catalog-title { font-size: 1.4rem; }
+}
+
+@media (max-width: 480px) {
+  .catalog-grid {
+    grid-template-columns: 1fr;
+    gap: var(--s-3);
+  }
+  .catalog-title { font-size: 1.25rem; }
+  .catalog-desc { font-size: 0.75rem; }
+}

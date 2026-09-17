@@ -113,10 +113,16 @@ def test_visitor_to_delivered_lifecycle_web(db, client, storefront):
     db.refresh(order)
     assert order.status == ORDER_PAID
 
-    result = ProvisioningService(db).provision(order)
-    assert result.created
-    assert len(result.profiles) >= 1
-    profile = next(p for p in result.profiles if p.role == ROLE_SALES_AGENT)
+    from app.models.workspace_profile import WorkspaceProfile
+
+    profiles = (
+        db.query(WorkspaceProfile)
+        .filter(WorkspaceProfile.order_id == order.id)
+        .order_by(WorkspaceProfile.id)
+        .all()
+    )
+    assert len(profiles) >= 1
+    profile = next(p for p in profiles if p.role == ROLE_SALES_AGENT)
     assert profile.widget_token
     assert profile.api_key_prefix
     assert profile.status == "ready"

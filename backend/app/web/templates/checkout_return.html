@@ -4,87 +4,91 @@
 {% block body_class %}return-body{% endblock %}
 
 {% block content %}
-<header class="site-header">
-  <div class="wrap">
-    <a class="brand" href="/">
-      <span class="brand-mark">◆</span>
+<header class="site-header" style="background:var(--void);border-bottom:1px solid var(--void-line);padding:20px 0;">
+  <div class="wrap" style="max-width:620px;margin:0 auto;padding:0 20px;">
+    <a class="brand" href="/" style="color:var(--ink);text-decoration:none;font-weight:600;font-size:1.2rem;">
+      <span class="brand-mark" style="color:var(--copper);">◆</span>
       {{ company.name }}
     </a>
   </div>
 </header>
 
-<main class="wrap return-wrap">
+<main class="wrap return-wrap" style="max-width:620px;margin:0 auto;padding:64px 20px 96px;">
 
   {# Every state below is hidden until the API says which one is true. The
      page never guesses: showing "payment confirmed" before the server has
      confirmed it would be the one lie this screen must not tell. #}
 
-  <section class="state" id="state-checking">
-    <div class="thinking" aria-label="Checking your payment">
+  <!-- CHECKING: Initial state while we contact the server -->
+  <section class="state" id="state-checking" style="background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-2xl);padding:40px;text-align:center;">
+    <div class="thinking" aria-label="Checking your payment" style="display:flex;gap:8px;justify-content:center;margin:0 0 20px;">
       <span></span><span></span><span></span>
     </div>
-    <h1>Checking your payment</h1>
-    <p class="muted">One moment — we're confirming this with Paystack.</p>
+    <h1 style="margin-bottom:10px;font-size:1.5rem;color:var(--ink);">Checking your payment</h1>
+    <p class="muted" style="color:var(--ink-2);">One moment — we're confirming this with Paystack.</p>
   </section>
 
-  <section class="state hidden" id="state-pending">
-    <h1>We haven't seen this payment yet</h1>
-    <p class="muted">
-      If you've just paid, this can take a few seconds. We're still checking.
-    </p>
-    <div class="order-summary" id="pending-summary"></div>
-    <p class="muted small">
-      Nothing has been charged twice. If you closed the payment page without
-      paying, you can reopen the link from your email.
-    </p>
+  <!-- PAYMENT SUCCESS: Only shown after Paystack webhook/verification confirms -->
+  <section class="state payment-success hidden" id="state-success" style="background:var(--void-2);border:1px solid rgba(78,205,196,0.3);border-radius:var(--r-2xl);padding:40px;text-align:center;">
+    <div class="ready-mark" style="width:56px;height:56px;margin:0 auto 20px;display:grid;place-items:center;border-radius:50%;background:var(--signal-live-soft);color:var(--signal-live);font-size:1.8rem;">✓</div>
+    <h1 style="margin-bottom:10px;font-size:1.5rem;color:var(--signal-live);">Payment confirmed</h1>
+    <p class="muted" style="color:var(--ink-2);">Your workspace is being provisioned. This usually takes a few moments.</p>
+    <div id="success-steps" style="margin-top:24px;text-align:left;"></div>
+    <div id="success-credentials" class="hidden" style="margin-top:24px;"></div>
+    <a href="/desk" class="btn" style="display:inline-block;margin-top:24px;padding:12px 24px;background:var(--copper);color:var(--void);text-decoration:none;border-radius:var(--r-md);font-weight:600;">Go to your workspace</a>
   </section>
 
-  <section class="state hidden" id="state-provisioning">
-    <h1>Payment confirmed</h1>
-    <p class="muted" id="provisioning-line">Setting up your workspace now.</p>
-    <div class="order-summary" id="paid-summary"></div>
-    <ol class="steps" id="steps"></ol>
+  <!-- PENDING: Payment not yet confirmed -->
+  <section class="state payment-pending hidden" id="state-pending" style="background:var(--void-2);border:1px solid var(--copper-line);border-radius:var(--r-2xl);padding:40px;">
+    <h1 style="margin-bottom:10px;font-size:1.5rem;color:var(--copper);">Payment pending</h1>
+    <p class="muted" style="color:var(--ink-2);">We haven't received confirmation of your payment yet. If you've just completed payment, this can take a few seconds to arrive.</p>
+    <div class="order-summary" id="pending-summary" style="margin-top:20px;padding:16px;background:var(--void-3);border:1px solid var(--void-border);border-radius:var(--r-xl);"></div>
+    <p class="small" style="margin-top:16px;color:var(--ink-3);font-size:0.8125rem;">Do not close this page. We'll update it automatically when your payment is confirmed.</p>
   </section>
 
-  <section class="state hidden" id="state-ready">
-    <div class="ready-mark" aria-hidden="true">◆</div>
-    <h1>Your workspace is live</h1>
-    <p class="muted" id="ready-line"></p>
-
-    <div class="order-summary" id="ready-summary"></div>
-
-    {# Shown once, and only in the response that created them. Reloading this
-       page will not bring them back, which the copy says plainly rather than
-       letting someone find out later. #}
-    <div class="credentials hidden" id="credentials">
-      <div class="credentials-warn">
-        Copy these now. This is the only time they are shown — we store a hash
-        of the key, not the key.
-      </div>
-      <div class="cred" id="cred-key"></div>
-      <div class="cred" id="cred-password"></div>
-    </div>
-
-    <div class="next-steps">
-      <h3>Next</h3>
-      <ol class="steps steps--plain">
-        <li>Sign in to your desk and change the temporary password.</li>
-        <li>Set your agent's name, greeting and tone.</li>
-        <li>Paste the widget snippet into your site.</li>
-      </ol>
-      <a class="btn" href="/desk">Go to your desk</a>
-    </div>
+  <!-- PROCESSING: Payment verified but provisioning not complete -->
+  <section class="state payment-processing hidden" id="state-processing" style="background:var(--void-2);border:1px solid var(--copper-line);border-radius:var(--r-2xl);padding:40px;">
+    <h1 style="margin-bottom:10px;font-size:1.5rem;color:var(--copper);">Setting up your workspace</h1>
+    <p class="muted" style="color:var(--ink-2);">Your payment is confirmed. We're now building your AI workspace.</p>
+    <div class="order-summary" id="processing-summary" style="margin-top:20px;padding:16px;background:var(--void-3);border:1px solid var(--void-border);border-radius:var(--r-xl);"></div>
+    <ol class="steps" id="processing-steps" style="margin-top:20px;padding:0;list-style:none;"></ol>
   </section>
 
-  <section class="state hidden" id="state-problem">
-    <h1 id="problem-title">Something needs a human</h1>
-    <p class="muted" id="problem-line"></p>
-    <p class="muted small">
-      Your payment is recorded either way. Email
-      <a href="mailto:{{ company.support_email }}">{{ company.support_email }}</a>
-      with your reference and we'll finish this by hand.
-    </p>
-    <div class="order-summary" id="problem-summary"></div>
+  <!-- FAILED: Payment attempt failed -->
+  <section class="state payment-failed hidden" id="state-failed" style="background:var(--void-2);border:1px solid rgba(212,80,80,0.3);border-radius:var(--r-2xl);padding:40px;">
+    <h1 style="margin-bottom:10px;font-size:1.5rem;color:#d45050;">Payment failed</h1>
+    <p class="muted" style="color:var(--ink-2);">We couldn't process your payment. No money has been charged.</p>
+    <p style="margin-top:16px;color:var(--ink-2);">This can happen if:</p>
+    <ul style="color:var(--ink-3);margin:8px 0 0 20px;">
+      <li>Your card was declined</li>
+      <li>The payment session expired</li>
+      <li>You closed the payment window before completing</li>
+    </ul>
+    <a href="/build" class="btn" style="display:inline-block;margin-top:24px;padding:12px 24px;background:var(--copper);color:var(--void);text-decoration:none;border-radius:var(--r-md);font-weight:600;">Try again</a>
+  </section>
+
+  <!-- CANCELLED: Customer abandoned checkout -->
+  <section class="state payment-cancelled hidden" id="state-cancelled" style="background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-2xl);padding:40px;">
+    <h1 style="margin-bottom:10px;font-size:1.5rem;color:var(--ink-3);">Checkout cancelled</h1>
+    <p class="muted" style="color:var(--ink-2);">You left the checkout before completing payment. No money has been charged.</p>
+    <div class="order-summary" id="cancelled-summary" style="margin-top:20px;padding:16px;background:var(--void-3);border:1px solid var(--void-border);border-radius:var(--r-xl);"></div>
+    <a href="/build" class="btn" style="display:inline-block;margin-top:24px;padding:12px 24px;background:var(--copper);color:var(--void);text-decoration:none;border-radius:var(--r-md);font-weight:600;">Resume checkout</a>
+  </section>
+
+  <!-- VERIFICATION ERROR: Can't determine final status -->
+  <section class="state payment-error hidden" id="state-verification-error" style="background:var(--void-2);border:1px solid var(--signal-warn-soft);border-radius:var(--r-2xl);padding:40px;">
+    <h1 style="margin-bottom:10px;font-size:1.5rem;color:var(--signal-warn);">Having trouble confirming your payment</h1>
+    <p class="muted" style="color:var(--ink-2);">We're having trouble reaching our payment provider right now. Don't worry — your payment is safe.</p>
+    <p style="margin-top:16px;color:var(--ink-3);font-size:0.875rem;">This is usually temporary. Please check back in a few minutes, or contact us at <a href="mailto:{{ company.support_email }}" style="color:var(--copper);">{{ company.support_email }}</a> with your reference number.</p>
+    <div class="order-summary" id="error-summary" style="margin-top:20px;padding:16px;background:var(--void-3);border:1px solid var(--void-border);border-radius:var(--r-xl);"></div>
+  </section>
+
+  <!-- GENERIC ERROR: Fallback state -->
+  <section class="state payment-error hidden" id="state-error" style="background:var(--void-2);border:1px solid rgba(212,80,80,0.3);border-radius:var(--r-2xl);padding:40px;">
+    <h1 id="error-title" style="margin-bottom:10px;font-size:1.5rem;color:#d45050;">Something needs a human</h1>
+    <p class="muted" id="error-line" style="color:var(--ink-2);"></p>
+    <p class="muted small" style="margin-top:16px;color:var(--ink-3);">Your payment is recorded either way. Email <a href="mailto:{{ company.support_email }}" style="color:var(--copper);">{{ company.support_email }}</a> with your reference and we'll finish this by hand.</p>
+    <div class="order-summary" id="error-summary-generic" style="margin-top:20px;padding:16px;background:var(--void-3);border:1px solid var(--void-border);border-radius:var(--r-xl);"></div>
   </section>
 
 </main>

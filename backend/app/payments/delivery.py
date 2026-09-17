@@ -462,7 +462,8 @@ class DeliveryService:
             if result.created:
                 report.provisioned += 1
 
-            self._schedule_follow_ups(result.profile, confirmed)
+            if result.profiles:
+                self._schedule_follow_ups(result.profiles[0].profile, confirmed)
 
     def _schedule_follow_ups(self, profile, order: Order) -> None:
         """Best-effort, exactly as on the web path.

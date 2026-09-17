@@ -1,10 +1,4 @@
-"""Complexity-based pricing: a quote is computed and explainable, never accepted.
-
-The bug these tests exist to prevent is a price nobody can account for. Every
-figure the agent says must be derivable from the requirement that produced it,
-and every quote must equal the sum of the lines shown to the buyer — otherwise
-"why is it this much" has no answer and a discount can hide in the total.
-"""
+"""Complexity-based pricing: a quote is computed and explainable, never accepted."""
 
 import pytest
 
@@ -13,6 +7,7 @@ from app.pricing.complexity import (
     CHANNEL_TELEGRAM,
     CHANNEL_WEB,
     CHANNEL_WHATSAPP,
+    CONVERSATION_PRICE_MINOR,
     DIMENSION_BASE,
     DIMENSION_CHANNEL,
     DIMENSION_DISCOUNT,
@@ -23,7 +18,6 @@ from app.pricing.complexity import (
     PRODUCT_BASE_MINOR,
     PRODUCT_SALES_AGENT,
     PRODUCT_SUPPORT_AGENT,
-    WORKFLOW_STEP_ADD_MINOR,
     PricingError,
     Requirement,
     price,
@@ -31,7 +25,7 @@ from app.pricing.complexity import (
 
 
 def test_the_simplest_product_costs_its_base():
-    quote = price(Requirement())
+    quote = price(Requirement(monthly_conversations=0))
 
     assert quote.total_minor == PRODUCT_BASE_MINOR[PRODUCT_SALES_AGENT]
     assert len(quote.line_items) == 1
@@ -46,7 +40,6 @@ def test_total_always_equals_the_sum_of_its_lines():
             integrations=("Calendly", "HubSpot"),
             languages=("en", "yo", "ha"),
             monthly_conversations=5_000,
-            workflow_steps=3,
             discount_percent=15,
         )
     )
@@ -72,7 +65,6 @@ def test_a_bigger_requirement_never_costs_less():
             channels=(CHANNEL_WEB, CHANNEL_WHATSAPP),
             integrations=("Calendly",),
             monthly_conversations=9_000,
-            workflow_steps=2,
         )
     )
 
@@ -138,44 +130,41 @@ def test_extra_languages_are_charged():
     assert quote.total_minor - baseline.total_minor == LANGUAGE_ADD_MINOR * 2
 
 
-def test_volume_is_banded_not_per_message():
-    """Two volumes in the same band cost the same."""
+def test_volume_is_exact_per_conversation():
+    """Volume is priced exactly: 600 conversations cost 600 x rate, not a band."""
     low = price(Requirement(monthly_conversations=600))
     high = price(Requirement(monthly_conversations=1_999))
 
-    assert low.total_minor == high.total_minor
+    # Exact per-conversation pricing: different volumes = different prices
+    assert low.total_minor != high.total_minor
+    # And the difference is exactly the conversation rate times the difference
+    assert high.total_minor - low.total_minor == (1999 - 600) * CONVERSATION_PRICE_MINOR
 
 
-def test_a_higher_band_costs_more():
+def test_higher_volume_costs_more():
     small = price(Requirement(monthly_conversations=1_000))
     large = price(Requirement(monthly_conversations=9_000))
 
     assert large.total_minor > small.total_minor
 
 
-def test_the_smallest_band_shows_no_volume_line():
-    quote = price(Requirement(monthly_conversations=300))
+def test_zero_volume_shows_no_line():
+    quote = price(Requirement(monthly_conversations=0))
 
     assert not [i for i in quote.line_items if i.dimension == DIMENSION_VOLUME]
 
 
-def test_the_quote_carries_the_limit_the_band_buys():
+def test_quote_carries_exact_volume_limit():
     quote = price(Requirement(monthly_conversations=1_500))
 
-    assert quote.monthly_conversation_limit == 2_000
+    # Exact per-conversation pricing: the limit is exactly what was quoted
+    assert quote.monthly_conversation_limit == 1_500
 
 
-def test_volume_beyond_our_bands_is_refused_not_extrapolated():
+def test_volume_beyond_ceiling_is_refused_not_extrapolated():
     """We have not costed this volume, so any figure would be made up."""
     with pytest.raises(PricingError, match="price by hand"):
         Requirement(monthly_conversations=MAX_QUOTABLE_CONVERSATIONS + 1)
-
-
-def test_workflow_steps_are_charged_per_step():
-    quote = price(Requirement(workflow_steps=4))
-    baseline = price(Requirement())
-
-    assert quote.total_minor - baseline.total_minor == WORKFLOW_STEP_ADD_MINOR * 4
 
 
 def test_a_discount_is_a_visible_line_not_a_silent_edit():
@@ -219,7 +208,7 @@ def test_a_nonsense_discount_is_rejected():
 
 
 def test_an_unbuildable_product_is_refused():
-    with pytest.raises(PricingError, match="not a product this factory builds"):
+    with pytest.raises(PricingError, match="not a product"):
         Requirement(product_type="mind_reader")
 
 
@@ -252,7 +241,7 @@ def test_a_quote_becomes_a_plan_the_engine_can_already_sell():
     assert plan.amount_minor == quote.total_minor
     assert plan.currency == quote.currency
     assert plan.billing_period == "month"
-    assert plan.monthly_conversation_limit == 2_000
+    assert plan.monthly_conversation_limit == 1_500
     assert plan.is_default is True
     # The buyer sees what they are paying for, not the base line or a discount.
     assert "WhatsApp channel" in plan.features
@@ -283,7 +272,7 @@ def test_quote_endpoint_prices_a_requirement(client):
     body = response.json()
     assert body["currency"] == "NGN"
     assert body["total_minor"] == sum(i["amount_minor"] for i in body["line_items"])
-    assert body["monthly_conversation_limit"] == 2_000
+    assert body["monthly_conversation_limit"] == 1_500
     assert body["display_total"].startswith("₦")
 
 
@@ -317,31 +306,23 @@ def test_quote_endpoint_refuses_an_unbuildable_channel(client):
     assert "cannot answer on" in response.json()["detail"]
 
 
-def test_quote_endpoint_refuses_volume_beyond_our_bands(client):
+def test_quote_endpoint_refuses_volume_beyond_ceiling(client):
     response = client.post(
         "/api/v1/pricing/quote",
         json={"monthly_conversations": MAX_QUOTABLE_CONVERSATIONS + 1},
     )
 
-    # Exactly 400, and exactly the engine's own sentence. This was once
-    # `in (400, 422)`, which passed whichever layer answered — and so hid the
-    # schema shadowing the engine's copy with a field name a buyer cannot use.
+    # Exactly 400, and exactly the engine's own sentence.
     assert response.status_code == 400
     assert "price by hand" in response.json()["detail"]
 
 
 def test_a_ceiling_is_refused_in_prose_a_buyer_can_read(client):
-    """Every ceiling answers as a 400 carrying the engine's own sentence.
-
-    The schema layer must not duplicate these bounds. If it does, the buyer gets
-    a 422 whose detail is a list of field errors — which is both unreadable and,
-    rendered naively, the literal string "[object Object]".
-    """
+    """Every ceiling answers as a 400 carrying the engine's own sentence."""
     ceilings = [
         ({"integrations": [f"System {i}" for i in range(12)]}, "needs a human"),
         ({"languages": [f"Language {i}" for i in range(8)]}, "At most"),
-        ({"workflow_steps": 21}, "between 0 and"),
-        ({"monthly_conversations": 50_001}, "price by hand"),
+        ({"monthly_conversations": MAX_QUOTABLE_CONVERSATIONS + 1}, "price by hand"),
     ]
 
     for payload, expected in ceilings:
@@ -354,16 +335,11 @@ def test_a_ceiling_is_refused_in_prose_a_buyer_can_read(client):
 
 
 def test_quote_endpoint_still_rejects_a_malformed_requirement(client):
-    """Shape is still the schema's job, and still a 422.
-
-    Moving the ceilings out did not make the endpoint credulous: a wrong type or
-    a negative count is not a requirement at all.
-    """
+    """Shape is still the schema's job, and still a 422."""
     for payload in (
         {"monthly_conversations": None},
         {"monthly_conversations": "loads"},
         {"monthly_conversations": -1},
-        {"workflow_steps": -1},
     ):
         assert client.post(
             "/api/v1/pricing/quote", json=payload
@@ -371,13 +347,7 @@ def test_quote_endpoint_still_rejects_a_malformed_requirement(client):
 
 
 def test_quote_endpoint_prices_the_body_the_browser_actually_sends(client):
-    """The exact shape builder.js posts, every field populated.
-
-    Every other endpoint test here sends a partial body and leans on schema
-    defaults, so none of them would notice a field the form fills in but the
-    schema rejects. This one is deliberately redundant with the form: 5 extra
-    languages plus the included one is 6, which is the ceiling exactly.
-    """
+    """The exact shape builder.js posts, every field populated."""
     response = client.post(
         "/api/v1/pricing/quote",
         json={
@@ -386,7 +356,6 @@ def test_quote_endpoint_prices_the_body_the_browser_actually_sends(client):
             "integrations": [f"System {i}" for i in range(1, 11)],
             "languages": ["English"] + [f"Language {i}" for i in range(1, 6)],
             "monthly_conversations": 50_000,
-            "workflow_steps": 20,
         },
     )
 
@@ -394,9 +363,7 @@ def test_quote_endpoint_prices_the_body_the_browser_actually_sends(client):
     body = response.json()
     assert body["total_minor"] == sum(i["amount_minor"] for i in body["line_items"])
 
-    # 5 extras charged as 5, not 4. The engine counts languages beyond the first,
-    # so a client that omits the included one has every buyer's last extra
-    # language priced at zero.
+    # 5 extras charged as 5, not 4. The engine counts languages beyond the first.
     language_lines = [i for i in body["line_items"] if i["dimension"] == "language"]
     assert len(language_lines) == 1
     assert language_lines[0]["amount_minor"] == LANGUAGE_ADD_MINOR * 5

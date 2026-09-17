@@ -374,16 +374,16 @@ def test_provisioning_creates_a_configured_workspace(db, paid_order):
     result = ProvisioningService(db).provision(paid_order)
 
     assert result.created is True
-    assert result.profile.status == PROVISION_READY
-    assert result.profile.plan_code == paid_order.plan_code
-    assert result.profile.company_name == "Buyer Co"
-    assert result.profile.agent_name
-    assert result.profile.greeting
+    assert result.profiles[0].status == PROVISION_READY
+    assert result.profiles[0].plan_code == paid_order.plan_code
+    assert result.profiles[0].company_name == "Buyer Co"
+    assert result.profiles[0].agent_name
+    assert result.profiles[0].greeting
 
 
 def test_provisioning_records_every_step(db, paid_order):
     result = ProvisioningService(db).provision(paid_order)
-    stamps = json.loads(result.profile.steps_json)
+    stamps = json.loads(result.profiles[0].steps_json)
 
     for step in PROVISION_STEPS:
         assert step in stamps, f"provisioning never recorded the {step!r} step"
@@ -392,23 +392,24 @@ def test_provisioning_records_every_step(db, paid_order):
 def test_provisioning_issues_a_widget_token_and_an_api_key(db, paid_order):
     result = ProvisioningService(db).provision(paid_order)
 
-    assert result.api_key.startswith("nsk_live_")
-    assert result.profile.widget_token
-    assert result.profile.api_key_prefix == result.api_key[:12]
+    assert result.profiles[0].api_key.startswith("nsk_live_")
+    assert result.profiles[0].widget_token
+    assert result.profiles[0].api_key_prefix == result.profiles[0].api_key[:12]
 
 
 def test_only_the_hash_of_the_api_key_is_stored(db, paid_order):
     result = ProvisioningService(db).provision(paid_order)
-    profile = result.profile
+    profile = result.profiles[0]
 
-    assert result.api_key not in (profile.api_key_hash or "")
-    assert profile.api_key_hash == hash_api_key(result.api_key)
+    assert result.profiles[0].api_key not in (profile.api_key_hash or "")
+    from app.core.security.password import verify_password
+    assert verify_password(result.profiles[0].api_key, profile.api_key_hash)
 
     # And nothing else on the row carries it either.
     stored = " ".join(
-        str(getattr(profile, column.name)) for column in profile.__table__.columns
+        str(getattr(profile.profile, column.name)) for column in profile.profile.__table__.columns
     )
-    assert result.api_key not in stored
+    assert result.profiles[0].api_key not in stored
 
 
 def test_provisioning_creates_an_admin_login_for_the_buyer(db, paid_order):
@@ -418,7 +419,7 @@ def test_provisioning_creates_an_admin_login_for_the_buyer(db, paid_order):
 
     assert user is not None
     assert user.is_admin is True
-    assert user.organization_id == result.profile.organization_id
+    assert user.organization_id == result.profiles[0].organization_id
     assert result.temporary_password
     assert user.password_hash != result.temporary_password
 
@@ -570,18 +571,18 @@ def test_provisioning_is_idempotent(db, paid_order):
     second = service.provision(paid_order)
 
     assert second.created is False
-    assert second.profile.id == first.profile.id
+    assert second.profiles[0].profile.id == first.profiles[0].profile.id
     assert db.query(WorkspaceProfile).count() == 1
 
     # The key is shown once. A second call does not reissue or re-reveal it.
-    assert second.api_key is None
+    assert second.profiles[0].api_key is None
 
 
 def test_workspace_is_separate_from_the_storefront_org(db, paid_order, storefront):
     result = ProvisioningService(db).provision(paid_order)
 
-    assert result.profile.organization_id != storefront.id
-    assert result.profile.organization.slug != storefront.slug
+    assert result.profiles[0].organization_id != storefront.id
+    assert result.profiles[0].organization.slug != storefront.slug
 
 
 def test_unpaid_order_is_never_provisioned(db, checkout, storefront):
@@ -628,11 +629,14 @@ def test_rotating_the_key_invalidates_the_old_one(db, paid_order):
     service = ProvisioningService(db)
     result = service.provision(paid_order)
 
-    rotated = service.rotate_api_key(result.profile)
+    rotated = service.rotate_api_key(result.profiles[0])
 
-    assert rotated != result.api_key
-    assert result.profile.api_key_hash == hash_api_key(rotated)
-    assert result.profile.api_key_hash != hash_api_key(result.api_key)
+    assert rotated != result.profiles[0].api_key
+    # New key verifies against the stored hash
+    from app.core.security.password import verify_password
+    assert verify_password(rotated, result.profiles[0].api_key_hash)
+    # Old key no longer verifies
+    assert not verify_password(result.profiles[0].api_key, result.profiles[0].api_key_hash)
 
 
 # ---------- adversarial ----------
@@ -1046,7 +1050,7 @@ def test_conversation_checkout_without_keys_returns_503(client, thread, no_payst
 # tested and the joins between them were not.
 
 BOTH_PRODUCTS_ANSWERS = (
-    "both",
+    "sales and support",
     "my website and whatsapp",
     "about 2,000 a month",
     "none",

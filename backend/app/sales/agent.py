@@ -30,7 +30,7 @@ software; we cannot verify that a clinic opens at eight.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from app.catalog import STOREFRONT_CONFIG
 from app.models.conversation import (
@@ -211,6 +211,7 @@ _BUY_PATTERNS = (
     r"\bstart (now|today)\b",
     r"\bcheckout\b",
     r"\bsend (me )?(the )?(payment|invoice|link)\b",
+    r"\bprice it\b",
 )
 
 # Plain agreement. Never enough on its own — a bare "yes" earlier in a
@@ -1591,11 +1592,30 @@ def compose_reply(
                 reasoning=reasoning,
                 next_stage=STAGE_QUALIFIED,
                 captured_email=captured_email,
-                # Handed back unchanged. The advice is a recommendation, never a
-                # selection: the buyer still has to say which they want, so
-                # writing their answer for them here would be putting a product
-                # on an order nobody chose.
-                scope=scope,
+                # The recommendation is remembered on the scope so that a buyer
+                # who says "price it" on the next turn carries the advice forward
+                # instead of being asked the product question again. Not a
+                # selection — the buyer still has to accept — but the scope now
+                # knows what was recommended.
+                scope=replace(scope, recommended=recommendation.recommended),
+            )
+
+        # A recommendation was made on the previous turn and the buyer is
+        # asking about price or buying. Accept the recommended products and
+        # move forward — the product question was already answered by the
+        # advisor, so asking it again would make the buyer repeat themselves.
+        if (
+            pending == STEP_PRODUCT
+            and scope.recommended is not None
+            and scope.products is None
+            and (_matches(_PRICING_PATTERNS, text) or _matches(_BUY_PATTERNS, text))
+        ):
+            scope = replace(scope, products=scope.recommended)
+            return _scoping_reply(
+                scope,
+                ["visitor accepted recommendation via pricing intent"],
+                lead_in="Noted.",
+                captured_email=captured_email,
             )
 
         if pending is not None:

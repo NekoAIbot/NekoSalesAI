@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company.name }} — brand{% endblock %}
+
+{% block content %}
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <span class="brand-mark">◆</span>
+      {{ company.name }}
+    </a>
+    <nav class="nav">
+      <a class="nav-link" href="/">Home</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="brand-hero">
+    <div class="wrap">
+      <div class="brand-hero-inner">
+        <div class="brand-eyebrow">Visual identity — four directions</div>
+        <h1>Four logo concepts for Nera</h1>
+        <p class="brand-sub">
+          Each concept is a complete identity: mark, wordmark, favicon, mobile icon,
+          monochrome and light/dark variants. They are presented as options, not a
+          final choice — the production logo is not replaced until one is selected.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="brand-section">
+    <div class="wrap">
+
+      <!-- CONCEPT A -->
+      <article class="brand-concept">
+        <div class="brand-concept-head">
+          <h2>Concept A</h2>
+          <span class="brand-concept-tag">Nera-focused abstract mark</span>
+        </div>
+        <p class="brand-concept-desc">
+          A single organic form suggesting a voice, a signal, or a presence — Nera
+          as the speaker, not a machine. The mark reads as something alive and
+          restrained rather than engineered.
+        </p>
+
+        <div class="brand-concept-art">
+          <div class="brand-swatch brand-swatch--light">
+            <img src="/static/brand/logo-concept-a.svg" alt="Concept A on light background">
+          </div>
+          <div class="brand-swatch brand-swatch--dark">
+            <img src="/static/brand/logo-concept-a-dark.svg" alt="Concept A on dark background">
+          </div>
+        </div>
+
+        <div class="brand-concept-variants">
+          <div class="brand-variant">
+            <span class="brand-variant-label">Monochrome</span>
+            <img src="/static/brand/logo-concept-a-mono.svg" alt="Concept A monochrome">
+          </div>
+          <div class="brand-variant">
+            <span class="brand-variant-label">Favicon</span>
+            <img src="/static/brand/logo-concept-a-favicon.svg" alt="Concept A favicon">
+          </div>
+          <div class="brand-variant">
+            <span class="brand-variant-label">Mobile icon</span>
+            <img src="/static/brand/logo-concept-a-192.svg" alt="Concept A mobile icon">
+          </div>
+        </div>
+
+        <div class="brand-concept-detail">
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Mark only</span>
+            <img src="/static/brand/logo-concept-a-mark.svg" alt="Concept A mark only">
+          </div>
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Wordmark</span>
+            <span class="brand-wordmark">Nera</span>
+          </div>
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Clear space</span>
+            <div class="brand-clearspace">
+              <img src="/static/brand/logo-concept-a-mark.svg" alt="Concept A with clear space">
+              <span class="brand-clearspace-rule"></span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- CONCEPT B -->
+      <article class="brand-concept">
+        <div class="brand-concept-head">
+          <h2>Concept B</h2>
+          <span class="brand-concept-tag">AI workforce / connection concept</span>
+        </div>
+        <p class="brand-concept-desc">
+          Two nodes and a link: the sales worker and the support worker, connected
+          under one roof. It is the workforce idea made geometric — two things that
+          operate together, not separately.
+        </p>
+
+        <div class="brand-concept-art">
+          <div class="brand-swatch brand-swatch--light">
+            <img src="/static/brand/logo-concept-b.svg" alt="Concept B on light background">
+          </div>
+          <div class="brand-swatch brand-swatch--dark">
+            <img src="/static/brand/logo-concept-b-dark.svg" alt="Concept B on dark background">
+          </div>
+        </div>
+
+        <div class="brand-concept-variants">
+          <div class="brand-variant">
+            <span class="brand-variant-label">Monochrome</span>
+            <img src="/static/brand/logo-concept-b-mono.svg" alt="Concept B monochrome">
+          </div>
+          <div class="brand-variant">
+            <span class="brand-variant-label">Favicon</span>
+            <img src="/static/brand/logo-concept-b-favicon.svg" alt="Concept B favicon">
+          </div>
+          <div class="brand-variant">
+            <span class="brand-variant-label">Mobile icon</span>
+            <img src="/static/brand/logo-concept-b-192.svg" alt="Concept B mobile icon">
+          </div>
+        </div>
+
+        <div class="brand-concept-detail">
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Mark only</span>
+            <img src="/static/brand/logo-concept-b-mark.svg" alt="Concept B mark only">
+          </div>
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Wordmark</span>
+            <span class="brand-wordmark">Nera</span>
+          </div>
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Clear space</span>
+            <div class="brand-clearspace">
+              <img src="/static/brand/logo-concept-b-mark.svg" alt="Concept B with clear space">
+              <span class="brand-clearspace-rule"></span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- CONCEPT C -->
+      <article class="brand-concept">
+        <div class="brand-concept-head">
+          <h2>Concept C</h2>
+          <span class="brand-concept-tag">Elegant typographic wordmark</span>
+        </div>
+        <p class="brand-concept-desc">
+          Nera set as the primary asset, with a small geometric accent. The identity
+          lives in the letterforms and the spacing, not in a separate symbol. This is
+          the direction that says “a serious company,” not “a tech startup.”
+        </p>
+
+        <div class="brand-concept-art">
+          <div class="brand-swatch brand-swatch--light">
+            <img src="/static/brand/logo-concept-c.svg" alt="Concept C on light background">
+          </div>
+          <div class="brand-swatch brand-swatch--dark">
+            <img src="/static/brand/logo-concept-c-dark.svg" alt="Concept C on dark background">
+          </div>
+        </div>
+
+        <div class="brand-concept-variants">
+          <div class="brand-variant">
+            <span class="brand-variant-label">Monochrome</span>
+            <img src="/static/brand/logo-concept-c-mono.svg" alt="Concept C monochrome">
+          </div>
+          <div class="brand-variant">
+            <span class="brand-variant-label">Favicon</span>
+            <img src="/static/brand/logo-concept-c-favicon.svg" alt="Concept C favicon">
+          </div>
+          <div class="brand-variant">
+            <span class="brand-variant-label">Mobile icon</span>
+            <img src="/static/brand/logo-concept-c-192.svg" alt="Concept C mobile icon">
+          </div>
+        </div>
+
+        <div class="brand-concept-detail">
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Mark only</span>
+            <img src="/static/brand/logo-concept-c-mark.svg" alt="Concept C mark only">
+          </div>
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Wordmark</span>
+            <span class="brand-wordmark">Nera</span>
+          </div>
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Clear space</span>
+            <div class="brand-clearspace">
+              <img src="/static/brand/logo-concept-c-mark.svg" alt="Concept C with clear space">
+              <span class="brand-clearspace-rule"></span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- CONCEPT D -->
+      <article class="brand-concept">
+        <div class="brand-concept-head">
+          <h2>Concept D</h2>
+          <span class="brand-concept-tag">Minimal geometric symbol</span>
+        </div>
+        <p class="brand-concept-desc">
+          A single construction: a centre and an orbit. It is the most reduced option —
+          the symbol that scales furthest down, works in the smallest favicon, and reads
+          as deliberate rather than decorative.
+        </p>
+
+        <div class="brand-concept-art">
+          <div class="brand-swatch brand-swatch--light">
+            <img src="/static/brand/logo-concept-d.svg" alt="Concept D on light background">
+          </div>
+          <div class="brand-swatch brand-swatch--dark">
+            <img src="/static/brand/logo-concept-d-dark.svg" alt="Concept D on dark background">
+          </div>
+        </div>
+
+        <div class="brand-concept-variants">
+          <div class="brand-variant">
+            <span class="brand-variant-label">Monochrome</span>
+            <img src="/static/brand/logo-concept-d-mono.svg" alt="Concept D monochrome">
+          </div>
+          <div class="brand-variant">
+            <span class="brand-variant-label">Favicon</span>
+            <img src="/static/brand/logo-concept-d-favicon.svg" alt="Concept D favicon">
+          </div>
+          <div class="brand-variant">
+            <span class="brand-variant-label">Mobile icon</span>
+            <img src="/static/brand/logo-concept-d-192.svg" alt="Concept D mobile icon">
+          </div>
+        </div>
+
+        <div class="brand-concept-detail">
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Mark only</span>
+            <img src="/static/brand/logo-concept-d-mark.svg" alt="Concept D mark only">
+          </div>
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Wordmark</span>
+            <span class="brand-wordmark">Nera</span>
+          </div>
+          <div class="brand-detail-cell">
+            <span class="brand-detail-label">Clear space</span>
+            <div class="brand-clearspace">
+              <img src="/static/brand/logo-concept-d-mark.svg" alt="Concept D with clear space">
+              <span class="brand-clearspace-rule"></span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section class="brand-comparison">
+    <div class="wrap">
+      <div class="brand-comparison-head">
+        <span class="brand-eyebrow">At a glance</span>
+        <h2>All four, side by side</h2>
+        <p class="brand-sub">
+          Each concept rendered in the same contexts so the differences are visible
+          without switching pages.
+        </p>
+      </div>
+
+      <div class="brand-grid">
+        <div class="brand-grid-cell">
+          <img src="/static/brand/logo-concept-a.svg" alt="Concept A">
+          <span>A — Abstract mark</span>
+        </div>
+        <div class="brand-grid-cell">
+          <img src="/static/brand/logo-concept-b.svg" alt="Concept B">
+          <span>B — Workforce / connection</span>
+        </div>
+        <div class="brand-grid-cell">
+          <img src="/static/brand/logo-concept-c.svg" alt="Concept C">
+          <span>C — Typographic wordmark</span>
+        </div>
+        <div class="brand-grid-cell">
+          <img src="/static/brand/logo-concept-d.svg" alt="Concept D">
+          <span>D — Minimal geometric</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="brand-next">
+    <div class="wrap">
+      <div class="brand-next-inner">
+        <span class="brand-eyebrow">Next step</span>
+        <h2>Choosing a direction</h2>
+        <p class="brand-sub">
+          One concept will be selected and refined into the production identity —
+          favicon, mobile icon, email signature, social avatar, and the mark on the
+          website. The other three are not thrown away; they are alternatives that
+          can be revisited.
+        </p>
+        <a class="btn btn--lg" href="/">Back to the website</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>{{ company.name }}</span>
+    <a class="link" href="mailto:{{ company.support_email }}">{{ company.support_email }}</a>
+  </div>
+</footer>
+{% endblock %}

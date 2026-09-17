@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+
+{% block title %}Pricing — {{ company.name }}{% endblock %}
+
+{% block content %}
+<!-- ============================================================
+   NAVIGATION
+   ============================================================ -->
+<nav class="nav">
+  <div class="container nav-inner">
+    <a class="nav-logo" href="/">
+      <span class="nav-logo-mark">N</span>
+      <span>Nera</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="/products">Products</a>
+      <a class="nav-link" href="/workforce">Workforce</a>
+      <a class="nav-link" href="/demo">Demo</a>
+      <a class="nav-link" href="/build">Build</a>
+      <a class="nav-link is-active" href="/pricing">Pricing</a>
+      <a class="nav-link" href="/trust">Trust</a>
+    </div>
+    <div class="nav-actions">
+      <a class="nav-cta magnetic-btn" href="/build">Get started</a>
+      <a class="nav-link" href="/login">Sign in</a>
+    </div>
+    <button class="nav-mobile-toggle" aria-label="Menu">
+      <span class="hamburger"><span></span><span></span><span></span></span>
+    </button>
+  </div>
+  <div class="nav-mobile-menu">
+    <div class="nav-mobile-links">
+      <a class="nav-mobile-link" href="/products">Products</a>
+      <a class="nav-mobile-link" href="/workforce">Workforce</a>
+      <a class="nav-mobile-link" href="/demo">Demo</a>
+      <a class="nav-mobile-link" href="/build">Build</a>
+      <a class="nav-mobile-link" href="/pricing">Pricing</a>
+      <a class="nav-mobile-link" href="/trust">Trust</a>
+      <a class="nav-mobile-link" href="/login">Sign in</a>
+      <a class="nav-mobile-link" href="/build">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================================================
+   PRICING PAGE — server-authoritative pricing
+   ============================================================ -->
+<main id="main">
+<section class="section" style="padding-top:80px;">
+  <div class="container" style="max-width:640px;">
+    <div class="reveal">
+      <span class="eyebrow">Pricing</span>
+      <h1 class="display" style="margin:12px 0 16px;">Priced by what it has to do</h1>
+      <p class="lead" style="margin-bottom:24px;">
+        Nera does not sell subscriptions to software that already exists. It builds
+        the AI your business needs and prices that build from the work it actually
+        has to do — channels, traffic, languages, systems to connect.
+      </p>
+      <p class="lead" style="font-size:0.85rem;color:var(--ink-3);">
+        The prices below are the published figures for the three products this
+        storefront sells. A custom build is priced from your configuration on /build.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+   PRODUCT PRICES — the three live products
+   ============================================================ -->
+<section class="section" style="padding-top:20px;padding-bottom:40px;background:var(--void-2);border-top:1px solid var(--void-line);">
+  <div class="container">
+    <div class="catalog-header reveal">
+      <span class="eyebrow" style="justify-content:flex-start;">Live products</span>
+      <h2 class="catalog-title" style="text-align:left;max-width:none;">What Nera sells today</h2>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;" class="reveal">
+      <!-- Sales Rep -->
+      <div style="background:var(--void-3);border:1px solid var(--void-border);border-radius:var(--r-xl);padding:var(--s-6);box-shadow:var(--shadow-md);display:flex;flex-direction:column;gap:var(--s-3);">
+        <div style="display:flex;align-items:center;gap:var(--s-2);font-family:var(--font-mono);font-size:0.55rem;color:var(--signal-live);letter-spacing:0.12em;text-transform:uppercase;">
+          <span class="status-live-dot" style="display:inline;width:5px;height:5px;vertical-align:middle;"></span>
+          Live
+        </div>
+        <div style="font-size:0.75rem;color:var(--ink-4);font-family:var(--font-mono);letter-spacing:0.1em;text-transform:uppercase;">001</div>
+        <h3 style="font-size:1.05rem;font-weight:560;color:var(--ink);letter-spacing:-0.02em;margin:0;">Nera AI Sales Representative</h3>
+        <p style="font-size:0.82rem;color:var(--ink-2);line-height:1.55;">
+          Engages prospects, qualifies them against your criteria, brings them to a
+          decision using your approved prices and policies.
+        </p>
+        <div style="margin-top:auto;padding-top:var(--s-4);border-top:1px solid var(--void-line);">
+          <div style="font-family:var(--font-display);font-size:2rem;font-weight:600;color:var(--ink);letter-spacing:-0.03em;font-variant-numeric:tabular-nums;">
+            ₦199,000
+          </div>
+          <div style="font-family:var(--font-mono);font-size:0.65rem;color:var(--ink-4);letter-spacing:0.04em;text-transform:uppercase;margin-top:2px;">
+            per month
+          </div>
+        </div>
+        <a class="btn btn-primary" href="/build" style="margin-top:var(--s-2);align-self:flex-start;">Configure this</a>
+      </div>
+
+      <!-- Support Agent -->
+      <div style="background:var(--void-3);border:1px solid var(--void-border);border-radius:var(--r-xl);padding:var(--s-6);box-shadow:var(--shadow-md);display:flex;flex-direction:column;gap:var(--s-3);">
+        <div style="display:flex;align-items:center;gap:var(--s-2);font-family:var(--font-mono);font-size:0.55rem;color:var(--signal-live);letter-spacing:0.12em;text-transform:uppercase;">
+          <span class="status-live-dot" style="display:inline;width:5px;height:5px;vertical-align:middle;"></span>
+          Live
+        </div>
+        <div style="font-size:0.75rem;color:var(--ink-4);font-family:var(--font-mono);letter-spacing:0.1em;text-transform:uppercase;">002</div>
+        <h3 style="font-size:1.05rem;font-weight:560;color:var(--ink);letter-spacing:-0.02em;margin:0;">Nera AI Support Agent</h3>
+        <p style="font-size:0.82rem;color:var(--ink-2);line-height:1.55;">
+          Resolves customer questions from your verified knowledge, hands off with
+          full context when the answer is not in scope.
+        </p>
+        <div style="margin-top:auto;padding-top:var(--s-4);border-top:1px solid var(--void-line);">
+          <div style="font-family:var(--font-display);font-size:2rem;font-weight:600;color:var(--ink);letter-spacing:-0.03em;font-variant-numeric:tabular-nums;">
+            ₦149,000
+          </div>
+          <div style="font-family:var(--font-mono);font-size:0.65rem;color:var(--ink-4);letter-spacing:0.04em;text-transform:uppercase;margin-top:2px;">
+            per month
+          </div>
+        </div>
+        <a class="btn btn-primary" href="/build" style="margin-top:var(--s-2);align-self:flex-start;">Configure this</a>
+      </div>
+
+      <!-- Workforce -->
+      <div style="background:linear-gradient(160deg,var(--void-3),var(--void-2));border:1px solid var(--copper-line);border-radius:var(--r-xl);padding:var(--s-6);box-shadow:var(--shadow-md),0 0 30px var(--copper-soft);display:flex;flex-direction:column;gap:var(--s-3);">
+        <div style="display:flex;align-items:center;gap:var(--s-2);font-family:var(--font-mono);font-size:0.55rem;color:var(--copper);letter-spacing:0.12em;text-transform:uppercase;">
+          <span style="width:5px;height:5px;border-radius:50%;background:var(--copper);box-shadow:0 0 6px var(--copper-glow);"></span>
+          Live · Premium
+        </div>
+        <div style="font-size:0.75rem;color:var(--copper);font-family:var(--font-mono);letter-spacing:0.1em;text-transform:uppercase;">003</div>
+        <h3 style="font-size:1.05rem;font-weight:560;color:var(--ink);letter-spacing:-0.02em;margin:0;">Nera Sales + Support Workforce</h3>
+        <p style="font-size:0.82rem;color:var(--ink-2);line-height:1.55;">
+          Both workers, one knowledge base, one set of rules. Sales engages, support
+          follows through. One workforce, one bill, one dashboard.
+        </p>
+        <div style="margin-top:auto;padding-top:var(--s-4);border-top:1px solid var(--void-line);">
+          <div style="font-family:var(--font-display);font-size:2rem;font-weight:600;color:var(--ink);letter-spacing:-0.03em;font-variant-numeric:tabular-nums;">
+            ₦348,000
+          </div>
+          <div style="font-family:var(--font-mono);font-size:0.65rem;color:var(--ink-4);letter-spacing:0.04em;text-transform:uppercase;margin-top:2px;">
+            per month
+          </div>
+        </div>
+        <a class="btn btn-primary" href="/build" style="margin-top:var(--s-2);align-self:flex-start;background:var(--copper);color:var(--void);border-color:var(--copper);">Configure this</a>
+      </div>
+    </div>
+
+    <p style="text-align:center;margin-top:24px;font-family:var(--font-mono);font-size:0.62rem;color:var(--ink-4);letter-spacing:0.06em;text-transform:uppercase;">
+      Every price computed server-side from your configuration. The browser never computes a price.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================
+   HOW PRICING WORKS — the four dimensions
+   ============================================================ -->
+<section class="section" style="padding-top:20px;padding-bottom:40px;">
+  <div class="container" style="max-width:640px;">
+    <div class="reveal" style="text-align:center;margin-bottom:28px;">
+      <span class="eyebrow" style="justify-content:center;">How a build is priced</span>
+      <h2 class="section-title" style="margin:12px auto 0;">Five dimensions, each with a real cost</h2>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;" class="reveal">
+      <div style="display:flex;gap:var(--s-4);align-items:flex-start;background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-lg);padding:var(--s-4) var(--s-5);">
+        <div style="font-family:var(--font-mono);font-size:0.55rem;color:var(--copper);letter-spacing:0.14em;text-transform:uppercase;flex-shrink:0;padding-top:2px;">Base</div>
+        <div style="flex:1;font-size:0.85rem;color:var(--ink-2);line-height:1.5;">
+          Every product starts at its base price. A sales representative is not the
+          same build as a support agent — one quotes and closes, the other answers
+          from knowledge — so they start at different figures.
+        </div>
+      </div>
+      <div style="display:flex;gap:var(--s-4);align-items:flex-start;background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-lg);padding:var(--s-4) var(--s-5);">
+        <div style="font-family:var(--font-mono);font-size:0.55rem;color:var(--copper);letter-spacing:0.14em;text-transform:uppercase;flex-shrink:0;padding-top:2px;">Channels</div>
+        <div style="flex:1;font-size:0.85rem;color:var(--ink-2);line-height:1.5;">
+          The web widget is included. Every additional channel — Telegram, WhatsApp,
+          Email — is real integration work and carries a real add. You only pay for
+          the channels you actually configure.
+        </div>
+      </div>
+      <div style="display:flex;gap:var(--s-4);align-items:flex-start;background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-lg);padding:var(--s-4) var(--s-5);">
+        <div style="font-family:var(--font-mono);font-size:0.55rem;color:var(--copper);letter-spacing:0.14em;text-transform:uppercase;flex-shrink:0;padding-top:2px;">Volume</div>
+        <div style="flex:1;font-size:0.85rem;color:var(--ink-2);line-height:1.5;">
+          Conversation volume is priced in bands, not per message, so you can tell
+          what you will pay before you know your traffic. Beyond 5,000
+          conversations/month is custom — talk to us.
+        </div>
+      </div>
+      <div style="display:flex;gap:var(--s-4);align-items:flex-start;background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-lg);padding:var(--s-4) var(--s-5);">
+        <div style="font-family:var(--font-mono);font-size:0.55rem;color:var(--copper);letter-spacing:0.14em;text-transform:uppercase;flex-shrink:0;padding-top:2px;">Add-ons</div>
+        <div style="flex:1;font-size:0.85rem;color:var(--ink-2);line-height:1.5;">
+          Languages, CRM sync, calendar booking, payment collection — each is priced
+          by what it adds. English is included. Every additional language is
+          translation and testing work, not a config flag.
+        </div>
+      </div>
+      <div style="display:flex;gap:var(--s-4);align-items:flex-start;background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-lg);padding:var(--s-4) var(--s-5);">
+        <div style="font-family:var(--font-mono);font-size:0.55rem;color:var(--copper);letter-spacing:0.14em;text-transform:uppercase;flex-shrink:0;padding-top:2px;">Workflow</div>
+        <div style="flex:1;font-size:0.85rem;color:var(--ink-2);line-height:1.5;">
+          More workflow steps mean a more custom conversation flow. Configured per
+          build, up to 5 steps on the standard configuration.
+        </div>
+      </div>
+    </div>
+
+    <p style="margin-top:20px;font-size:0.78rem;color:var(--ink-3);line-height:1.5;">
+      No fixed tiers. No rounding. The quote on /build shows every line that made up
+      the figure — and the server is the source of truth for that figure, not this page.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================
+   FAQ
+   ============================================================ -->
+{% if faqs %}
+<section class="section" style="padding-top:20px;padding-bottom:40px;background:var(--void-2);border-top:1px solid var(--void-line);">
+  <div class="container" style="max-width:640px;">
+    <div class="reveal">
+      <span class="eyebrow">Pricing questions</span>
+      <h2 class="section-title" style="margin:12px 0 24px;">Before you build</h2>
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        {% for faq in faqs %}
+        <div>
+          <div style="font-weight:560;color:var(--ink);font-size:0.9rem;margin-bottom:4px;">{{ faq.question }}</div>
+          <div style="font-size:0.82rem;color:var(--ink-2);line-height:1.55;">{{ faq.answer }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+</main>
+
+<!-- ============================================================
+   FOOTER
+   ============================================================ -->
+<footer class="footer">
+  <div class="container footer-inner">
+    <div>
+      <div class="footer-brand">
+        <span class="footer-brand-mark">N</span>
+        NekoSalesAI
+      </div>
+      <div style="color:var(--ink-3);font-size:0.78rem;line-height:1.5;margin-top:4px;">
+        Nera — the AI workforce for serious businesses.
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Product</div>
+      <div class="footer-links">
+        <a class="footer-link" href="/">Home</a>
+        <a class="footer-link" href="/products">Products</a>
+        <a class="footer-link" href="/workforce">Workforce</a>
+        <a class="footer-link" href="/demo">Demo</a>
+        <a class="footer-link" href="/build">Build</a>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Company</div>
+      <div class="footer-links">
+        <a class="footer-link" href="/pricing">Pricing</a>
+        <a class="footer-link" href="/trust">Trust</a>
+        <a class="footer-link" href="/login">Sign in</a>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Status</div>
+      <div class="footer-links">
+        <span class="footer-link" style="color:var(--signal-live);cursor:default;">
+          <span class="status-live-dot" style="display:inline;width:6px;height:6px;margin-right:5px;vertical-align:middle;"></span>
+          All systems operational
+        </span>
+        <span class="footer-link" style="cursor:default;color:var(--ink-3);">Pricing · ₦</span>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© NekoSalesAI. Nera is the AI workforce for businesses.</span>
+    <span class="mono" style="font-size:0.6rem;letter-spacing:0.1em;">PROVABLE RESTRAINT</span>
+  </div>
+</footer>
+
+<script src="/static/js/builder.js" defer></script>
+<script src="/static/js/page.js" defer></script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var toggle = document.querySelector(".nav-mobile-toggle");
+  var menu = document.querySelector(".nav-mobile-menu");
+  if (toggle && menu) {
+    toggle.addEventListener("click", function () {
+      var open = menu.style.display === "block";
+      menu.style.display = open ? "none" : "block";
+    });
+  }
+})();
+</script>
+{% endblock %}

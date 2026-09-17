@@ -17,6 +17,9 @@ from app.models.quote import Quote
 from app.models.workspace_profile import WorkspaceProfile
 from app.models.follow_up import FollowUp
 from app.models.channel_identity import ChannelIdentity
+from app.models.configuration import WorkspaceConfiguration
+from app.models.password_reset_token import PasswordResetToken
+from app.models.email_verification_code import EmailVerificationCode
 
 __all__ = [
     "Organization",
@@ -30,6 +33,9 @@ __all__ = [
     "Order",
     "Quote",
     "WorkspaceProfile",
+    "WorkspaceConfiguration",
     "FollowUp",
     "ChannelIdentity",
+    "PasswordResetToken",
+    "EmailVerificationCode",
 ]

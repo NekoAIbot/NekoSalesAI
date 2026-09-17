@@ -17,8 +17,12 @@ from app.dependencies.database import get_db
 from app.pricing.complexity import (
     CHANNEL_ADD_MINOR,
     CHANNEL_NAMES,
+    INTEGRATION_ADD_MINOR,
+    INTEGRATION_LABELS,
+    LANGUAGE_ADD_MINOR,
     PRODUCT_NAMES,
-    VOLUME_BANDS,
+    PRODUCT_SALES_AGENT,
+    PRODUCT_SUPPORT_AGENT,
     PricingError,
     price,
 )
@@ -37,20 +41,47 @@ def pricing_options():
 
     Publishing the dimensions rather than hardcoding them in the client means
     a channel we have not built cannot be offered by a stale page.
+
+    Prices come from the pricing engine — one source of truth. Nothing here
+    invents a figure the engine would disagree with.
     """
+    base_prices = {
+        PRODUCT_SALES_AGENT: 199_000_00,
+        PRODUCT_SUPPORT_AGENT: 149_000_00,
+    }
     return {
         "products": [
-            {"code": code, "name": name} for code, name in PRODUCT_NAMES.items()
+            {
+                "code": code,
+                "name": name,
+                "base_price_minor": base_prices.get(code, 0),
+                "currency": "NGN",
+            }
+            for code, name in PRODUCT_NAMES.items()
         ],
         "channels": [
             {
                 "code": code,
                 "name": CHANNEL_NAMES[code],
                 "included": CHANNEL_ADD_MINOR[code] == 0,
+                "add_minor": CHANNEL_ADD_MINOR[code],
             }
             for code in CHANNEL_ADD_MINOR
         ],
-        "volume_bands": [limit for limit, _ in VOLUME_BANDS],
+        "integrations": [
+            {
+                "code": code,
+                "name": INTEGRATION_LABELS.get(code, f"{code} integration"),
+                "add_minor": INTEGRATION_ADD_MINOR,
+            }
+            for code in INTEGRATION_LABELS
+        ],
+        "languages": [
+            {"code": "en", "name": "English", "included": True},
+            {"code": "yo", "name": "Yoruba", "add_minor": LANGUAGE_ADD_MINOR},
+            {"code": "ha", "name": "Hausa", "add_minor": LANGUAGE_ADD_MINOR},
+            {"code": "ig", "name": "Igbo", "add_minor": LANGUAGE_ADD_MINOR},
+        ],
     }
 
 

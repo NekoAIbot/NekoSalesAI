@@ -996,7 +996,7 @@ def test_the_confirmation_before_payment_is_itemised():
     assert "name, email and company" in reply.body
     assert "₦" in reply.body
     assert "–" in reply.body
-    assert "AI Sales Representative" in reply.body
+    assert "AI Sales Agent" in reply.body
 
 
 # BUG 3 — questions about Nera itself are answered, never escalated.

@@ -21,6 +21,11 @@ class CheckoutRequest(BaseModel):
     ``quote_reference`` is re-priced from the requirement the server stored, so
     there is no field here a buyer could use to name their own price. Send one
     or the other; the service refuses both at once.
+
+    When a buyer arrives through the builder with a full configuration (channels,
+    volume, integrations, languages, workflow steps), those are carried in
+    ``requirement`` and re-priced server-side from the stored requirement at
+    order time. The buyer never sends an amount.
     """
 
     plan_code: str | None = Field(default=None, min_length=1, max_length=50)
@@ -28,6 +33,14 @@ class CheckoutRequest(BaseModel):
     email: EmailStr
     name: str | None = Field(default=None, max_length=150)
     company: str | None = Field(default=None, max_length=255)
+    # Full builder configuration, when the buyer came through the configurator
+    # rather than a catalog plan. Re-priced from the stored requirement.
+    product_type: str | None = Field(default=None, max_length=40)
+    products: tuple[str, ...] = Field(default=(), max_length=200)
+    channels: tuple[str, ...] = Field(default=(), max_length=200)
+    integrations: tuple[str, ...] = Field(default=(), max_length=200)
+    languages: tuple[str, ...] = Field(default=(), max_length=200)
+    monthly_conversations: int = Field(default=500, ge=0)
 
 
 class OrderOut(BaseModel):

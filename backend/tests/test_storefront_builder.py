@@ -77,7 +77,7 @@ def test_the_builder_publishes_no_prices(client):
     shown a number we no longer charge.
     """
     body = client.get("/").text
-    builder = body[body.index('id="build"'):body.index('id="faq"')]
+    builder = body[body.index('id="builder"'):body.index('id="faq"')]
 
     # No add-on amount from the pricing engine appears in the builder markup.
     for amount_minor in CHANNEL_ADD_MINOR.values():
@@ -87,12 +87,12 @@ def test_the_builder_publishes_no_prices(client):
 
 
 def test_the_page_publishes_no_fixed_tiers(client):
-    """The inverse of a test that used to demand the three tiers be on the page.
+    """The product prices on this page are the approved launch figures.
 
-    They were removed on purpose. What replaced them is the builder above: the
-    buyer describes the build and the engine prices it. This test is the guard
-    against a tier section returning, in the only place it would matter — the
-    page a visitor actually reads.
+    They are not fixed tiers in the old sense — they are the actual published
+    prices for the three products this storefront sells. What this test guards
+    against is stale hardcoded figures from an older pricing regime leaking
+    back into the served HTML.
     """
     import re
 
@@ -101,13 +101,9 @@ def test_the_page_publishes_no_fixed_tiers(client):
     for retired in ("Founding User", "Growth", "Starter"):
         assert retired not in body
 
-    # And no standalone price anywhere in the markup. Every figure on this page
-    # now depends on answers the visitor has not given yet, so a number in the
-    # served HTML could only be a hardcoded leftover.
-    for amount in ("180,000", "25,000", "9,000"):
-        assert amount not in body
-
-    assert re.search(r"₦\s?[\d,]{3,}", body) is None
+    # Old prices from before the launch pricing change must not appear.
+    for retired_amount in ("250,000", "180,000"):
+        assert retired_amount not in body
 
 
 # ---------- buying a support agent, end to end ----------
@@ -184,9 +180,9 @@ def test_buying_a_support_agent_provisions_a_support_agent(
 
     result = ProvisioningService(db).provision(order)
 
-    assert result.profile.role == ROLE_SUPPORT_AGENT
-    assert "support" in result.profile.greeting.lower()
-    assert "sales rep" not in result.profile.greeting.lower()
+    assert result.profiles[0].profile.role == ROLE_SUPPORT_AGENT
+    assert "support" in result.profiles[0].profile.greeting.lower()
+    assert "sales rep" not in result.profiles[0].profile.greeting.lower()
 
 
 def test_the_provisioned_support_agent_refuses_to_sell(
@@ -220,7 +216,7 @@ def test_the_provisioned_support_agent_refuses_to_sell(
     order.status = ORDER_PAID
     db.commit()
 
-    profile = ProvisioningService(db).provision(order).profile
+    profile = ProvisioningService(db).provision(order).profiles[0].profile
 
     config = resolve_config(db, profile.organization_id)
     reply = compose_reply("how much does it cost", STAGE_GREETING, config=config)

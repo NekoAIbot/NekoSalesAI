@@ -1,64 +1,75 @@
 """Pricing an AI product from what it has to do, not from a fixed tier.
 
-The three storefront tiers priced a single product. A factory that builds a
-dental clinic's booking agent and a fintech's support desk from the same engine
-cannot bill both from one list, because the work genuinely differs: more
-channels, more integrations, more languages, more volume.
-
 Two rules make this safe to put in front of a buyer.
 
 **The price is computed, never accepted.** Nothing in this module reads an
 amount from a caller. A requirement is scored into line items and the line
-items are summed in integer minor units, so the figure the agent quotes is one
-this repo can derive again from the same inputs.
+items are summed in integer minor units.
 
 **Every figure is attributable.** A quote carries its line items, each naming
-the dimension that produced it. A buyer asking "why is it this much" gets the
-breakdown rather than a number, and a discount is applied as a visible line
-rather than by quietly editing the total.
+the dimension that produced it.
 
-Nothing here is a promise about delivery. Scoring a requirement says what it
-would cost to build, not that it exists — provisioning is what makes it real.
+The currently purchasable catalog:
+- AI Sales Agent (sales_agent)
+- AI Support Agent (support_agent)
+- Workforce (workforce_agent) — Sales + Support together
+
+Future/unbuilt products are intentionally NOT purchasable and must not appear
+in the builder as available options.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from app.products.config import Plan, format_money
 
 CURRENCY_NGN = "NGN"
 
-# The dimension each line item is attributed to. Named constants because the
-# quote's own arithmetic keys off them — a typo'd string would silently drop a
-# line out of the subtotal or leave a discount in it.
+# Dimensions
 DIMENSION_BASE = "base"
 DIMENSION_CHANNEL = "channel"
 DIMENSION_INTEGRATION = "integration"
 DIMENSION_LANGUAGE = "language"
 DIMENSION_VOLUME = "volume"
-DIMENSION_WORKFLOW = "workflow"
 DIMENSION_DISCOUNT = "discount"
+DIMENSION_BUNDLE = "bundle"
 
-# The base a product starts at, before anything is added for scope. Keyed by
-# the kind of AI being built, because a support agent that answers from a
-# knowledge base is not the same build as a sales agent that quotes and closes.
+# Canonical product types - ONLY these are purchasable
 PRODUCT_SALES_AGENT = "sales_agent"
 PRODUCT_SUPPORT_AGENT = "support_agent"
+PRODUCT_WORKFORCE_AGENT = "workforce_agent"
 
+# Base prices in minor units (kobo)
 PRODUCT_BASE_MINOR: dict[str, int] = {
-    PRODUCT_SALES_AGENT: 25_000_00,
-    PRODUCT_SUPPORT_AGENT: 18_000_00,
+    PRODUCT_SALES_AGENT: 199_000_00,
+    PRODUCT_SUPPORT_AGENT: 149_000_00,
+    PRODUCT_WORKFORCE_AGENT: 348_000_00,  # Sales + Support
 }
 
+# Customer-facing names
 PRODUCT_NAMES: dict[str, str] = {
-    PRODUCT_SALES_AGENT: "AI Sales Representative",
+    PRODUCT_SALES_AGENT: "AI Sales Agent",
     PRODUCT_SUPPORT_AGENT: "AI Support Agent",
+    PRODUCT_WORKFORCE_AGENT: "Workforce",
 }
 
-# Channels the engine can actually answer on. The web widget is included in
-# the base because every product ships with it; the rest are real integration
-# work, so they carry a real add.
+# Descriptions for the builder
+PRODUCT_DESCRIPTIONS: dict[str, str] = {
+    PRODUCT_SALES_AGENT: "Answers buyers, quotes your prices, takes payment, follows up",
+    PRODUCT_SUPPORT_AGENT: "Answers questions from your knowledge base, escalates commercial queries",
+    PRODUCT_WORKFORCE_AGENT: "Sales + Support operating as one team, shared context",
+}
+
+# Product order in UI
+PRODUCT_ORDER: tuple[str, ...] = (
+    PRODUCT_SALES_AGENT,
+    PRODUCT_SUPPORT_AGENT,
+    PRODUCT_WORKFORCE_AGENT,
+)
+
+# Channels
 CHANNEL_WEB = "web"
 CHANNEL_TELEGRAM = "telegram"
 CHANNEL_WHATSAPP = "whatsapp"
@@ -78,46 +89,64 @@ CHANNEL_NAMES: dict[str, str] = {
     CHANNEL_EMAIL: "Email",
 }
 
-# Anything that has to talk to a system we do not control: a CRM, a calendar,
-# a payment provider beyond the built-in one.
-INTEGRATION_ADD_MINOR = 5_000_00
+# Integrations
+INTEGRATION_ADD_MINOR = 2_000_00
 MAX_INTEGRATIONS = 10
 
-# A second language is translation and testing work, not a config flag.
+INTEGRATION_LABELS: dict[str, str] = {
+    "crm": "CRM",
+    "calendar": "Calendar",
+    "payment": "Payment",
+    "inventory": "Inventory",
+    "accounting": "Accounting",
+    "ecommerce": "E-commerce",
+    "pos": "Point of Sale",
+    "helpdesk": "Helpdesk",
+    "stock": "Stock Management",
+    "erp": "ERP",
+}
+
+
+def _integration_label(integration: str, idx: int) -> str:
+    """Human-readable label for an integration line item."""
+    key = (integration or "").strip().lower().replace(" ", "_")
+    if key in INTEGRATION_LABELS:
+        return INTEGRATION_LABELS[key]
+    if re.match(r"^(integration|system)_\d+$", key):
+        return f"Integration {idx}"
+    display = key.replace("_", " ")
+    if display and display != key:
+        return f"{display.title()}"
+    return f"Integration {idx}"
+
+
+# Languages
 LANGUAGE_ADD_MINOR = 3_500_00
 MAX_LANGUAGES = 6
 
-# Conversation volume. Bands rather than per-message pricing, so a buyer can
-# tell what they will pay before they know their traffic.
-VOLUME_BANDS: tuple[tuple[int, int], ...] = (
-    (500, 0),
-    (2_000, 6_000_00),
-    (10_000, 20_000_00),
-    (50_000, 70_000_00),
-)
+# Canonical language catalog
+LANGUAGES: dict[str, str] = {
+    "en": "English",
+    "yo": "Yoruba",
+    "ha": "Hausa",
+    "ig": "Igbo",
+    "pid": "Nigerian Pidgin",
+}
 
-# Above the largest band we do not quote. A number invented past the last band
-# we have actually costed would be a fabricated price.
-MAX_QUOTABLE_CONVERSATIONS = VOLUME_BANDS[-1][0]
 
-# Human approval gates and custom workflow steps: each one is a rule someone
-# has to specify, build and test.
-WORKFLOW_STEP_ADD_MINOR = 2_500_00
-MAX_WORKFLOW_STEPS = 20
+# Conversation volume
+CONVERSATION_PRICE_MINOR = 5_00  # ₦5 = 500 kobo
+MAX_QUOTABLE_CONVERSATIONS = 1_000_000
 
 BILLING_MONTH = "month"
 
 
 class PricingError(ValueError):
-    """A requirement cannot be priced. Carries what to tell the buyer."""
+    """A requirement cannot be priced."""
 
 
 @dataclass(frozen=True)
 class LineItem:
-    """One reason the price is what it is."""
-
-    # The dimension responsible: "base", "channel", "integration", and so on.
-    # A buyer sees the label; the trail sees the dimension.
     dimension: str
     label: str
     amount_minor: int
@@ -129,50 +158,24 @@ class LineItem:
 
 @dataclass(frozen=True)
 class Requirement:
-    """What a buyer wants built, in the terms the pricing understands.
-
-    Every field is bounded. An unbounded requirement would either produce an
-    unbounded price or make the quote depend on how much text someone pasted,
-    and neither is a figure we could defend.
-
-    A buyer may want more than one of the things we build — a shop that both
-    sells and answers questions needs both agents — so ``products`` holds one or
-    more catalog product types. ``product_type`` is the same information for
-    callers that only ever deal in one: it is always ``products[0]``, maintained
-    by ``__post_init__`` rather than stored separately, so the two spellings
-    cannot disagree.
-    """
-
     product_type: str = PRODUCT_SALES_AGENT
-
-    # Empty means "read it from product_type". Never empty after __post_init__.
     products: tuple[str, ...] = ()
-
     channels: tuple[str, ...] = (CHANNEL_WEB,)
     integrations: tuple[str, ...] = ()
     languages: tuple[str, ...] = ()
     monthly_conversations: int = 500
-    workflow_steps: int = 0
-
-    # Applied as a visible line, and only within the ceiling the approvals
-    # layer already enforces. Never a silent edit to the total.
     discount_percent: int = 0
 
     def __post_init__(self) -> None:
-        # One canonical list, whichever spelling the caller used. Deduplicated
-        # and put in catalog order so the same two products asked for in either
-        # order price identically and read back the same way — a buyer who says
-        # "support and sales" is not buying a different thing from one who says
-        # "sales and support".
         asked = self.products or (self.product_type,)
         products = tuple(
-            code for code in PRODUCT_BASE_MINOR if code in set(asked)
+            code for code in PRODUCT_ORDER if code in set(asked)
         )
 
-        unknown = sorted(set(asked) - set(PRODUCT_BASE_MINOR))
+        unknown = sorted(set(asked) - set(PRODUCT_ORDER))
         if unknown:
             raise PricingError(
-                f"{unknown[0]!r} is not a product this factory builds yet."
+                f"{unknown[0]!r} is not a product we currently offer."
             )
 
         if not products:
@@ -184,14 +187,12 @@ class Requirement:
         unknown = [c for c in self.channels if c not in CHANNEL_ADD_MINOR]
         if unknown:
             raise PricingError(
-                f"We cannot answer on {', '.join(sorted(unknown))} yet, so we "
-                "will not quote for it."
+                f"We cannot answer on {', '.join(sorted(unknown))} yet."
             )
 
         if len(self.integrations) > MAX_INTEGRATIONS:
             raise PricingError(
-                f"More than {MAX_INTEGRATIONS} integrations needs a human to "
-                "scope it. We will not auto-quote that."
+                f"More than {MAX_INTEGRATIONS} integrations needs a human to scope it."
             )
 
         if len(self.languages) > MAX_LANGUAGES:
@@ -201,16 +202,8 @@ class Requirement:
             raise PricingError("Conversation volume cannot be negative.")
 
         if self.monthly_conversations > MAX_QUOTABLE_CONVERSATIONS:
-            # Deliberately a refusal rather than an extrapolation. We have not
-            # costed this volume, so any figure would be made up.
             raise PricingError(
-                f"Above {MAX_QUOTABLE_CONVERSATIONS:,} conversations a month we "
-                "price by hand. Talk to us and we will quote properly."
-            )
-
-        if not 0 <= self.workflow_steps <= MAX_WORKFLOW_STEPS:
-            raise PricingError(
-                f"Custom workflow steps must be between 0 and {MAX_WORKFLOW_STEPS}."
+                f"Above {MAX_QUOTABLE_CONVERSATIONS:,} conversations a month we price by hand."
             )
 
         if not 0 <= self.discount_percent <= 100:
@@ -218,10 +211,6 @@ class Requirement:
 
     @property
     def billable_channels(self) -> tuple[str, ...]:
-        """Channels in a stable order, deduplicated.
-
-        Asking for WhatsApp twice is a typo, not two builds.
-        """
         seen: list[str] = []
         for channel in self.channels:
             if channel not in seen:
@@ -234,24 +223,17 @@ class Requirement:
 
     @property
     def extra_languages(self) -> int:
-        """Languages beyond the first. One language is included in the base."""
         return max(0, len(set(self.languages)) - 1)
 
 
 @dataclass(frozen=True)
 class Quote:
-    """A price and the whole reason for it."""
-
     product_type: str
     product_name: str
     currency: str
     billing_period: str
     line_items: tuple[LineItem, ...] = field(default=())
     monthly_conversation_limit: int = 0
-
-    # Every product this quote covers. Empty means the single product named
-    # above, filled in by __post_init__ so a caller that knows about one product
-    # and a caller that knows about several read the same object.
     products: tuple[str, ...] = field(default=())
 
     def __post_init__(self) -> None:
@@ -264,12 +246,10 @@ class Quote:
 
     @property
     def is_bundle(self) -> bool:
-        """More than one product on one bill."""
         return len(self.products) > 1
 
     @property
     def subtotal_minor(self) -> int:
-        """Everything except the discount line."""
         return sum(
             item.amount_minor
             for item in self.line_items
@@ -278,7 +258,6 @@ class Quote:
 
     @property
     def discount_minor(self) -> int:
-        """Always returned positive, though it is stored as a negative line."""
         return -sum(
             item.amount_minor
             for item in self.line_items
@@ -287,7 +266,6 @@ class Quote:
 
     @property
     def total_minor(self) -> int:
-        """The figure charged. A plain sum, so it cannot drift from the lines."""
         return sum(item.amount_minor for item in self.line_items)
 
     @property
@@ -295,13 +273,6 @@ class Quote:
         return format_money(self.total_minor, self.currency)
 
     def to_plan(self, code: str = "custom") -> Plan:
-        """The quote as something the sales engine can already quote and sell.
-
-        Stage A made every price the agent says come from a ``Plan`` in a
-        config. Returning one here means dynamic pricing needs no second path
-        through the agent, the checkout or the order — a computed price is
-        carried by the same object a fixed tier was.
-        """
         return Plan(
             code=code,
             name=self.product_name,
@@ -321,62 +292,28 @@ class Quote:
 
 
 def _volume_line(monthly_conversations: int) -> tuple[LineItem | None, int]:
-    """The band this volume falls in, and the limit that band buys.
+    if monthly_conversations <= 0:
+        return None, 0
 
-    Bands rather than per-message pricing, so a buyer can tell what they will
-    pay before they know their traffic.
-    """
-    for limit, amount_minor in VOLUME_BANDS:
-        if monthly_conversations <= limit:
-            if amount_minor == 0:
-                return None, limit
-            return (
-                LineItem(
-                    dimension=DIMENSION_VOLUME,
-                    label=f"Up to {limit:,} conversations a month",
-                    amount_minor=amount_minor,
-                ),
-                limit,
-            )
-
-    # Unreachable: Requirement rejects anything above the last band. Raising
-    # rather than extrapolating keeps that true if a band is ever removed.
-    raise PricingError(  # pragma: no cover - guarded by Requirement
-        f"{monthly_conversations:,} conversations a month is beyond our bands."
+    amount_minor = monthly_conversations * CONVERSATION_PRICE_MINOR
+    return (
+        LineItem(
+            dimension=DIMENSION_VOLUME,
+            label=f"{monthly_conversations:,} conversations",
+            amount_minor=amount_minor,
+        ),
+        monthly_conversations,
     )
 
 
 def bundle_name(products: tuple[str, ...]) -> str:
-    """What to call a build covering these products.
-
-    One product is its own name. Several are joined, rather than given a
-    marketing label like "Bundle", because the buyer is paying for two specific
-    things and the plan name is what appears on their receipt and their card
-    statement. "Growth Pack" on a statement tells them nothing about what they
-    bought; two product names do.
-    """
     names = [PRODUCT_NAMES[code] for code in products]
-
     if len(names) == 1:
         return names[0]
-
     return f"{' + '.join(names[:-1])} + {names[-1]}"
 
 
 def price(requirement: Requirement) -> Quote:
-    """Score a requirement into a quote.
-
-    Deterministic: the same requirement always produces the same figure, and
-    the figure is always the sum of lines a buyer can read back.
-
-    Each product carries its own base line, so a buyer taking two of them sees
-    what each one costs rather than a single lump. Everything after the base —
-    channels, integrations, languages, volume, workflow steps — is charged once
-    however many products are on the quote. That is deliberate and it is the
-    reading that favours the buyer: it describes one deployment, and two agents
-    answering on the same WhatsApp number is one WhatsApp integration to build,
-    not two. Charging it per product would be billing twice for work done once.
-    """
     items: list[LineItem] = [
         LineItem(
             dimension=DIMENSION_BASE,
@@ -389,8 +326,6 @@ def price(requirement: Requirement) -> Quote:
     for channel in requirement.billable_channels:
         amount_minor = CHANNEL_ADD_MINOR[channel]
         if amount_minor == 0:
-            # The web widget ships with every product. A zero line would read
-            # as an upsell we are pretending to give away.
             continue
         items.append(
             LineItem(
@@ -400,11 +335,12 @@ def price(requirement: Requirement) -> Quote:
             )
         )
 
-    for integration in dict.fromkeys(requirement.integrations):
+    for idx, integration in enumerate(dict.fromkeys(requirement.integrations), start=1):
+        label = _integration_label(integration, idx)
         items.append(
             LineItem(
                 dimension=DIMENSION_INTEGRATION,
-                label=f"{integration} integration",
+                label=label,
                 amount_minor=INTEGRATION_ADD_MINOR,
             )
         )
@@ -422,20 +358,8 @@ def price(requirement: Requirement) -> Quote:
     if volume_item is not None:
         items.append(volume_item)
 
-    if requirement.workflow_steps:
-        items.append(
-            LineItem(
-                dimension=DIMENSION_WORKFLOW,
-                label=f"{requirement.workflow_steps} custom workflow step(s)",
-                amount_minor=WORKFLOW_STEP_ADD_MINOR * requirement.workflow_steps,
-            )
-        )
-
     if requirement.discount_percent:
         subtotal = sum(item.amount_minor for item in items)
-        # Integer division, so the discount can never make the total a
-        # fraction of a kobo, and rounds in the customer's favour by at most
-        # one unit rather than ours.
         discount_minor = subtotal * requirement.discount_percent // 100
         items.append(
             LineItem(
@@ -445,7 +369,7 @@ def price(requirement: Requirement) -> Quote:
             )
         )
 
-    return Quote(
+    quote = Quote(
         product_type=requirement.product_type,
         product_name=bundle_name(requirement.products),
         products=requirement.products,
@@ -454,3 +378,5 @@ def price(requirement: Requirement) -> Quote:
         line_items=tuple(items),
         monthly_conversation_limit=conversation_limit,
     )
+
+    return quote

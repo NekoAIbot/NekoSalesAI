@@ -37,14 +37,20 @@ const TURNS = [
   { role: "visitor", text: "Can you do 40% off if we sign today?", trace: "" },
   {
     role: "agent",
-    text: "I can't approve that one myself — it isn't on our price list.",
+    text: "I can't approve that — it's not on our price list. I've passed it to the team and you'll hear back today.",
     trace: "rule: off-list terms → human · auto-discount ceiling: 0%",
   },
   { role: "visitor", text: "What can you actually build?", trace: "" },
   {
     role: "agent",
-    text: "Two today: an AI sales representative and an AI support agent.",
+    text: "Two AI workers: an AI Sales Representative and an AI Support Agent. Anything beyond those, I'll tell you upfront and bring in the team — I'd rather scope it properly than promise it.",
     trace: "source: buildable catalog · anything outside it: escalated",
+  },
+  { role: "visitor", text: "How much for both?", trace: "" },
+  {
+    role: "agent",
+    text: "The Workforce bundle — Sales plus Support — is ₦299,000/month. That's the price for both working together.",
+    trace: "source: bundle pricing · Workforce: ₦299,000/month",
   },
 ];
 
@@ -84,7 +90,6 @@ function makeNode(id) {
 function playedTurns(log) {
   return log.children
     .filter(function (turn) {
-      // Skip the dots placeholder: it carries no text.
       return turn.children.some(c => (c.className || "").indexOf("turn-body") !== -1);
     })
     .map(function (turn) {
@@ -101,9 +106,9 @@ function playedTurns(log) {
 function run(options) {
   const opts = options || {};
   const nodes = {
-    proof: makeNode("proof"),
-    "proof-log": makeNode("proof-log"),
-    "proof-script": makeNode("proof-script"),
+    "hero-proof": makeNode("hero-proof"),
+    "hero-proof-log": makeNode("hero-proof-log"),
+    "hero-proof-script": makeNode("hero-proof-script"),
     "chat-input": makeNode("chat-input"),
   };
 
@@ -113,7 +118,7 @@ function run(options) {
     li.textContent = turn.text;
     li.setAttribute("data-role", turn.role);
     if (turn.trace) li.setAttribute("data-trace", turn.trace);
-    nodes["proof-script"].appendChild(li);
+    nodes["hero-proof-script"].appendChild(li);
   });
 
   let observed = null;
@@ -130,8 +135,6 @@ function run(options) {
       ),
     },
     window: {
-      // Collapse every delay: the real sequence takes about seven seconds and
-      // the ordering is what is being tested, not the pacing.
       setTimeout: (fn) => setTimeout(fn, 0),
       matchMedia: () => ({ matches: !!opts.reducedMotion }),
       IntersectionObserver: function (cb) {
@@ -148,9 +151,6 @@ function run(options) {
     Set: Set,
   };
   context.window.window = context.window;
-  // page.js checks `"IntersectionObserver" in window` and then constructs it as
-  // a bare global, which is what a real browser gives it. The stub has to be
-  // reachable both ways.
   context.IntersectionObserver = context.window.IntersectionObserver;
   context.matchMedia = context.window.matchMedia;
   vm.createContext(context);
@@ -169,13 +169,13 @@ function run(options) {
 console.log("\nthe proof panel:");
 
 const normal = run();
-check("waits for the panel to be scrolled to", normal.nodes["proof-log"].children.length === 0);
+check("waits for the panel to be scrolled to", normal.nodes["hero-proof-log"].children.length === 0);
 check("observes the panel", normal.observed() !== null);
 
 normal.fire();
 
 setTimeout(function () {
-  const played = playedTurns(normal.nodes["proof-log"]);
+  const played = playedTurns(normal.nodes["hero-proof-log"]);
 
   check("plays every turn in the markup", played.length === TURNS.length);
   check(
@@ -191,20 +191,20 @@ setTimeout(function () {
     played.filter(t => t.trace).map(t => t.trace).join("|") ===
       TURNS.filter(t => t.trace).map(t => t.trace).join("|")
   );
-  check("hides the flat list once it takes over", normal.nodes["proof-script"].hidden === true);
-  check("leaves no thinking dots behind", !normal.nodes["proof-log"].children.some(
+  check("hides the flat list once it takes over", normal.nodes["hero-proof-script"].hidden === true);
+  check("leaves no thinking dots behind", !normal.nodes["hero-proof-log"].children.some(
     turn => turn.children.some(c => (c.className || "").indexOf("turn-dots") !== -1)
   ));
 
   /* ---------- it plays once ---------- */
 
-  const before = normal.nodes["proof-log"].children.length;
+  const before = normal.nodes["hero-proof-log"].children.length;
   normal.fire();
 
   setTimeout(function () {
     check(
       "does not replay when scrolled past again",
-      normal.nodes["proof-log"].children.length === before
+      normal.nodes["hero-proof-log"].children.length === before
     );
 
     /* ---------- reduced motion ---------- */
@@ -217,24 +217,19 @@ setTimeout(function () {
     setTimeout(function () {
       check(
         "never builds the animated log",
-        reduced.nodes["proof-log"].children.length === 0
+        reduced.nodes["hero-proof-log"].children.length === 0
       );
       check(
         "leaves the readable list visible",
-        reduced.nodes["proof-script"].hidden === false
+        reduced.nodes["hero-proof-script"].hidden === false
       );
       check(
         "keeps every turn in the flat list",
-        reduced.nodes["proof-script"].children.length === TURNS.length
+        reduced.nodes["hero-proof-script"].children.length === TURNS.length
       );
 
       /* ---------- the reveal cannot strand content ---------- */
 
-      /* .reveal sets opacity to 0, so a section the observer never reports on
-       * would be invisible rather than merely un-animated. That is the worst
-       * failure available on this page, so it is guarded by a timer and the
-       * guard is checked here.
-       */
       console.log("\nthe reveal safety net:");
 
       const dimmed = run({ revealTargets: ["a", "b", "c"] });

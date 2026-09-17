@@ -88,14 +88,17 @@ def _provision_if_paid(order: Order, db: Session) -> WorkspaceOut | None:
         profile = service.get_for_order(order)
         return WorkspaceOut.from_model(profile) if profile else None
 
-    _schedule_follow_ups(result.profile, order, db)
+    if result.profiles:
+        _schedule_follow_ups(result.profiles[0].profile, order, db)
     _tell_the_buyer(order, db)
 
-    return WorkspaceOut.from_model(
-        result.profile,
-        api_key=result.api_key,
-        temporary_password=result.temporary_password,
-    )
+    if result.profiles:
+        return WorkspaceOut.from_model(
+            result.profiles[0].profile,
+            api_key=result.profiles[0].api_key,
+            temporary_password=result.profiles[0].temporary_password,
+        )
+    return None
 
 
 def _tell_the_buyer(order: Order, db: Session) -> None:
@@ -166,7 +169,7 @@ def checkout_config():
     response_model=OrderOut,
     status_code=status.HTTP_201_CREATED,
 )
-def create_order(payload: CheckoutRequest, db: Session = Depends(get_db)):
+def create_order(payload: CheckoutRequest, db: Session = Depends(get_db)) -> OrderOut:
     service = CheckoutService(db)
 
     try:
@@ -177,6 +180,12 @@ def create_order(payload: CheckoutRequest, db: Session = Depends(get_db)):
             buyer_email=str(payload.email),
             buyer_name=payload.name,
             buyer_company=payload.company,
+            product_type=payload.product_type,
+            products=payload.products,
+            channels=payload.channels,
+            integrations=payload.integrations,
+            languages=payload.languages,
+            monthly_conversations=payload.monthly_conversations,
         )
     except PaymentsNotConfigured as exc:
         raise HTTPException(

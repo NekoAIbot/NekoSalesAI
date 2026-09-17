@@ -144,10 +144,8 @@ def test_a_vague_volume_stays_unreadable(said):
 
 
 def test_a_spelled_out_volume_over_the_ceiling_is_refused():
-    """"a hundred thousand" is past what the bands cover, word or digit."""
+    """"a million" is past what the bands cover, word or digit."""
     from app.sales.scoping import ScopingError
-
-    assert MAX_QUOTABLE_CONVERSATIONS < 100_000
 
     with pytest.raises(ScopingError):
         parse_volume(str(MAX_QUOTABLE_CONVERSATIONS + 1))

@@ -1,51 +1,4 @@
-"""Which of the AIs we build does this business actually need.
-
-A buyer does not arrive knowing they want a "sales agent with three channels and
-a 2,000-conversation band". They arrive saying "I run a food store". The intake in
-``app.sales.scoping`` is four good questions that all presuppose the buyer has
-already chosen a product, and the first of them — "which of the two do you need?"
-— asks someone who came for advice to give it instead.
-
-So this module is the step before that: read what the business does, say which of
-the products we build would help it and *why*, and let the buyer pick any number
-of them. Then scoping takes over, unchanged.
-
-Three rules, each of which exists because breaking it would be worse than having
-no advisor at all.
-
-**Nothing is recommended that is not in the catalog.** ``FITS`` is keyed by the
-same product types ``app.pricing.complexity`` can price, and a test asserts the
-two sets are equal — so a product added to the engine without being taught to the
-advisor fails the suite, and a product described here that the engine cannot
-price fails it too. There is no path by which Nera offers to build something that
-does not exist.
-
-**The count is never hardcoded.** Not in the copy, not in the parsing, not in the
-selection. "Which of the two" appears nowhere in this module. Adding a third
-product changes one dictionary and the questions grow a bullet on their own.
-Everything downstream reads ``len(FITS)``.
-
-**A need we cannot meet is named, not stretched.** A buyer who asks for an AI
-that does their bookkeeping is told plainly that we do not build that, and shown
-what we do build. The tempting alternative — reading "bookkeeping" as close enough
-to "support" and quoting for it — is how a business ends up paying for software
-that does not do the job it was bought for.
-
-The matching is deliberately deterministic: regex over the description, no model
-in the loop. That is not a placeholder for want of an LLM — rules cannot
-hallucinate a fit or be talked into one, and a recommendation is the step that
-decides what a buyer is about to be quoted for.
-
-An LLM understanding layer is planned, and this module is shaped so it goes in
-front rather than through. ``recommend`` is the seam: it takes free text and
-returns a ``Recommendation`` — product types drawn from the catalog, plus the
-evidence each was read from — and the agent acts only on that. Replacing its
-internals with a model leaves the two guarantees intact, because neither of them
-lives in the matching: the recommendation can only name products
-``app.pricing.complexity`` can price, and nothing here decides an amount. Read a
-buyer however well; the price is still computed by the engine from four bounded
-answers. Anything added here should keep that boundary.
-"""
+"""Which of the AIs we build does this business actually need."""
 
 from __future__ import annotations
 
@@ -56,187 +9,77 @@ from app.pricing.complexity import (
     PRODUCT_NAMES,
     PRODUCT_SALES_AGENT,
     PRODUCT_SUPPORT_AGENT,
+    PRODUCT_WORKFORCE_AGENT,
 )
 
 
 @dataclass(frozen=True)
 class ProductFit:
-    """How one catalog product is described to someone choosing between them.
-
-    Everything a buyer is told about *what to buy* comes from one of these, so a
-    claim that is not true of the shipped product cannot be made by accident: it
-    has to be written here, next to the product type it belongs to, where the
-    test that checks this table against the pricing engine can see it.
-    """
-
     product_type: str
-
-    # One line, in the buyer's terms rather than ours. Shown when listing the
-    # options and when explaining a recommendation.
     does: str
-
-    # Why it fits a business like the one described. Completed as
-    # "<name> — <because>", so it reads as a reason rather than a feature.
     because: str
-
-    # What a buyer says that indicates this need. Whole-word patterns, matched
-    # against the lowercased description. Deliberately about the *need*, not the
-    # trade: "I take orders on WhatsApp" indicates selling whatever is sold.
     signals: tuple[str, ...] = ()
 
 
-# Keyed by product type, and checked against the pricing engine by
-# tests/test_advisor.py. Adding a product to PRODUCT_NAMES without adding it here
-# is a test failure, which is the point: the Stage D pattern for a new product
-# type is "price it, build it, provision it, and say who it is for".
+# Only the three purchasable products
 FITS: dict[str, ProductFit] = {
     PRODUCT_SALES_AGENT: ProductFit(
         product_type=PRODUCT_SALES_AGENT,
-        does=(
-            "answers buyers, quotes your prices, takes payment and follows up"
-        ),
-        because=(
-            "people ask what things cost and whether you have them, and every "
-            "one of those you miss is a sale someone else made"
-        ),
+        does="answers buyers, quotes your prices, takes payment and follows up",
+        because="people ask what things cost and every one of those you miss is a sale someone else made",
         signals=(
             r"\bsell(s|ing)?\b",
             r"\bshop\b",
             r"\bstore\b",
-            r"\bstock\b",
             r"\bproducts?\b",
             r"\bprices?\b",
-            r"\bpricing\b",
+            r"\bpayments?\b",
             r"\border(s|ing)?\b",
             r"\bcustomers? (buy|order|pay)\b",
-            r"\bpayments?\b",
-            r"\bcheckout\b",
-            r"\bcatalogu?e\b",
-            r"\bquote(s|d)?\b",
             r"\bleads?\b",
-            r"\bboutique\b",
-            r"\brestaurant\b",
-            r"\bfood\b",
-            r"\bpharmacy\b",
-            r"\bsupermarket\b",
-            r"\bmarket\b",
-            r"\bvendor\b",
-            r"\btrade\b",
-            r"\bretail\b",
-            r"\bwholesale\b",
-            # Trades whose whole business is people buying things. Added because
-            # "AI for my clothing business" had no word in this list and so came
-            # back as "tell me more" at best — while the sentence in front of us
-            # said, plainly, that people buy clothes from them. A word missing
-            # from our vocabulary is not a business we cannot help.
-            r"\bcloth(es|ing)\b",
-            r"\bfashion\b",
-            r"\bapparel\b",
-            r"\bthrift\b",
-            r"\bshoes?\b",
-            r"\bfootwear\b",
-            r"\bbag(s)?\b",
-            r"\bjewel(le)?ry\b",
-            r"\bcosmetics\b",
-            r"\bskin ?care\b",
-            r"\bperfumes?\b",
-            r"\bfurniture\b",
-            r"\belectronics\b",
-            r"\bgadgets?\b",
-            r"\bphones?\b",
-            r"\blaptops?\b",
-            r"\bgrocer(y|ies)\b",
-            r"\bprovisions?\b",
-            r"\bbakery\b",
-            r"\bfabrics?\b",
-            r"\bbookings?\b",
-            r"\bappointments?\b",
-            r"\breservations?\b",
             r"\bsales\b",
             r"\brevenue\b",
-            r"\bconvert\b",
         ),
     ),
     PRODUCT_SUPPORT_AGENT: ProductFit(
         product_type=PRODUCT_SUPPORT_AGENT,
-        does=(
-            "answers questions from your own material and hands anything "
-            "commercial straight to you"
-        ),
-        because=(
-            "the same questions arrive over and over, and answering them by "
-            "hand is time you are not spending on the work itself"
-        ),
+        does="answers questions from your own material and hands anything commercial to you",
+        because="the same questions arrive over and over, and answering them by hand is time you are not spending on the work itself",
         signals=(
             r"\bsupport\b",
             r"\bhelp ?desk\b",
             r"\bcustomer (care|service)\b",
-            r"\bcomplaints?\b",
             r"\bquestions?\b",
-            r"\benquir(y|ies)\b",
-            r"\binquir(y|ies)\b",
             r"\bfaqs?\b",
             r"\btickets?\b",
             r"\bissues?\b",
-            r"\btroubleshoot(ing)?\b",
             r"\brefunds?\b",
-            r"\breturns?\b",
-            r"\bdelivery\b",
-            r"\btracking\b",
             r"\bclients?\b",
-            r"\bpatients?\b",
-            r"\bstudents?\b",
-            r"\bmembers?\b",
-            r"\bschool\b",
-            r"\bclinic\b",
-            r"\bhospital\b",
-            r"\bhotel\b",
-            r"\bagency\b",
             r"\bservice\b",
-            r"\bconsult(ing|ancy)\b",
-            r"\bonboarding\b",
+        ),
+    ),
+    PRODUCT_WORKFORCE_AGENT: ProductFit(
+        product_type=PRODUCT_WORKFORCE_AGENT,
+        does="combines sales and support into one coordinated AI team",
+        because="your buyers need both answers and someone to close the sale, and having them share context means nothing falls through the cracks",
+        signals=(
+            r"\bboth\b",
+            r"\ball\b",
+            r"\bworkforce\b",
+            r"\bsales \+ support\b",
+            r"\bfull\b",
+            r"\bcomplete\b",
+            r"\bteam\b",
         ),
     ),
 }
 
 
-# A business described at all — as opposed to a greeting or a single word. Used
-# to tell "I run a food store" from "hi", because advising on the strength of
-# nothing is guessing dressed as consultancy.
-_MIN_DESCRIPTION_WORDS = 3
-
-# Phrases that mean "tell me what you have" rather than describing a business.
-# These get the full list rather than a recommendation, which is the honest
-# response to a question nobody has given us the information to answer.
 _ASKS_FOR_OPTIONS = re.compile(
     r"\b(what (do|can) you (build|make|do|offer)|what (are|is) (my |the )?"
     r"options?|which ones?|what have you got|show me|list them|everything)\b"
 )
 
-# How someone says "this is my business". The advisor only offers an opinion
-# when one of these is present or a need was actually named, because the
-# alternative is answering questions nobody asked: "how much is it?" is three
-# words with no product signal in them, and reading that as a business we cannot
-# help would be a refusal invented out of a pricing question.
-#
-# The progressive forms are here because of live traffic, not neatness. "I run a
-# food store" matched; "I'm running a food store" did not — the article branch
-# below wants "I'm a baker", and "running" is not an article — so the second
-# phrasing fell past every list in this module to the don't-know fallback and was
-# escalated to a human on the first turn. Two real buyers in one evening, one of
-# them a stranger. Nobody says only the tidy form.
-#
-# The possessive branch allows a word or two before the noun for the same reason.
-# It used to require them adjacent — "my shop", "our company" — and so "AI for my
-# clothing business, 2k conversations/month on WhatsApp and Telegram" matched
-# nothing here. That is the single most ordinary thing this product sells, typed
-# on the website by someone who had already told us the trade, the volume and both
-# channels; it was answered with "I don't think my products are the right fit" and
-# an offer to fetch a person. One adjective. Nobody writes "my business" when they
-# can write "my clothing business".
-#
-# The trades are in the same branch because "AI for my restaurant" has no business
-# noun in it at all, and a restaurant is not a harder case than a shop.
 _DESCRIBES_A_BUSINESS = re.compile(
     r"\b(i|we) (run|own|have|manage|operate|started|do|sell|make|bake|repair|"
     r"rent|deliver|teach|train|supply)\b"
@@ -248,20 +91,11 @@ _DESCRIBES_A_BUSINESS = re.compile(
     r"workshop|dealership|gym|lounge|spa)\b"
     r"|\b(i'?m|i am|we'?re|we are) (a|an|the) \w+"
     r"|\bbusiness is\b|\bwe sell\b|\bi sell\b|\bwe deal in\b"
+    r"|\b\w+\s+business\b"
+    r"|\b\w+\s+store\b"
+    r"|\b\w+\s+shop\b"
 )
 
-# What the buyer wants to *happen*, rather than what their business is.
-#
-# The greeting asks "tell me what your business needs done", and the two answers
-# it gets most often are "more customers" and "profit". Neither describes a
-# business and neither names software, so both fell through every list here and
-# were escalated — Nera asking a question and then handing the answer to a
-# person, which is the version of this that costs a sale.
-#
-# An outcome is thin evidence and is treated as such: it earns the advisor's turn,
-# not a recommendation. Wanting more customers does not say whether the problem is
-# winning the sale or answering the same question forty times, and that is the
-# question the advisor then asks.
 _WANTS_AN_OUTCOME = re.compile(
     r"\b(more|increase|increasing|grow|growing|boost|double|improve|drive)\s+"
     r"(my |our |the )?(customers?|clients?|sales|revenue|orders?|profits?|"
@@ -272,19 +106,6 @@ _WANTS_AN_OUTCOME = re.compile(
     r"|\btoo many (messages|questions|enquir\w+|inquir\w+|calls?|chats?)\b"
 )
 
-# Someone naming what they want built, rather than what their business is.
-#
-# This gets the advisor's turn for the same reason a business description does,
-# and the reason is the case we get wrong without it: "I need an AI that does my
-# bookkeeping" is not a business description, so it used to fall through to the
-# greeting — "tell me what your business needs done and I'll tell you what I'd
-# build" — which reads as yes. A need we cannot meet has to meet the refusal,
-# not an invitation.
-#
-# Narrowed by requiring the thing named to be a piece of software. "I need a
-# quote" and "I need a discount" are not requests for advice about what to buy;
-# they belong to the intake and the off-script guard respectively, and hijacking
-# them would answer a question nobody asked.
 _NAMES_A_NEED = re.compile(
     r"\b(i|we) (need|want|require|would like|'?m looking for|am looking for|"
     r"are looking for)\b[^.!?]{0,40}?"
@@ -294,15 +115,7 @@ _NAMES_A_NEED = re.compile(
 
 
 def describes_a_business(text: str) -> bool:
-    """Whether this message is someone telling us what they need.
-
-    What the business does, what they want to happen, or what they want built.
-    Public because the agent has to decide whether the advisor gets the turn at
-    all, and that decision belongs to the same module that knows what counts as a
-    description.
-    """
     lowered = (text or "").lower()
-
     return bool(
         _DESCRIBES_A_BUSINESS.search(lowered)
         or _WANTS_AN_OUTCOME.search(lowered)
@@ -311,61 +124,19 @@ def describes_a_business(text: str) -> bool:
 
 
 def names_a_need(text: str) -> bool:
-    """Whether they named the software they want, rather than described a shop.
-
-    The distinction the agent needs, and it is not cosmetic. "I need an AI sales
-    representative" names a product and is an *answer* to the intake's first
-    question. "We sell shoes online" contains the word "sell" and is not: it is a
-    buyer saying what their shop does, and it was being read as choosing the sales
-    product — "Noted.", straight on to the channels question, with a product on
-    the scope that nobody picked. A description has to lose to nothing; it
-    certainly must not win the buyer a purchase they never made.
-    """
     return bool(_NAMES_A_NEED.search((text or "").lower()))
 
 
 def product_names() -> tuple[str, ...]:
-    """Every product's display name, in catalog order."""
     return tuple(PRODUCT_NAMES[code] for code in FITS)
 
 
 @dataclass(frozen=True)
 class Recommendation:
-    """What was advised, and on what basis.
-
-    ``recommended`` may be empty, and *why* it is empty is the distinction this
-    class exists to carry. Two very different things produce no recommendation:
-
-    - a need was named and nothing we build addresses it — "an AI that does my
-      bookkeeping". Saying so plainly is the whole value of asking, and it is
-      worth a human's attention.
-    - a business was named and nothing in it said which product would help —
-      "I have a bakery". That is not a refusal, and it was being answered as one:
-      "I don't think what I build is the right fit", to a shop that sells things,
-      because the word "bakery" was not in a signal list. A real prospect turned
-      away and an approval row raised, both wrong.
-
-    The first is an answer. The second is a question that has not finished being
-    asked.
-    """
-
-    # The products worth buying for this business, catalog order.
     recommended: tuple[str, ...] = ()
-
-    # What in the description each recommendation was read from, for the
-    # reasoning trail. Parallel to ``recommended``.
     matched: tuple[str, ...] = ()
-
-    # True when nothing was said that could be advised on — a greeting, a single
-    # word. Different from an empty recommendation, which is an answer.
     too_vague: bool = False
-
-    # True when the buyer asked what the options are rather than describing a
-    # business. Also different: they get the list, not advice.
     asked_for_options: bool = False
-
-    # True when they named software they want and nothing we build matched it.
-    # The one case here that is genuinely a refusal.
     unmet_need: bool = False
 
     @property
@@ -374,165 +145,101 @@ class Recommendation:
 
     @property
     def needs_more_detail(self) -> bool:
-        """Nothing to advise on yet, and nothing to refuse either.
-
-        Everything that is not a recommendation and not an unmet need. The agent
-        asks again on this rather than escalating, because there is no question
-        here that a human could answer better than the next turn can.
-        """
-        return not self.has_advice and not self.unmet_need
-
-    @property
-    def is_everything(self) -> bool:
-        """Whether every product we build was recommended."""
-        return len(self.recommended) == len(FITS)
+        return self.too_vague
 
 
 def recommend(description: str) -> Recommendation:
-    """Read a business description and say which products fit.
+    """Recommend products based on a business description."""
+    lowered = description.strip().lower()
 
-    Order follows the catalog rather than a score, deliberately. A ranking
-    implies a confidence this matching does not have — it reads words, it does
-    not understand a business — and a buyer who is shown two fits should choose
-    between them on the reasons given, not on which one we listed first.
-    """
-    text = (description or "").lower().strip()
+    if _ASKS_FOR_OPTIONS.search(lowered):
+        return Recommendation(
+            recommended=tuple(FITS.keys()),
+            matched=("showing all options",),
+            asked_for_options=True,
+        )
 
-    if _ASKS_FOR_OPTIONS.search(text):
-        return Recommendation(asked_for_options=True)
+    if not describes_a_business(lowered):
+        if len(lowered.split()) < 5:
+            return Recommendation(too_vague=True)
 
-    if len(text.split()) < _MIN_DESCRIPTION_WORDS:
-        return Recommendation(too_vague=True)
-
-    recommended: list[str] = []
-    matched: list[str] = []
-
-    for code, fit in FITS.items():
-        for pattern in fit.signals:
-            found = re.search(pattern, text)
-            if found:
-                recommended.append(code)
-                matched.append(found.group(0))
+    found: list[tuple[str, str]] = []
+    for product_type, fit in FITS.items():
+        for signal in fit.signals:
+            match = re.search(signal, lowered)
+            if match:
+                found.append((product_type, match.group(0)))
                 break
 
-    if not recommended:
-        # Nothing matched. Whether that is a refusal turns entirely on whether
-        # they told us what they wanted built: a named need we cannot meet is an
-        # answer, and a trade we have no keyword for is not.
-        return Recommendation(unmet_need=bool(_NAMES_A_NEED.search(text)))
+    if not found:
+        if _NAMES_A_NEED.search(lowered):
+            return Recommendation(unmet_need=True)
+        if describes_a_business(lowered):
+            return Recommendation(
+                recommended=tuple(FITS.keys()),
+                matched=("describes a business",),
+            )
+        return Recommendation(too_vague=True)
+
+    seen = set()
+    recommended = []
+    matched = []
+    for product_type, evidence in found:
+        if product_type not in seen:
+            seen.add(product_type)
+            recommended.append(product_type)
+            matched.append(evidence)
 
     return Recommendation(
-        recommended=tuple(recommended), matched=tuple(matched)
+        recommended=tuple(recommended),
+        matched=tuple(matched),
     )
 
 
-# ---------- turning a recommendation into something to say ----------
-#
-# The copy lives here rather than in the agent for the same reason the scoping
-# questions live beside their parsers: a sentence that offers a product and the
-# table that says what that product does have to change together.
-
-
-def _option_lines(codes: tuple[str, ...]) -> str:
-    """One bullet per product, generated from the catalog."""
-    return "\n".join(
-        f"• {PRODUCT_NAMES[code]} — {FITS[code].does}" for code in codes
-    )
-
-
-def _reason_lines(recommendation: Recommendation) -> str:
-    return "\n\n".join(
-        f"**{PRODUCT_NAMES[code]}** — {FITS[code].because}."
-        for code in recommendation.recommended
-    )
-
-
-def options_text() -> str:
-    """Everything we build, when the buyer asked rather than described.
-
-    Ends with what is *not* on the list. A buyer reading a short list can
-    reasonably assume it is a sample of a larger catalogue, and letting them
-    assume that is the same as claiming it.
-    """
-    return (
-        "Here is everything I build today:\n\n"
-        f"{_option_lines(tuple(FITS))}\n\n"
-        "That is the whole list — I would rather tell you that than imply I "
-        "can build anything you name. Which of them sounds like your problem? "
-        "You can name more than one."
-    )
+def describe_product(product_type: str) -> str:
+    """Return a one-line description of a product for the buyer."""
+    fit = FITS.get(product_type)
+    if fit:
+        return f"{PRODUCT_NAMES[product_type]} — {fit.does}"
+    return PRODUCT_NAMES.get(product_type, product_type)
 
 
 def advice_text(recommendation: Recommendation) -> str:
-    """What Nera says after reading a business description.
-
-    Structure is the same in every case: what it read, what it would build, why,
-    and one question. The question always allows *none of them*, because an
-    advisor that cannot be told "neither" is a salesperson.
-
-    None of this copy knows how many products there are. "Both of these" and
-    "either one" read perfectly today and become quiet lies the moment a third
-    product ships — the buyer is told there are two while looking at three. So
-    the branch is on *one versus more than one*, which stays true at any size.
-    """
-    if recommendation.asked_for_options:
-        return options_text()
-
+    """Format a recommendation into buyer-facing text."""
     if recommendation.too_vague:
         return (
-            "Tell me a bit more about what the business does and I'll say "
-            "which of these would earn its keep:\n\n"
-            f"{_option_lines(tuple(FITS))}"
+            "Tell me a little about your business — what you sell, who you sell to, "
+            "and what you'd rather not be doing by hand. Then I can point you at "
+            "the right build."
         )
 
-    if recommendation.needs_more_detail:
-        # They told us something real — a trade, or what they want to happen —
-        # and it did not name which product would help. That is a question still
-        # being asked, so this asks it. It used to get the refusal below: a
-        # bakery told "I don't think what I build is the right fit", because the
-        # word "bakery" is in no signal list. Nothing about a bakery says it
-        # cannot use a sales rep; only our keywords were silent.
-        #
-        # The question is the one that actually splits the catalog — winning the
-        # sale versus answering the same thing repeatedly — asked without jargon
-        # and without listing products yet, so the answer is about their day
-        # rather than a menu.
+    if recommendation.asked_for_options:
+        lines = ["Here's what Nera builds right now:"]
+        for code in FITS:
+            lines.append(f"• {describe_product(code)}")
+        lines.append("\nTell me about your business and I'll say which one fits.")
+        return "\n".join(lines)
+
+    if recommendation.unmet_need:
         return (
-            "Got it. One thing and I'll tell you what I'd build: where does "
-            "the time go — chasing people who might buy, or answering the same "
-            "questions from people who already have?\n\n"
-            "Either is fixable. Say a line about how customers reach you and "
-            "what usually goes wrong, and I'll name the build and price it."
+            "That's not something Nera builds yet. I'll pass you to the team — "
+            "they'll tell you plainly whether it's on the roadmap."
         )
 
-    if not recommendation.has_advice:
-        # The case worth getting right. They named what they wanted built and
-        # nothing we build addresses it, and the honest answer is short.
+    if not recommendation.recommended:
         return (
-            "I'll be straight with you: from what you've described, I don't "
-            "think what I build is the right fit — and I'd rather say so than "
-            "sell you something that won't do the job.\n\n"
-            f"{_option_lines(tuple(FITS))}\n\n"
-            "If one of those is closer than I've read it, say so and I'll "
-            "price it. Otherwise I'll pass you to someone who can talk about "
-            "what else might help."
+            "Tell me a bit more about what your business does and I'll say which "
+            "build fits it."
         )
 
-    several = len(recommendation.recommended) > 1
+    lines = ["Here's what I'd build for that:"]
+    for code in recommendation.recommended:
+        fit = FITS[code]
+        lines.append(f"• {PRODUCT_NAMES[code]} — {fit.does}")
+    lines.append("\nShall I price one of these for you?")
+    return "\n".join(lines)
 
-    if several:
-        lead = "Each of these would pull its weight, for a different reason:"
-        closing = (
-            "You can take any one of them on its own, or all of them together "
-            "— I price each separately either way, so you can see what each "
-            "one is costing you. Which do you want?"
-        )
-    else:
-        lead = "Here's what I'd build for that:"
-        closing = (
-            "That's the one I'd start with. Say the word and I'll price it — "
-            "four quick questions. If you'd rather see everything I build "
-            "first, ask."
-        )
 
-    return f"{lead}\n\n{_reason_lines(recommendation)}\n\n{closing}"
+def format_price(amount_minor: int) -> str:
+    """Format minor units as Naira."""
+    return f"₦{amount_minor / 100:,.0f}"

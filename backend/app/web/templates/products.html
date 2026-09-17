@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block title %}Products — {{ company.name }}{% endblock %}
+
+{% block content %}
+<!-- ============================================================
+   NAVIGATION REPEAT — products page keeps its own nav context
+   (the sticky nav in base would be ideal, but we render per-page
+   to keep each template self-contained and reviewable)
+   ============================================================ -->
+<nav class="nav">
+  <div class="container nav-inner">
+    <a class="nav-logo" href="/">
+      <span class="nav-logo-mark">N</span>
+      <span>Nera</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link is-active" href="/products">Products</a>
+      <a class="nav-link" href="/workforce">Workforce</a>
+      <a class="nav-link" href="/demo">Demo</a>
+      <a class="nav-link" href="/build">Build</a>
+      <a class="nav-link" href="/pricing">Pricing</a>
+      <a class="nav-link" href="/trust">Trust</a>
+    </div>
+    <div class="nav-actions">
+      <a class="nav-cta magnetic-btn" href="/build">Get started</a>
+      <a class="nav-link" href="/login">Sign in</a>
+    </div>
+    <button class="nav-mobile-toggle" aria-label="Menu">
+      <span class="hamburger"><span></span><span></span><span></span></span>
+    </button>
+  </div>
+  <div class="nav-mobile-menu">
+    <div class="nav-mobile-links">
+      <a class="nav-mobile-link" href="/products">Products</a>
+      <a class="nav-mobile-link" href="/workforce">Workforce</a>
+      <a class="nav-mobile-link" href="/demo">Demo</a>
+      <a class="nav-mobile-link" href="/build">Build</a>
+      <a class="nav-mobile-link" href="/pricing">Pricing</a>
+      <a class="nav-mobile-link" href="/trust">Trust</a>
+      <a class="nav-mobile-link" href="/login">Sign in</a>
+      <a class="nav-mobile-link" href="/build">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================================================
+   PAGE HERO — catalog exists here
+   ============================================================ -->
+<section class="section" style="padding-top:80px;">
+  <div class="container" style="max-width:720px;">
+    <div class="reveal">
+      <span class="eyebrow">The catalog</span>
+      <h1 class="display" style="margin:12px 0 16px;">Every AI worker Nera can build</h1>
+      <p class="lead" style="margin-bottom:8px;">
+        Three live products today. More on the way. Each one is priced by what it
+        has to do — channels, traffic, languages, systems to connect — not by how
+        many tiers we decided to publish.
+      </p>
+      <p class="lead" style="font-size:0.85rem;color:var(--ink-3);margin-bottom:0;">
+        Explore the catalog. Configure the one your business needs. Or build a
+        custom one and we will price it honestly.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+   LIVE PRODUCTS — the three you can buy today
+   ============================================================ -->
+<section class="section" style="padding-top:40px;padding-bottom:40px;">
+  <div class="container">
+    <div class="catalog-header reveal">
+      <span class="eyebrow" style="justify-content:flex-start;">Live today</span>
+      <h2 class="catalog-title" style="text-align:left;max-width:none;">Products you can provision now</h2>
+    </div>
+
+    <div class="catalog-grid stagger-children">
+      <!-- Sales Representative -->
+      <article class="catalog-card catalog-card--live">
+        <span class="catalog-badge catalog-badge--live">Live</span>
+        <span class="catalog-num">001</span>
+        <div class="catalog-icon">S</div>
+        <div class="catalog-name">Nera AI Sales Representative</div>
+        <div class="catalog-desc">
+          Engages prospects, qualifies them against your real criteria, and brings
+          them to a decision using your approved prices and policies. Quotes from
+          your catalog; takes payment where you enable it; hands the lead to a
+          human when the situation requires it.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price">
+            <span class="currency">₦</span>199,000<span style="opacity:0.6;font-size:0.55rem;">/mo</span>
+          </span>
+          <span class="catalog-channel">Web widget · Telegram · WhatsApp · Email</span>
+          <span class="catalog-status">Configurable · 1–5 workflow steps · up to 4 languages</span>
+        </div>
+      </article>
+
+      <!-- Support Agent -->
+      <article class="catalog-card catalog-card--live">
+        <span class="catalog-badge catalog-badge--live">Live</span>
+        <span class="catalog-num">002</span>
+        <div class="catalog-icon">P</div>
+        <div class="catalog-name">Nera AI Support Agent</div>
+        <div class="catalog-desc">
+          Resolves customer questions from your verified knowledge, hands off with
+          full context when the answer is not in scope, and stays available across
+          every channel you configure. Never invents a price or a policy.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price">
+            <span class="currency">₦</span>149,000<span style="opacity:0.6;font-size:0.55rem;">/mo</span>
+          </span>
+          <span class="catalog-channel">Web widget · Telegram · WhatsApp · Email</span>
+          <span class="catalog-status">Configurable · 1–5 workflow steps · up to 4 languages</span>
+        </div>
+      </article>
+
+      <!-- Workforce -->
+      <article class="catalog-card catalog-card--premium">
+        <span class="catalog-badge catalog-badge--live">Live</span>
+        <span class="catalog-num">003</span>
+        <div class="catalog-icon catalog-icon--premium">W</div>
+        <div class="catalog-name">Nera Sales + Support Workforce</div>
+        <div class="catalog-desc">
+          Both workers, operating from one knowledge base with one set of rules.
+          Sales engages, support follows through. One workforce, one bill, one
+          dashboard. The two workers share context so a customer is never
+          explaining themselves twice.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price">
+            <span class="currency">₦</span>348,000<span style="opacity:0.6;font-size:0.55rem;">/mo</span>
+          </span>
+          <span class="catalog-channel">All channels · both workers</span>
+          <span class="catalog-status">Premium · coordinated workforce · shared knowledge</span>
+        </div>
+      </article>
+    </div>
+
+    <p class="catalog-note" style="margin-top:24px;">
+      Every price on this page is computed server-side from your configuration.
+      The server is the source of truth. The browser never computes a price.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================
+   ADD-ONS — configurable channel & capability add-ons
+   ============================================================ -->
+<section class="section" style="padding-top:20px;padding-bottom:40px;">
+  <div class="container">
+    <div class="catalog-header reveal">
+      <span class="eyebrow" style="justify-content:flex-start;">Add-ons · configurable</span>
+      <h2 class="catalog-title" style="text-align:left;max-width:none;">Extend a worker</h2>
+      <p class="catalog-sub" style="text-align:left;max-width:56ch;">
+        Add a channel, a language, a calendar link, or a CRM sync. Each add-on is
+        priced by what it adds to the build — the configuration you choose on
+        /build is where the real figure comes from.
+      </p>
+    </div>
+
+    <div class="catalog-grid stagger-children" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+      <article class="catalog-card">
+        <span class="catalog-badge catalog-badge--configurable">Configurable</span>
+        <span class="catalog-num">010</span>
+        <div class="catalog-icon catalog-icon--alt">C</div>
+        <div class="catalog-name">CRM Integration</div>
+        <div class="catalog-desc">
+          Sync captured leads and conversation outcomes into your CRM. Everything
+          the worker learns about a customer is available to your team.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price">+ ₦5,000/mo</span>
+          <span class="catalog-channel">Add-on · any worker</span>
+          <span class="catalog-status">Configurable · requires CRM connector</span>
+        </div>
+      </article>
+
+      <article class="catalog-card">
+        <span class="catalog-badge catalog-badge--configurable">Configurable</span>
+        <span class="catalog-num">011</span>
+        <div class="catalog-icon catalog-icon--alt">B</div>
+        <div class="catalog-name">Calendar Booking</div>
+        <div class="catalog-desc">
+          Let qualified prospects book time directly. Nera handles the scheduling
+          conversation and confirms the slot — with the context attached.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price">+ ₦5,000/mo</span>
+          <span class="catalog-channel">Add-on · sales worker</span>
+          <span class="catalog-status">Configurable · calendar connector required</span>
+        </div>
+      </article>
+
+      <article class="catalog-card">
+        <span class="catalog-badge catalog-badge--conditional">Conditional</span>
+        <span class="catalog-num">012</span>
+        <div class="catalog-icon catalog-icon--alt">$</div>
+        <div class="catalog-name">Payment Collection</div>
+        <div class="catalog-desc">
+          Nera collects payment directly in the conversation — transfer details,
+          card links, whatever your payment flow supports. Available when your
+          payment integration is configured.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price">+ ₦5,000/mo</span>
+          <span class="catalog-channel">Add-on · conditional on payment connector</span>
+          <span class="catalog-status">Conditional · requires payment integration</span>
+        </div>
+      </article>
+
+      <article class="catalog-card">
+        <span class="catalog-badge catalog-badge--live">Live</span>
+        <span class="catalog-num">020</span>
+        <div class="catalog-icon">W</div>
+        <div class="catalog-name">WhatsApp Channel</div>
+        <div class="catalog-desc">
+          Your worker answers on WhatsApp — same knowledge, same rules, same
+          configuration as every other channel.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price">+ ₦8,000/mo</span>
+          <span class="catalog-channel">Channel add-on</span>
+          <span class="catalog-status">Live · WhatsApp Business API</span>
+        </div>
+      </article>
+
+      <article class="catalog-card">
+        <span class="catalog-badge catalog-badge--live">Live</span>
+        <span class="catalog-num">021</span>
+        <div class="catalog-icon">T</div>
+        <div class="catalog-name">Telegram Channel</div>
+        <div class="catalog-desc">
+          Your worker answers on Telegram — a real bot, not a script. Same engine,
+          same configuration, same provenance as the web widget.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price">+ ₦4,000/mo</span>
+          <span class="catalog-channel">Channel add-on</span>
+          <span class="catalog-status">Live · Telegram Bot API</span>
+        </div>
+      </article>
+
+      <article class="catalog-card">
+        <span class="catalog-badge catalog-badge--live">Live</span>
+        <span class="catalog-num">022</span>
+        <div class="catalog-icon">@</div>
+        <div class="catalog-name">Email Channel</div>
+        <div class="catalog-desc">
+          Your worker answers email — inbound questions resolved from your
+          knowledge, outbound follow-ups sent from your configured address.
+          Messages and state are persisted.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price">+ ₦5,000/mo</span>
+          <span class="catalog-channel">Channel add-on · inbound + outbound</span>
+          <span class="catalog-status">Live · SMTP + inbound parsing</span>
+        </div>
+      </article>
+
+      <article class="catalog-card">
+        <span class="catalog-badge catalog-badge--configurable">Configurable</span>
+        <span class="catalog-num">030</span>
+        <div class="catalog-icon catalog-icon--alt">L</div>
+        <div class="catalog-name">Multi-language Support</div>
+        <div class="catalog-desc">
+          Add Yoruba, Hausa, Igbo, or more. Your worker engages customers in the
+          language they actually use — configured per workspace.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price">+ ₦3,500/mo each</span>
+          <span class="catalog-channel">Add-on · per language</span>
+          <span class="catalog-status">Configurable · English included</span>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+   ROADMAP — future products, clearly labelled
+   ============================================================ -->
+<section class="section" style="padding-top:20px;padding-bottom:40px;background:var(--void-2);border-top:1px solid var(--void-line);">
+  <div class="container">
+    <div class="catalog-header reveal">
+      <span class="eyebrow" style="justify-content:flex-start;color:var(--ink-4);">Roadmap</span>
+      <h2 class="catalog-title" style="text-align:left;max-width:none;color:var(--ink-3);">Not yet available for self-serve</h2>
+      <p class="catalog-sub" style="text-align:left;max-width:56ch;color:var(--ink-4);">
+        These are on our roadmap. They are not live, not configurable, and not
+        available through the builder today. We say so plainly rather than imply
+        they exist.
+      </p>
+    </div>
+
+    <div class="catalog-grid stagger-children" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+      <article class="catalog-card">
+        <span class="catalog-badge catalog-badge--roadmap">Roadmap</span>
+        <span class="catalog-num">040</span>
+        <div class="catalog-icon catalog-icon--alt" style="color:var(--ink-4);">V</div>
+        <div class="catalog-name" style="color:var(--ink-2);">Custom Volume Tiers</div>
+        <div class="catalog-desc" style="color:var(--ink-3);">
+          Beyond 5,000 conversations/month. For operations that have outgrown the
+          standard tiers — pricing tailored to your actual volume.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price" style="color:var(--ink-4);">custom</span>
+          <span class="catalog-channel" style="color:var(--ink-4);">Talk to us</span>
+          <span class="catalog-status" style="color:var(--ink-4);">Roadmap · not available for self-serve</span>
+        </div>
+      </article>
+
+      <article class="catalog-card">
+        <span class="catalog-badge catalog-badge--roadmap">Roadmap</span>
+        <span class="catalog-num">041</span>
+        <div class="catalog-icon catalog-icon--alt" style="color:var(--ink-4);">W</div>
+        <div class="catalog-name" style="color:var(--ink-2);">Custom Workflow Builder</div>
+        <div class="catalog-desc" style="color:var(--ink-3);">
+          Define your own workflow steps, handoff rules, and escalation triggers.
+          Not just the preset configurations — your actual process.
+        </div>
+        <div class="catalog-meta">
+          <span class="catalog-price" style="color:var(--ink-4);">custom</span>
+          <span class="catalog-channel" style="color:var(--ink-4);">Talk to us</span>
+          <span class="catalog-status" style="color:var(--ink-4);">Roadmap · not available for self-serve</span>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+   CTA — configure from the catalog
+   ============================================================ -->
+<section class="cta-section" id="chat">
+  <div class="cta-wrap reveal">
+    <span class="eyebrow">From catalog to configured</span>
+    <h2 class="cta-title">Pick a product. Configure the rest.</h2>
+    <p class="cta-sub">
+      No card required. Server-authoritative pricing. Nothing charged until you choose to continue.
+    </p>
+    <div class="cta-actions">
+      <a class="btn btn-primary btn-lg magnetic-btn" href="/build">Configure from catalog</a>
+      <a class="btn btn-ghost btn-lg magnetic-btn" href="/workforce">See how Nera works</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============================================================
+   FOOTER
+   ============================================================ -->
+<footer class="footer">
+  <div class="container footer-inner">
+    <div>
+      <div class="footer-brand">
+        <span class="footer-brand-mark">N</span>
+        NekoSalesAI
+      </div>
+      <div style="color:var(--ink-3);font-size:0.78rem;line-height:1.5;margin-top:4px;">
+        Nera — the AI workforce for serious businesses.
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Product</div>
+      <div class="footer-links">
+        <a class="footer-link" href="/">Home</a>
+        <a class="footer-link" href="/products">Products</a>
+        <a class="footer-link" href="/workforce">Workforce</a>
+        <a class="footer-link" href="/demo">Demo</a>
+        <a class="footer-link" href="/build">Build</a>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Company</div>
+      <div class="footer-links">
+        <a class="footer-link" href="/pricing">Pricing</a>
+        <a class="footer-link" href="/trust">Trust</a>
+        <a class="footer-link" href="/login">Sign in</a>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Status</div>
+      <div class="footer-links">
+        <span class="footer-link" style="color:var(--signal-live);cursor:default;">
+          <span class="status-live-dot" style="display:inline;width:6px;height:6px;margin-right:5px;vertical-align:middle;"></span>
+          All systems operational
+        </span>
+        <span class="footer-link" style="cursor:default;color:var(--ink-3);">Pricing · ₦</span>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© NekoSalesAI. Nera is the AI workforce for businesses.</span>
+    <span class="mono" style="font-size:0.6rem;letter-spacing:0.1em;">PROVABLE RESTRAINT</span>
+  </div>
+</footer>
+
+<!-- ============================================================
+   SCRIPTS
+   ============================================================ -->
+<script src="/static/js/builder.js" defer></script>
+<script src="/static/js/page.js" defer></script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var toggle = document.querySelector(".nav-mobile-toggle");
+  var menu = document.querySelector(".nav-mobile-menu");
+  if (toggle && menu) {
+    toggle.addEventListener("click", function () {
+      var open = menu.style.display === "block";
+      menu.style.display = open ? "none" : "block";
+    });
+  }
+})();
+</script>
+{% endblock %}

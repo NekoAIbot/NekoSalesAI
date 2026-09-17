@@ -117,6 +117,13 @@ class Order(BaseModel):
     # are the evidence, and a summary we wrote is not.
     provider_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Stable hash of the buyer's configuration, for reusable-checkout lookup.
+    # Differences in free-text spelling must not produce separate pending
+    # orders, so the hash covers only the plan and requirement shape.
+    builder_config_hash: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, index=True
+    )
+
     conversation: Mapped["Conversation | None"] = relationship(  # noqa: F821
         back_populates="orders",
     )

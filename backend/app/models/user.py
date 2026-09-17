@@ -34,6 +34,26 @@ class User(BaseModel):
         default=False,
     )
 
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
+
+    totp_secret: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    totp_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
+
+    recovery_codes: Mapped[str | None] = mapped_column(
+        String(2048),
+        nullable=True,
+    )
+
     organization = relationship(
         "Organization",
         backref="users",

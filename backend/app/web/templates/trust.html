@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Trust — {{ company.name }}{% endblock %}
+
+{% block content %}
+<!-- ============================================================
+   NAVIGATION
+   ============================================================ -->
+<nav class="nav">
+  <div class="container nav-inner">
+    <a class="nav-logo" href="/">
+      <span class="nav-logo-mark">N</span>
+      <span>Nera</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="/products">Products</a>
+      <a class="nav-link" href="/workforce">Workforce</a>
+      <a class="nav-link" href="/demo">Demo</a>
+      <a class="nav-link" href="/build">Build</a>
+      <a class="nav-link" href="/pricing">Pricing</a>
+      <a class="nav-link is-active" href="/trust">Trust</a>
+    </div>
+    <div class="nav-actions">
+      <a class="nav-cta magnetic-btn" href="/build">Get started</a>
+      <a class="nav-link" href="/login">Sign in</a>
+    </div>
+    <button class="nav-mobile-toggle" aria-label="Menu">
+      <span class="hamburger"><span></span><span></span><span></span></span>
+    </button>
+  </div>
+  <div class="nav-mobile-menu">
+    <div class="nav-mobile-links">
+      <a class="nav-mobile-link" href="/products">Products</a>
+      <a class="nav-mobile-link" href="/workforce">Workforce</a>
+      <a class="nav-mobile-link" href="/demo">Demo</a>
+      <a class="nav-mobile-link" href="/build">Build</a>
+      <a class="nav-mobile-link" href="/pricing">Pricing</a>
+      <a class="nav-mobile-link" href="/trust">Trust</a>
+      <a class="nav-mobile-link" href="/login">Sign in</a>
+      <a class="nav-mobile-link" href="/build">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<main id="main">
+<!-- ============================================================
+   TRUST — verification, transparency, proof over promises
+   ============================================================ -->
+<section class="section" style="padding-top:80px;">
+  <div class="container" style="max-width:640px;">
+    <div class="reveal">
+      <span class="eyebrow">Trust</span>
+      <h1 class="display" style="margin:12px 0 16px;">Built to be accountable</h1>
+      <p class="lead">
+        Every claim Nera makes is tied to the code that enforces it. Every reply
+        carries a reasoning trail. Every price is computed, never invented.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Trust principles -->
+<section class="section" style="padding-top:40px;">
+  <div class="container" style="max-width:720px;">
+    <div class="reveal" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+      <div style="background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-xl);padding:var(--s-6);">
+        <div style="font-family:var(--font-mono);font-size:0.6rem;color:var(--copper);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:10px;">01</div>
+        <h3 style="font-size:1.05rem;font-weight:560;color:var(--ink);margin-bottom:8px;">Committed capabilities</h3>
+        <p style="font-size:0.85rem;color:var(--ink-2);line-height:1.55;">
+          Every claim is paired with the module that enforces it. No marketing
+          promises, no overpromising — just code that does what we say.
+        </p>
+      </div>
+      <div style="background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-xl);padding:var(--s-6);">
+        <div style="font-family:var(--font-mono);font-size:0.6rem;color:var(--copper);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:10px;">02</div>
+        <h3 style="font-size:1.05rem;font-weight:560;color:var(--ink);margin-bottom:8px;">Reasoning trail</h3>
+        <p style="font-size:0.85rem;color:var(--ink-2);line-height:1.55;">
+          Every reply Nera gives carries a reasoning trail — the signals it read
+          and the rule it followed. Auditable, traceable, never opaque.
+        </p>
+      </div>
+      <div style="background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-xl);padding:var(--s-6);">
+        <div style="font-family:var(--font-mono);font-size:0.6rem;color:var(--copper);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:10px;">03</div>
+        <h3 style="font-size:1.05rem;font-weight:560;color:var(--ink);margin-bottom:8px;">Server-authoritative pricing</h3>
+        <p style="font-size:0.85rem;color:var(--ink-2);line-height:1.55;">
+          Prices are computed server-side from what you configure. No client-side
+          arithmetic, no manipulable figures. Every quote equals the sum of its lines.
+        </p>
+      </div>
+      <div style="background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-xl);padding:var(--s-6);">
+        <div style="font-family:var(--font-mono);font-size:0.6rem;color:var(--copper);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:10px;">04</div>
+        <h3 style="font-size:1.05rem;font-weight:560;color:var(--ink);margin-bottom:8px;">Off-script escalation</h3>
+        <p style="font-size:0.85rem;color:var(--ink-2);line-height:1.55;">
+          When Nera can't answer honestly, it escalates to a human. No invented
+          answers, no fictional capabilities. It says so and puts you in front
+          of a person.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Capabilities verification -->
+<section class="section" style="padding-top:40px;">
+  <div class="container" style="max-width:640px;">
+    <div class="reveal">
+      <span class="eyebrow">Verified claims</span>
+      <h2 class="section-title" style="margin:12px 0 24px;">What Nera can actually do</h2>
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        {% for capability in capabilities %}
+        <div style="background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-xl);padding:var(--s-5);">
+          <div style="font-weight:560;color:var(--ink);font-size:0.9rem;margin-bottom:6px;">{{ capability.claim }}</div>
+          <div style="font-family:var(--font-mono);font-size:0.7rem;color:var(--ink-4);">Verified by: {{ capability.verified_by }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="section" style="padding-top:40px;padding-bottom:60px;">
+  <div class="container" style="text-align:center;">
+    <div class="reveal">
+      <h2 class="section-title" style="margin:0 auto 16px;">See it for yourself</h2>
+      <p class="lead" style="margin:0 auto 24px;max-width:520px;">
+        Watch Nera work in the demo, or configure your own build to see the
+        reasoning trail in action.
+      </p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <a class="btn btn-primary btn-lg magnetic-btn" href="/demo">Watch demo</a>
+        <a class="btn btn-ghost btn-lg magnetic-btn" href="/build">Build yours</a>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============================================================
+   FOOTER
+   ============================================================ -->
+<footer class="footer">
+  <div class="container footer-inner">
+    <div>
+      <div class="footer-brand">
+        <span class="footer-brand-mark">N</span>
+        NekoSalesAI
+      </div>
+      <div style="color:var(--ink-3);font-size:0.78rem;line-height:1.5;margin-top:4px;">
+        Nera — the AI workforce for serious businesses.
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Product</div>
+      <div class="footer-links">
+        <a class="footer-link" href="/">Home</a>
+        <a class="footer-link" href="/products">Products</a>
+        <a class="footer-link" href="/workforce">Workforce</a>
+        <a class="footer-link" href="/demo">Demo</a>
+        <a class="footer-link" href="/build">Build</a>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Company</div>
+      <div class="footer-links">
+        <a class="footer-link" href="/pricing">Pricing</a>
+        <a class="footer-link" href="/trust">Trust</a>
+        <a class="footer-link" href="/login">Sign in</a>
+      </div>
+    </div>
+    <div>
+      <div class="footer-col-title">Status</div>
+      <div class="footer-links">
+        <span class="footer-link" style="color:var(--signal-live);cursor:default;">
+          <span class="status-live-dot" style="display:inline;width:6px;height:6px;margin-right:5px;vertical-align:middle;"></span>
+          All systems operational
+        </span>
+        <span class="footer-link" style="cursor:default;color:var(--ink-3);">Pricing · ₦</span>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>&copy; NekoSalesAI. Nera is the AI workforce for businesses.</span>
+    <span class="mono" style="font-size:0.6rem;letter-spacing:0.1em;">PROVABLE RESTRAINT</span>
+  </div>
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/page.js" defer></script>
+{% endblock %}

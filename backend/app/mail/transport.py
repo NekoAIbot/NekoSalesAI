@@ -138,7 +138,21 @@ class MemoryMailTransport(MailTransport):
 
 
 class SmtpMailTransport(MailTransport):
-    """Sends over SMTP."""
+    """Sends over SMTP.
+
+    Works with any SMTP provider: Brevo, Mailjet, SendGrid, Amazon SES,
+    Gmail, etc. Configuration is entirely environment-based so the same
+    binary runs in development (console) and production (smtp) without
+    code changes.
+
+    For Brevo (recommended free tier: 300 emails/day):
+        MAIL_BACKEND=smtp
+        SMTP_HOST=smtp-relay.brevo.com
+        SMTP_PORT=587
+        SMTP_USERNAME=your-brevo-login@example.com
+        SMTP_PASSWORD=your-brevo-smtp-key
+        SMTP_USE_TLS=true
+    """
 
     name = BACKEND_SMTP
 

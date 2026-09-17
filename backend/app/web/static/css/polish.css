@@ -1,0 +1,682 @@
+/* ================================================================
+   POLISH — Micro-interactions, loading states, toasts, transitions
+   Loads AFTER app-v4.css. Lightweight, GPU-accelerated only.
+   ================================================================ */
+
+/* ---------------------------------------------------------------
+   1. BUTTON PRESS — tactile scale on active
+   --------------------------------------------------------------- */
+.btn:active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: var(--fast);
+}
+
+.btn-primary:active {
+  transform: translateY(0) scale(0.96);
+}
+
+.btn-ghost:active {
+  transform: scale(0.97);
+}
+
+.btn-lg:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* Disabled state */
+.btn[disabled],
+.btn-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Button loading state — spinner replaces text */
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  /* Invisible color so spinner shows via border-top only */
+  color: var(--void);
+}
+
+.btn-ghost.btn-loading::after {
+  color: var(--copper);
+}
+
+/* ---------------------------------------------------------------
+   2. LOADING SKELETON — shimmer placeholder
+   Usage: <div class="skeleton" style="width:80%; height:16px;"></div>
+   --------------------------------------------------------------- */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--void-3) 25%,
+    var(--void-4) 37%,
+    var(--void-3) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--r-sm);
+  pointer-events: none;
+}
+
+.skeleton--text {
+  height: 0.85em;
+  border-radius: 2px;
+}
+
+.skeleton--title {
+  height: 1.2em;
+  width: 60%;
+  border-radius: 3px;
+}
+
+.skeleton--card {
+  height: 180px;
+  border-radius: var(--r-lg);
+}
+
+.skeleton--circle {
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+}
+
+.skeleton--btn {
+  height: 36px;
+  width: 120px;
+  border-radius: var(--r-sm);
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* ---------------------------------------------------------------
+   3. SPINNER — standalone rotating indicator
+   Usage: <div class="spinner" aria-label="Loading"></div>
+   --------------------------------------------------------------- */
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--void-border);
+  border-top-color: var(--copper);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.spinner--sm { width: 14px; height: 14px; border-width: 1.5px; }
+.spinner--lg { width: 32px; height: 32px; border-width: 2.5px; }
+
+.spinner--ink { border-top-color: var(--ink-2); }
+.spinner--live { border-top-color: var(--signal-live); }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------------------------------------------------------------
+   4. LOADING DOTS — three dot pulse (typing indicator)
+   Usage: <div class="loading-dots"><span></span><span></span><span></span></div>
+   --------------------------------------------------------------- */
+.loading-dots {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.loading-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  animation: dot-bounce 1.2s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) { animation-delay: 0.15s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* ---------------------------------------------------------------
+   5. TOAST NOTIFICATION SYSTEM
+   Usage:
+     <div class="toast-container">
+       <div class="toast toast--success toast--entering">
+         <span class="toast__icon">✓</span>
+         <span class="toast__text">Order confirmed</span>
+         <button class="toast__close" aria-label="Close">&times;</button>
+       </div>
+     </div>
+   --------------------------------------------------------------- */
+.toast-container {
+  position: fixed;
+  top: calc(var(--nav-h) + 12px);
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--void-3);
+  border: 1px solid var(--void-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.8rem;
+  color: var(--ink-1);
+  pointer-events: auto;
+  min-width: 240px;
+  max-width: 100%;
+  will-change: transform, opacity;
+}
+
+.toast--entering {
+  animation: toast-in var(--mid) var(--ease-out) both;
+}
+
+.toast--exiting {
+  animation: toast-out var(--mid) var(--ease-out) both;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(24px) scale(0.95); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to   { opacity: 0; transform: translateX(24px) scale(0.95); }
+}
+
+.toast__icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.toast__text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.toast__close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--ink-4);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px;
+  transition: color var(--fast);
+}
+
+.toast__close:hover { color: var(--ink-2); }
+
+/* Toast variants */
+.toast--success {
+  border-color: rgba(78, 205, 196, 0.25);
+}
+
+.toast--success .toast__icon {
+  background: var(--signal-live-soft);
+  color: var(--signal-live);
+}
+
+.toast--error {
+  border-color: rgba(220, 80, 80, 0.3);
+}
+
+.toast--error .toast__icon {
+  background: rgba(220, 80, 80, 0.15);
+  color: #e06060;
+}
+
+.toast--info {
+  border-color: var(--copper-line);
+}
+
+.toast--info .toast__icon {
+  background: var(--copper-soft);
+  color: var(--copper);
+}
+
+.toast--warning {
+  border-color: rgba(212, 160, 74, 0.3);
+}
+
+.toast--warning .toast__icon {
+  background: var(--signal-warn-soft);
+  color: var(--signal-warn);
+}
+
+/* ---------------------------------------------------------------
+   6. FORM CONTROL POLISH — enhanced focus + validation states
+   --------------------------------------------------------------- */
+.field-input.is-invalid {
+  border-color: rgba(220, 80, 80, 0.5);
+  box-shadow: 0 0 0 3px rgba(220, 80, 80, 0.1);
+}
+
+.field-input.is-valid {
+  border-color: rgba(78, 205, 196, 0.4);
+}
+
+.field-error {
+  font-size: 0.65rem;
+  color: #e06060;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  animation: fade-in var(--fast) var(--ease-out) both;
+}
+
+.field-error::before {
+  content: '!';
+  display: inline-grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: rgba(220, 80, 80, 0.15);
+  color: #e06060;
+  font-size: 0.5rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Textarea specific */
+textarea.field-input {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* Select dropdown polish */
+select.field-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%239a9080' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------
+   7. ENHANCED MICRO-INTERACTIONS
+   --------------------------------------------------------------- */
+
+/* Card press feedback (touch) */
+@media (hover: none) {
+  .worker-surface:active,
+  .catalog-card:active {
+    transform: scale(0.98);
+    transition-duration: var(--fast);
+  }
+
+  .field-option:active {
+    transform: scale(0.98);
+    transition-duration: var(--fast);
+  }
+}
+
+/* Navigation link underline animation — growing line */
+.nav-link {
+  position: relative;
+}
+
+.nav-link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 1.5px;
+  background: var(--copper);
+  transition: width var(--base) var(--ease-out), left var(--base) var(--ease-out);
+}
+
+.nav-link:hover::after,
+.nav-link.is-active::after {
+  width: 100%;
+  left: 0;
+}
+
+/* Worker rank fade on card hover */
+.worker-surface .worker-rank {
+  transition: opacity var(--base), color var(--base);
+}
+
+.worker-surface:hover .worker-rank {
+  opacity: 0.8;
+}
+
+/* Exchange bubble — subtle entrance on visible */
+.exchange-turn {
+  will-change: transform, opacity;
+}
+
+/* Footer link underline on hover */
+.footer-link {
+  position: relative;
+  display: inline-block;
+}
+
+.footer-link::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--ink-1);
+  transition: width var(--base) var(--ease-out);
+}
+
+.footer-link:hover::after {
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------
+   8. MOBILE MENU — smooth slide + hamburger morph
+   --------------------------------------------------------------- */
+.nav-mobile-menu {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  transition: max-height var(--mid) var(--ease-out),
+              opacity var(--base) var(--ease-out),
+              padding var(--base) var(--ease-out);
+  display: block; /* override the display:none so we can animate */
+  border-top: none;
+}
+
+.nav-mobile-menu.open {
+  max-height: 400px;
+  opacity: 1;
+  padding: 8px var(--gutter) 10px;
+  border-top: 1px solid var(--void-line);
+}
+
+/* Hamburger morph to X */
+.nav-mobile-toggle .hamburger span {
+  transform-origin: center;
+  transition: transform var(--mid) var(--ease-out), opacity var(--fast) var(--ease-out);
+}
+
+.nav-mobile-toggle[aria-expanded="true"] .hamburger span:nth-child(1) {
+  transform: rotate(45deg) translate(4px, 4px);
+}
+
+.nav-mobile-toggle[aria-expanded="true"] .hamburger span:nth-child(2) {
+  opacity: 0;
+}
+
+.nav-mobile-toggle[aria-expanded="true"] .hamburger span:nth-child(3) {
+  transform: rotate(-45deg) translate(4px, -4px);
+}
+
+/* ---------------------------------------------------------------
+   9. STAGGERED LIST ENTRIES
+   Usage: <ul class="stagger-list"><li>...</li></ul>
+   --------------------------------------------------------------- */
+.stagger-list > li {
+  opacity: 0;
+  transform: translateY(6px);
+  animation: stagger-in var(--mid) var(--ease-out) both;
+}
+
+.stagger-list > li:nth-child(1) { animation-delay: 0ms; }
+.stagger-list > li:nth-child(2) { animation-delay: 50ms; }
+.stagger-list > li:nth-child(3) { animation-delay: 100ms; }
+.stagger-list > li:nth-child(4) { animation-delay: 150ms; }
+.stagger-list > li:nth-child(5) { animation-delay: 200ms; }
+.stagger-list > li:nth-child(6) { animation-delay: 250ms; }
+.stagger-list > li:nth-child(7) { animation-delay: 300ms; }
+.stagger-list > li:nth-child(8) { animation-delay: 350ms; }
+
+@keyframes stagger-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------------------------------------------------------------
+   10. SECTION TRANSITIONS — subtle divider fade
+   --------------------------------------------------------------- */
+.section-divider {
+  opacity: 0;
+  animation: divider-reveal var(--slow) var(--ease-out) both;
+}
+
+@keyframes divider-reveal {
+  to { opacity: 1; }
+}
+
+/* ---------------------------------------------------------------
+   11. IMAGE FADE-IN on load
+   Usage: <img class="img-fadein" src="..." alt="...">
+   --------------------------------------------------------------- */
+.img-fadein {
+  opacity: 0;
+  transition: opacity var(--mid) var(--ease-out);
+}
+
+.img-fadein.is-loaded,
+.img-fadein[complete] {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------
+   12. UTILITY — smooth entrance helpers
+   --------------------------------------------------------------- */
+.entrance-fade {
+  opacity: 0;
+  animation: fade-in var(--base) var(--ease-out) both;
+}
+
+.entrance-rise {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: rise var(--base) var(--ease-out) both;
+}
+
+.entrance-scale {
+  opacity: 0;
+  transform: scale(0.96);
+  animation: scale-in var(--base) var(--ease-out) both;
+}
+
+@keyframes scale-in {
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ---------------------------------------------------------------
+   13. FOCUS VISIBLE — consistent ring for keyboard users
+   --------------------------------------------------------------- */
+.btn:focus-visible,
+.field-input:focus-visible,
+.field-option:focus-visible,
+.nav-mobile-toggle:focus-visible,
+.toast__close:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------
+   14. EMPTY STATE — placeholder for missing content
+   Usage:
+     <div class="empty-state">
+       <div class="empty-state__icon">∅</div>
+       <div class="empty-state__title">Nothing here yet</div>
+       <div class="empty-state__text">When orders appear, they'll show up here.</div>
+     </div>
+   --------------------------------------------------------------- */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--s-12) var(--s-6);
+  color: var(--ink-4);
+}
+
+.empty-state__icon {
+  font-size: 1.8rem;
+  margin-bottom: var(--s-3);
+  opacity: 0.4;
+}
+
+.empty-state__title {
+  font-size: 0.95rem;
+  color: var(--ink-2);
+  font-weight: 500;
+  margin-bottom: var(--s-1);
+}
+
+.empty-state__text {
+  font-size: 0.78rem;
+  color: var(--ink-4);
+  max-width: 30ch;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------
+   15. PROGRESS BAR — for multi-step flows
+   Usage:
+     <div class="progress-bar">
+       <div class="progress-bar__fill" style="width:60%"></div>
+     </div>
+   --------------------------------------------------------------- */
+.progress-bar {
+  width: 100%;
+  height: 3px;
+  background: var(--void-4);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar__fill {
+  height: 100%;
+  background: var(--copper);
+  border-radius: 2px;
+  transition: width var(--mid) var(--ease-out);
+  will-change: width;
+}
+
+.progress-bar--indeterminate .progress-bar__fill {
+  width: 30%;
+  animation: progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* ---------------------------------------------------------------
+   16. BADGE PULSE — for live/active indicators
+   --------------------------------------------------------------- */
+.badge-pulse {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.badge-pulse::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal-live);
+  animation: breathe 2s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------
+   17. ENHANCED HOVER SHADOW COLOR — workforce cards
+   --------------------------------------------------------------- */
+.worker-surface:hover {
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--copper-line);
+}
+
+.worker-surface--premium:hover {
+  box-shadow: var(--shadow-lg), 0 0 32px var(--copper-soft), 0 0 0 1px var(--copper-line);
+}
+
+/* ---------------------------------------------------------------
+   18. TOAST CONTAINER — mobile positioning
+   --------------------------------------------------------------- */
+@media (max-width: 480px) {
+  .toast-container {
+    right: 8px;
+    left: 8px;
+    max-width: none;
+    top: calc(var(--nav-h) + 6px);
+  }
+
+  .toast {
+    min-width: auto;
+    width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------
+   19. PERFORMANCE — contain paint on animated containers
+   --------------------------------------------------------------- */
+.toast-container,
+.worker-surface,
+.catalog-card {
+  contain: layout style;
+}
+
+/* ---------------------------------------------------------------
+   20. REDUCED MOTION — kill all polish animations
+   --------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .toast--entering,
+  .toast--exiting,
+  .skeleton,
+  .spinner,
+  .loading-dots span,
+  .stagger-list > li,
+  .section-divider,
+  .progress-bar--indeterminate .progress-bar__fill {
+    animation: none !important;
+  }
+
+  .toast--entering { opacity: 1; transform: none; }
+  .nav-mobile-menu { transition: none; }
+}

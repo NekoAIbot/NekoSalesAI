@@ -603,20 +603,26 @@ def test_a_telegram_buyer_who_describes_their_business_is_advised_first(
     assert "₦" not in reply, "advice comes before pricing, not with it"
 
 
+
+
+
 def test_advice_over_a_messenger_does_not_choose_for_the_buyer(
     service, storefront, db
 ):
-    """A recommendation written into the scope is a product nobody picked.
+    """A recommendation remembered on the scope is a product nobody picked.
 
-    Worse on a messenger than in a browser: there is no page to re-read, so the
-    first the buyer would know of it is the total.
+    The advisor recommends, but the buyer still has to choose. The scope
+    remembers the recommendation (so "price it" carries it forward) but does
+    not auto-select the product.
     """
     service.handle(storefront.id, inbound("I run a food store"))
 
     conversation = db.query(Conversation).one()
-    scope = conversation.scope_json or ""
+    import json
+    scope = json.loads(conversation.scope_json or "{}")
 
-    assert "sales_agent" not in scope, "the advice selected a product by itself"
+    assert scope.get("products") is None, "the advice selected a product by itself"
+    assert scope.get("recommended") == ["sales_agent"], "the advice should be remembered"
 
 
 def test_a_business_we_cannot_help_is_escalated_from_telegram_too(

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Set up two-factor authentication — {{ company.name }}{% endblock %}
+
+{% block content %}
+<nav class="nav">
+  <div class="container nav-inner">
+    <a class="nav-logo" href="/">
+      <span class="nav-logo-mark">N</span>
+      <span>Nera</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="/products">Products</a>
+      <a class="nav-link" href="/demo">Demo</a>
+      <a class="nav-link" href="/build">Build</a>
+      <a class="nav-link" href="/pricing">Pricing</a>
+    </div>
+    <div class="nav-actions">
+      <a class="nav-link" href="/login">Sign in</a>
+    </div>
+  </div>
+</nav>
+
+<main id="main">
+<section class="section" style="padding-top:80px;">
+  <div class="container" style="max-width:420px;">
+    <div class="reveal" style="text-align:center;margin-bottom:32px;">
+      <span class="eyebrow" style="justify-content:center;">Two-factor authentication</span>
+      <h1 class="display" style="margin:12px 0 8px;">Set up an authenticator app</h1>
+      <p class="lead" style="font-size:0.95rem;">
+        Scan the QR code with your authenticator app (Google Authenticator, Authy, or similar) to add an extra layer of security.
+      </p>
+    </div>
+
+    <div class="reveal" style="background:var(--void-2);border:1px solid var(--void-border);border-radius:var(--r-2xl);padding:var(--s-8);text-align:center;">
+      <!-- Step 1: Show QR code -->
+      <div id="step-qr">
+        <img id="totp-qr" src="" alt="TOTP QR Code" style="max-width:200px;margin:0 auto;display:block;">
+        <p style="margin-top:var(--s-4);font-size:0.8rem;color:var(--ink-4);">
+          Can't scan? Use this code instead:
+        </p>
+        <code id="totp-secret" style="display:block;padding:8px;background:var(--void-3);border-radius:var(--r-md);font-size:0.85rem;margin:8px 0;"></code>
+      </div>
+
+      <!-- Step 2: Enter verification code -->
+      <div id="step-verify" style="margin-top:var(--s-4);">
+        <label class="field-label" style="display:block;margin-bottom:var(--s-2);font-size:0.85rem;color:var(--ink-2);">Enter 6-digit code from your app</label>
+        <input type="text" id="totp-code" required maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code" inputmode="numeric" style="width:100%;padding:10px 12px;border:1px solid var(--void-border);border-radius:var(--r-md);background:var(--void-3);color:var(--ink);font-size:1.2rem;text-align:center;letter-spacing:0.5em;font-family:var(--font-mono);">
+        <div class="chat-error hidden" id="totp-error" style="border-radius:6px;border:1px solid #f2d9d7;margin-top:14px;padding:10px 12px;font-size:0.85rem;color:#8b2e2a;background:#fdf2f1;"></div>
+        <button class="btn btn-primary btn-lg" type="button" id="enable-totp" style="width:100%;margin-top:var(--s-4);">Enable 2FA</button>
+      </div>
+
+      <!-- Step 3: Recovery codes -->
+      <div id="step-recovery" class="hidden" style="margin-top:var(--s-4);text-align:left;">
+        <h3 style="font-size:1rem;margin-bottom:var(--s-2);">Save your recovery codes</h3>
+        <p style="font-size:0.8rem;color:var(--ink-4);margin-bottom:var(--s-4);">
+          Each code can be used once if you lose access to your authenticator app. Save them somewhere safe.
+        </p>
+        <div id="recovery-codes" style="background:var(--void-3);border-radius:var(--r-md);padding:var(--s-4);font-family:var(--font-mono);font-size:0.8rem;line-height:1.8;"></div>
+        <button class="btn btn-primary btn-lg" type="button" id="finish-totp" style="width:100%;margin-top:var(--s-4);">I've saved my codes</button>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div>
+      <div class="footer-brand">
+        <span class="footer-brand-mark">N</span>
+        NekoSalesAI
+      </div>
+      <div style="color:var(--ink-3);font-size:0.78rem;line-height:1.5;margin-top:4px;">
+        Nera — the AI workforce for serious businesses.
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>&copy; NekoSalesAI. Nera is the AI workforce for businesses.</span>
+  </div>
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/page.js" defer></script>
+<script>
+(function () {
+  "use strict";
+  var token = localStorage.getItem("neko_token");
+  if (!token) { window.location.href = "/login"; return; }
+
+  var qrImg = document.getElementById("totp-qr");
+  var secretEl = document.getElementById("totp-secret");
+  var error = document.getElementById("totp-error");
+  var stepQr = document.getElementById("step-qr");
+  var stepVerify = document.getElementById("step-verify");
+  var stepRecovery = document.getElementById("step-recovery");
+  var recoveryCodes = document.getElementById("recovery-codes");
+  var secret = "";
+
+  // Setup TOTP
+  fetch("/api/v1/auth/totp/setup", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+  })
+  .then(function (r) { return r.json(); })
+  .then(function (data) {
+    if (data.secret) {
+      secret = data.secret;
+      qrImg.src = data.qr_code;
+      secretEl.textContent = data.secret;
+    }
+  })
+  .catch(function () {});
+
+  // Enable TOTP
+  document.getElementById("enable-totp").addEventListener("click", function () {
+    var code = document.getElementById("totp-code").value;
+    error.classList.add("hidden");
+
+    fetch("/api/v1/auth/totp/enable", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.recovery_codes) {
+        stepQr.classList.add("hidden");
+        stepVerify.classList.add("hidden");
+        stepRecovery.classList.remove("hidden");
+        recoveryCodes.innerHTML = data.recovery_codes.map(function (c) {
+          return "<div>" + c + "</div>";
+        }).join("");
+      } else {
+        error.textContent = data.detail || "Could not enable 2FA.";
+        error.classList.remove("hidden");
+      }
+    })
+    .catch(function () {
+      error.textContent = "Could not reach the server. Try again.";
+      error.classList.remove("hidden");
+    });
+  });
+
+  // Finish
+  document.getElementById("finish-totp").addEventListener("click", function () {
+    window.location.href = "/desk";
+  });
+})();
+</script>
+{% endblock %}
