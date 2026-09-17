@@ -48,6 +48,7 @@ def pricing_options():
     base_prices = {
         PRODUCT_SALES_AGENT: 199_000_00,
         PRODUCT_SUPPORT_AGENT: 149_000_00,
+        "workforce_agent": 348_000_00,
     }
     return {
         "products": [
