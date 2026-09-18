@@ -40,10 +40,8 @@
 
   // ---- Volume control ----
   function updateVolumeTotal() {
-    if (!volumeInput || !volumeTotal || !volumeQty) return;
+    if (!volumeInput || !volumeQty) return;
     var vol = parseInt(volumeInput.value, 10) || 0;
-    var total = vol * 5;
-    volumeTotal.textContent = "\u20A6" + total.toLocaleString("en-NG");
     volumeQty.textContent = vol.toLocaleString("en-NG");
     // Update preset highlight
     volumePresets.forEach(function (b) {
