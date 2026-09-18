@@ -84,7 +84,7 @@
           storeToken(data.access_token);
           // Redirect to desk or the page we came from
           var params = new URLSearchParams(window.location.search);
-          var next = params.get("next") || "/desk";
+          var next = params.get("next") || "/dashboard";
           window.location.href = next;
         } else if (data.detail && data.detail.includes("TOTP code required")) {
           totpRequired = true;
@@ -330,7 +330,7 @@
       })
       .then(function (r) {
         if (r.ok) {
-          window.location.href = "/desk";
+          window.location.href = "/dashboard";
         }
       })
       .catch(function () {});

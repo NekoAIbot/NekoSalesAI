@@ -44,8 +44,9 @@ STEP_PRODUCT = "products"
 STEP_CHANNELS = "channels"
 STEP_VOLUME = "monthly_conversations"
 STEP_INTEGRATIONS = "integrations"
+STEP_LANGUAGES = "languages"
 
-SCOPE_STEPS = (STEP_PRODUCT, STEP_CHANNELS, STEP_VOLUME, STEP_INTEGRATIONS)
+SCOPE_STEPS = (STEP_PRODUCT, STEP_CHANNELS, STEP_VOLUME, STEP_INTEGRATIONS, STEP_LANGUAGES)
 
 # What ``product_type`` was called in scopes stored before a buyer could choose
 # more than one. Read on the way in so a conversation that was mid-intake when
@@ -88,6 +89,9 @@ QUESTIONS: dict[str, str] = {
     STEP_INTEGRATIONS: (
         "Last one: how many of your systems does it need to talk to — CRM, "
         "calendar, helpdesk, stock? Say a number, or 'none'."
+    ),
+    STEP_LANGUAGES: (
+        "Which language(s) should your AI support? For example: English, Yoruba, Pidgin."
     ),
 }
 
@@ -215,6 +219,7 @@ class Scope:
     channels: tuple[str, ...] | None = None
     monthly_conversations: int | None = None
     integrations: int | None = None
+    languages: tuple[str, ...] | None = None
     recommended: tuple[str, ...] | None = None
 
     @property
@@ -258,6 +263,7 @@ class Scope:
             channels=self.channels,
             integrations=integrations,
             monthly_conversations=self.monthly_conversations or 500,
+            languages=self.languages or ("en",),
         )
 
     def to_json(self) -> str:
@@ -267,6 +273,7 @@ class Scope:
                 STEP_CHANNELS: list(self.channels) if self.channels else None,
                 STEP_VOLUME: self.monthly_conversations,
                 STEP_INTEGRATIONS: self.integrations,
+                STEP_LANGUAGES: list(self.languages) if self.languages else None,
                 "recommended": list(self.recommended) if self.recommended else None,
             }
         )
@@ -312,6 +319,10 @@ class Scope:
         if isinstance(integrations, int) and 0 <= integrations <= MAX_INTEGRATIONS:
             scope = replace(scope, integrations=integrations)
 
+        languages = data.get(STEP_LANGUAGES)
+        if isinstance(languages, list):
+            scope = replace(scope, languages=tuple(languages))
+        
         recommended = data.get("recommended")
         if isinstance(recommended, list):
             known = tuple(code for code in PRODUCT_ORDER if code in set(recommended))
@@ -445,6 +456,7 @@ _PARSERS = {
     STEP_CHANNELS: parse_channels,
     STEP_VOLUME: parse_volume,
     STEP_INTEGRATIONS: parse_integrations,
+    STEP_LANGUAGES: parse_languages,
 }
 
 

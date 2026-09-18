@@ -180,7 +180,7 @@ def test_a_buyer_who_answers_in_words_reaches_a_quote():
     from app.sales.scoping import Scope
 
     scope = Scope()
-    said = ["the sales rep", "just my website", "about five hundred", "just one"]
+    said = ["the sales rep", "just my website", "about five hundred", "just one", "just english"]
 
     reply = None
 
@@ -210,7 +210,7 @@ def test_the_same_answers_in_digits_reach_the_same_price():
 
         return scope.to_requirement()
 
-    words = total_for(["the sales rep", "just my website", "five hundred", "just one"])
-    digits = total_for(["the sales rep", "just my website", "500", "1"])
+    words = total_for(["the sales rep", "just my website", "five hundred", "just one", "english"])
+    digits = total_for(["the sales rep", "just my website", "500", "1", "english"])
 
     assert words == digits

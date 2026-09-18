@@ -265,6 +265,7 @@ class Persona:
     expected_volume: int | None
     integration_ask: str
     expected_integrations: int | None
+    language_ask: str = "English"
     behaviours: tuple[str, ...] = ()
     name: str = "Ada Buyer"
     email: str = "buyer@example.com"

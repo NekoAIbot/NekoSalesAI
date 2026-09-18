@@ -222,6 +222,16 @@ def checkout_return(request: Request):
     )
 
 
+@router.get("/dashboard", response_class=HTMLResponse)
+def dashboard(request: Request):
+    """Customer dashboard — requires authentication via client-side token."""
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {"request": request, "company": COMPANY, "page": "dashboard"},
+    )
+
+
 @router.get("/verify-email", response_class=HTMLResponse)
 def verify_email(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(

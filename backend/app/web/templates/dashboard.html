@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard - Nera</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/static/css/app-v4.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
+</head>
+<body class="dashboard-body">
+  <nav class="nav">
+    <div class="container nav-inner">
+      <a class="nav-logo" href="/">
+        <span class="nav-logo-mark">N</span>
+        <span>Nera</span>
+      </a>
+      <div class="nav-links">
+        <a class="nav-link is-active" href="/dashboard">Dashboard</a>
+        <a class="nav-link" href="/build">Build</a>
+        <a class="nav-link" href="/pricing">Pricing</a>
+      </div>
+      <div class="nav-actions">
+        <span class="nav-link" id="user-email"></span>
+        <button class="nav-link" id="sign-out-btn" onclick="logout()">Sign out</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container" style="padding: 40px 20px;">
+    <h1 class="display" style="margin-bottom: 8px;">Your Workspace</h1>
+    <p class="lead" id="workspace-name" style="margin-bottom: 40px;">Loading...</p>
+
+    <div class="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+      <!-- Agents Card -->
+      <div class="dashboard-card" style="background: var(--void-2); border: 1px solid var(--void-border); border-radius: 12px; padding: 24px;">
+        <h3 style="margin-bottom: 12px;">Agents</h3>
+        <div id="agents-list">
+          <p class="faint">Loading agents...</p>
+        </div>
+      </div>
+
+      <!-- Orders Card -->
+      <div class="dashboard-card" style="background: var(--void-2); border: 1px solid var(--void-border); border-radius: 12px; padding: 24px;">
+        <h3 style="margin-bottom: 12px;">Orders</h3>
+        <div id="orders-list">
+          <p class="faint">Loading orders...</p>
+        </div>
+      </div>
+
+      <!-- Account Card -->
+      <div class="dashboard-card" style="background: var(--void-2); border: 1px solid var(--void-border); border-radius: 12px; padding: 24px;">
+        <h3 style="margin-bottom: 12px;">Account</h3>
+        <div id="account-info">
+          <p class="faint">Loading...</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/js/auth.js"></script>
+  <script>
+    // Check auth
+    var token = localStorage.getItem('neko_token') || sessionStorage.getItem('nekosales.desk.token');
+    if (!token) {
+      window.location.href = '/login?next=/dashboard';
+    }
+
+    // Load user info
+    fetch('/api/v1/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error('unauthorized');
+      return r.json();
+    })
+    .then(function(user) {
+      document.getElementById('user-email').textContent = user.email;
+      document.getElementById('workspace-name').textContent = (user.organization_name || 'Your') + ' Workspace';
+      document.getElementById('account-info').innerHTML = '<p>Email: ' + user.email + '</p><p>Role: ' + (user.is_admin ? 'Admin' : 'Member') + '</p>';
+    })
+    .catch(function() {
+      window.location.href = '/login?next=/dashboard';
+    });
+
+    // Load orders
+    fetch('/api/v1/checkout/orders', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(orders) {
+      var html = '';
+      if (!orders.length) {
+        html = '<p class="faint">No orders yet. <a href="/build">Build your first AI agent</a></p>';
+      } else {
+        orders.slice(0, 5).forEach(function(o) {
+          html += '<div style="margin-bottom: 8px; padding: 8px; background: var(--void-3); border-radius: 6px;">' +
+            '<span style="font-weight: 600;">' + (o.plan_name || 'Order') + '</span>' +
+            '<span class="faint" style="margin-left: 8px;">' + o.status + '</span>' +
+            '<br><span class="faint">' + (o.display_amount || '') + '</span>' +
+            '</div>';
+        });
+      }
+      document.getElementById('orders-list').innerHTML = html;
+    })
+    .catch(function() {
+      document.getElementById('orders-list').innerHTML = '<p class="faint">Could not load orders.</p>';
+    });
+
+    // Load agents
+    fetch('/api/v1/organizations/workspace/profiles', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(profiles) {
+      var html = '';
+      if (!profiles.length) {
+        html = '<p class="faint">No agents yet.</p>';
+      } else {
+        profiles.forEach(function(p) {
+          html += '<div style="margin-bottom: 8px; padding: 8px; background: var(--void-3); border-radius: 6px;">' +
+            '<span style="font-weight: 600;">' + (p.agent_name || p.role) + '</span>' +
+            '<span class="faint" style="margin-left: 8px;">' + p.status + '</span>' +
+            '</div>';
+        });
+      }
+      document.getElementById('agents-list').innerHTML = html;
+    })
+    .catch(function() {
+      document.getElementById('agents-list').innerHTML = '<p class="faint">No agents yet.</p>';
+    });
+
+    function logout() {
+      localStorage.removeItem('neko_token');
+      sessionStorage.removeItem('nekosales.desk.token');
+      window.location.href = '/login';
+    }
+  </script>
+</body>
+</html>

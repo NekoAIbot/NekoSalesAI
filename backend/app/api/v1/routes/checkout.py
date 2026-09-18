@@ -11,11 +11,14 @@ string, so reading someone else's order status requires guessing it.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config.logging import get_logger
 from app.config.settings import settings
+from app.auth.dependencies import get_current_user
 from app.dependencies.database import get_db
+from app.models.user import User
 from app.followups.service import FollowUpService
 from app.models.order import Order
 from app.payments import (
@@ -228,6 +231,35 @@ def create_order(payload: CheckoutRequest, db: Session = Depends(get_db)) -> Ord
         ) from exc
 
     return OrderOut.from_model(order)
+
+
+
+@router.get("/orders")
+def list_orders(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List orders for the current user's organization."""
+    from sqlalchemy import desc
+    orders = (
+        db.execute(
+            select(Order).where(
+                Order.organization_id == current_user.organization_id
+            ).order_by(desc(Order.created_at))
+        ).scalars().all()
+    )
+    return [
+        {
+            "reference": o.paystack_reference,
+            "plan_name": o.plan_name,
+            "status": o.status,
+            "amount_minor": o.amount_minor,
+            "display_amount": f"₦{o.amount_minor / 100:,.0f}" if o.amount_minor else None,
+            "created_at": o.created_at.isoformat() if o.created_at else None,
+            "checkout_url": o.checkout_url,
+        }
+        for o in orders
+    ]
 
 
 @router.get("/orders/{reference}", response_model=CheckoutStatusOut)

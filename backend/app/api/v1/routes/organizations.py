@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import get_current_user
 from app.database.session import get_db
+from app.models.user import User
 from app.schemas.organization import (
     OrganizationCreate,
     OrganizationResponse,
@@ -113,3 +116,28 @@ def delete_organization(
     return {
         "message": "Organization deleted successfully."
     }
+
+@router.get("/workspace/profiles")
+def list_workspace_profiles(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List workspace profiles for the current user's organization."""
+    from app.models.workspace_profile import WorkspaceProfile
+    profiles = (
+        db.execute(
+            select(WorkspaceProfile).where(
+                WorkspaceProfile.organization_id == current_user.organization_id
+            )
+        ).scalars().all()
+    )
+    return [
+        {
+            "id": p.id,
+            "role": p.role,
+            "agent_name": p.agent_name,
+            "status": p.status,
+            "company_name": p.company_name,
+        }
+        for p in profiles
+    ]

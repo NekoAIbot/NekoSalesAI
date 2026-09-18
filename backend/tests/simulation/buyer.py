@@ -39,6 +39,7 @@ QUESTION_MARKERS: tuple[tuple[str, str], ...] = (
     ("channels", "where should it answer"),
     ("volume", "how many conversations a month"),
     ("integrations", "how many of your systems"),
+    ("languages", "which language"),
     ("contact", "name, email and company"),
     ("email_only", "leave me your email"),
     ("email_only", "best email to reach you on"),
@@ -157,8 +158,6 @@ def next_utterance(
         state.note("integrations")
 
         extras = []
-        if MENTIONS_LANGUAGES in persona.behaviours:
-            extras.append("also it needs to speak Yoruba and Hausa")
         if MENTIONS_WORKFLOW in persona.behaviours:
             extras.append("and I want to approve any discount myself before it goes out")
 
@@ -167,6 +166,12 @@ def next_utterance(
             return f"{persona.integration_ask}. " + " ".join(extras)
 
         return persona.integration_ask
+
+    if question == "languages":
+        state.note("languages")
+        if hasattr(persona, 'language_ask'):
+            return persona.language_ask
+        return "English"
 
     if question == "contact":
         state.note("contact")
