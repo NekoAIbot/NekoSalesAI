@@ -79,8 +79,14 @@ ROLE_TO_PRODUCT_TYPE = {
 
 
 def hash_api_key(api_key: str) -> str:
-    """Hash an API key for storage."""
-    return hash_password(api_key)
+    """SHA-256, not bcrypt.
+
+    Deliberate, and the opposite of the right answer for passwords. An API key
+    is 24 bytes of CSPRNG output with no dictionary to attack, so the slow
+    hash buys nothing — and it has to be verified on every API request, where
+    bcrypt's cost would become the endpoint's latency floor.
+    """
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
 
 
 def _build_api_key() -> str:
@@ -120,6 +126,25 @@ def _role_for_order(order: Order, db: Session) -> str:
             except Exception:
                 pass
     return CATALOG_ROLE
+
+
+def _starting_greeting(agent_name: str, company: str, role: str) -> str:
+    """How the agent opens before the customer has configured anything.
+
+    Role-specific because a greeting is a promise. A support agent that
+    introduced itself as the sales rep would be inviting exactly the questions
+    it is then going to refuse.
+    """
+    if role == ROLE_SUPPORT_AGENT:
+        return (
+            f"Hi \u2014 I'm {agent_name}, support for {company}. "
+            "Tell me what you're stuck on and I'll help if I can."
+        )
+
+    return (
+        f"Hi \u2014 I'm {agent_name}, the sales rep for {company}. "
+        "Ask me anything about what we do."
+    )
 
 
 class ProvisioningError(RuntimeError):
@@ -195,6 +220,21 @@ class ProvisionedAgent:
     def temporary_password_hash(self):
         return self.profile.temporary_password_hash
 
+    @property
+    def is_ready(self) -> bool:
+        """ProvisionedAgent delegates is_ready to its underlying profile."""
+        return self.profile.is_ready
+
+    @property
+    def role(self) -> str:
+        """ProvisionedAgent delegates role to its underlying profile."""
+        return self.profile.role
+
+    @property
+    def status(self) -> str:
+        """ProvisionedAgent delegates status to its underlying profile."""
+        return self.profile.status
+
 
 @dataclass(frozen=True)
 class ProvisioningResult:
@@ -202,6 +242,16 @@ class ProvisioningResult:
 
     created: bool
     profiles: tuple = ()
+
+    @property
+    def api_key(self):
+        """API key from the first freshly-provisioned profile.
+
+        Returns None when this was an idempotent re-provision (no new keys).
+        """
+        if self.profiles and self.profiles[0].api_key:
+            return self.profiles[0].api_key
+        return None
 
     @property
     def temporary_password(self):
@@ -216,20 +266,51 @@ class ProvisioningService:
         self.db = db
 
     def provision(self, order: Order) -> ProvisioningResult:
-        """Stand up the workspace for a paid order. Idempotent."""
+        """Stand up the workspace for a paid order. Idempotent.
+
+        A renewal — the same buyer buying the same role again — reuses the
+        existing profile (same widget token, same API key) and re-points it
+        at the new order so delivery can find it by order_id.
+        """
         if not order.is_paid:
             raise ValueError(
                 f"Order {order.paystack_reference} has not been paid; "
                 "refusing to provision an unpaid order."
             )
 
-        existing = self._existing_profiles(order)
-        if existing:
+        # Check for exact order_id match first (idempotent re-provision)
+        by_order = (
+            self.db.execute(
+                select(WorkspaceProfile).where(WorkspaceProfile.order_id == order.id)
+            ).scalars().all()
+        )
+        if by_order:
             return ProvisioningResult(created=False, profiles=tuple(
-                ProvisionedAgent(profile=p) for p in existing
+                ProvisionedAgent(profile=p) for p in by_order
             ))
 
+        # Check for renewal: same buyer, same role, different order
         role = _role_for_order(order, self.db)
+        org = self._get_or_create_org(order)
+        existing_by_role = (
+            self.db.execute(
+                select(WorkspaceProfile).where(
+                    WorkspaceProfile.organization_id == org.id,
+                    WorkspaceProfile.role == role,
+                )
+            ).scalars().first()
+        )
+        if existing_by_role is not None:
+            # Re-point the existing profile at the new order so delivery
+            # can find it by order_id.
+            existing_by_role.order_id = order.id
+            existing_by_role.plan_code = order.plan_code
+            existing_by_role.status = PROVISION_READY
+            self.db.commit()
+            return ProvisioningResult(created=True, profiles=(
+                ProvisionedAgent(profile=existing_by_role),
+            ))
+
         agents = self._provision_for_role(order, role)
 
         if not agents:
@@ -240,10 +321,35 @@ class ProvisioningService:
         return ProvisioningResult(created=True, profiles=agents)
 
     def _existing_profiles(self, order: Order) -> list[WorkspaceProfile]:
-        """Find existing profiles for this order by order_id."""
-        return (
+        """Find existing profiles for this order.
+
+        Looks up by order_id first. If this is a renewal — the same buyer
+        buying the same role again under a new order — also match on
+        organization + role, so the existing profile is reused instead of
+        violating the unique constraint and breaking the live agent.
+        """
+        by_order = (
             self.db.execute(
                 select(WorkspaceProfile).where(WorkspaceProfile.order_id == order.id)
+            )
+            .scalars()
+            .all()
+        )
+        if by_order:
+            return list(by_order)
+
+        # Renewal: find the buyer's organization and check for an existing
+        # profile with the same role.
+        role = _role_for_order(order, self.db)
+        org = self._get_or_create_org(order)
+        if org.id is None:
+            return []
+        return (
+            self.db.execute(
+                select(WorkspaceProfile).where(
+                    WorkspaceProfile.organization_id == org.id,
+                    WorkspaceProfile.role == role,
+                )
             )
             .scalars()
             .all()
@@ -360,23 +466,54 @@ class ProvisioningService:
         return api_key
 
     def _get_or_create_org(self, order: Order) -> Organization:
-        """Get the org for an order, or create one from buyer info."""
-        org_name = order.buyer_company or f"{order.buyer_email}'s Workspace"
-        slug = _slugify(org_name)
+        """Get the org for an order, or create one from buyer info.
 
-        org = (
+        Matched on the buyer's *login* rather than on company name, because
+        the login is what decides what they can see. Two real orders from one
+        address once created two organizations (``nekosalesai`` and
+        ``nekosalesai-2``) and the second purchase was invisible from the
+        dashboard it was billed to. A second purchase on the same email is a
+        returning customer adding to the workspace they already have, not a
+        new tenant.
+
+        Two *different* buyers who happen to name the same company must still
+        get two workspaces — matching on company slug would silently merge
+        strangers. So the only match is by login; everything else is a new
+        org with a unique slug.
+        """
+        existing_user = (
             self.db.execute(
-                select(Organization).where(Organization.slug == slug)
-            )
-            .scalars()
-            .first()
+                select(User).where(User.email == order.buyer_email)
+            ).scalars().first()
         )
 
-        if org is None:
-            org = Organization(name=org_name, slug=slug)
-            self.db.add(org)
-            self.db.flush()
+        if existing_user is not None and existing_user.organization_id:
+            existing_org = (
+                self.db.execute(
+                    select(Organization).where(
+                        Organization.id == existing_user.organization_id
+                    )
+                ).scalars().first()
+            )
+            if existing_org is not None:
+                return existing_org
 
+        org_name = order.buyer_company or f"{order.buyer_email}'s Workspace"
+        base_slug = _slugify(org_name)
+        slug = base_slug
+        suffix = 2
+        while (
+            self.db.execute(
+                select(Organization.id).where(Organization.slug == slug)
+            ).first()
+            is not None
+        ):
+            slug = f"{base_slug}-{suffix}"
+            suffix += 1
+
+        org = Organization(name=org_name, slug=slug)
+        self.db.add(org)
+        self.db.flush()
         return org
 
     @staticmethod
@@ -395,6 +532,50 @@ class ProvisioningService:
 
     def _agent_name(self, role: str) -> str:
         return _AGENT_FIRST_NAME.get(role, "Nera")
+
+    def _roles_for_order(self, order: Order) -> tuple[str, ...]:
+        """Which roles to provision for a paid order.
+
+        Reads the stored requirement rather than the ``product_type`` column,
+        because the column only holds the first product — reading it for a
+        multi-product order would silently drop every product after the first.
+        """
+        if not order.plan_code:
+            return (CATALOG_ROLE,)
+
+        reference = reference_from_plan_code(order.plan_code)
+        if not reference:
+            return (CATALOG_ROLE,)
+
+        try:
+            quote = QuoteService(self.db).get(reference)
+            if not quote:
+                raise ProvisioningError(
+                    f"Quote {reference} not found for order {order.paystack_reference}."
+                )
+            requirement = requirement_from_json(quote.requirement_json)
+        except ProvisioningError:
+            raise
+        except Exception as exc:
+            raise ProvisioningError(
+                f"Could not read requirement for order {order.paystack_reference}: {exc}"
+            ) from exc
+
+        if requirement.products:
+            roles = tuple(
+                PRODUCT_TYPE_TO_ROLE.get(p, CATALOG_ROLE)
+                for p in requirement.products
+            )
+        else:
+            roles = (PRODUCT_TYPE_TO_ROLE.get(requirement.product_type, CATALOG_ROLE),)
+
+        for role in roles:
+            if role not in PRODUCT_TYPE_TO_ROLE.values():
+                raise ProvisioningError(
+                    f"Role {role!r} has no buildable product mapping."
+                )
+
+        return roles
 
     def get_for_order(self, order: Order) -> WorkspaceProfile | None:
         """Get the primary workspace profile for an order."""

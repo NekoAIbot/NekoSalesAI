@@ -376,6 +376,7 @@ def complete_scope() -> Scope:
         "just my website",
         "about 2,000 a month",
         "none",
+        "English",
     ]
 
     stage, scope = STAGE_GREETING, Scope()

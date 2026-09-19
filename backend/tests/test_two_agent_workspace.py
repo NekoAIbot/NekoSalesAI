@@ -81,7 +81,8 @@ def buy(db, checkout, transport, storefront, build, email="buyer@example.com") -
     order = checkout.confirm_by_reference(order.paystack_reference)
     result = ProvisioningService(db).provision(order)
 
-    return result.profiles
+    # Unwrap ProvisionedAgent (frozen) so tests can mutate profile.status
+    return tuple(agent.profile for agent in result.profiles)
 
 
 def by_role(profiles, role: str) -> WorkspaceProfile:

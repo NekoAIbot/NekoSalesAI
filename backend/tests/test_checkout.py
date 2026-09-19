@@ -886,6 +886,7 @@ INTAKE_ANSWERS = (
     "just my website",
     "about 2,000 a month",
     "none",
+    "English",
 )
 
 
@@ -1054,6 +1055,7 @@ BOTH_PRODUCTS_ANSWERS = (
     "my website and whatsapp",
     "about 2,000 a month",
     "none",
+    "English",
 )
 
 BOTH_PRODUCTS_BUILD = Requirement(
