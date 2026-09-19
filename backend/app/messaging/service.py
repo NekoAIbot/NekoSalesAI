@@ -92,11 +92,17 @@ class Handled:
 
     ``replies`` is what to send, in order. Empty is a real outcome, not a
     failure: a duplicate delivery, or a thread a human has taken over.
+
+    ``channel_messages`` carries the same content as ``ChannelMessage``
+    objects when interactive controls (Telegram inline keyboards, WhatsApp
+    lists) are attached. The deliverer uses these in preference to the
+    plain ``replies`` when present.
     """
 
     replies: list[str] = field(default_factory=list)
     conversation: Conversation | None = None
     duplicate: bool = False
+    channel_messages: list = field(default_factory=list)
 
 
 class InboundMessagingService:
@@ -161,27 +167,62 @@ class InboundMessagingService:
 
         return handled
 
-    def deliver(self, message: InboundMessage, replies: list[str]) -> None:
+    def deliver(self, message: InboundMessage, replies: list[str], channel_messages: list | None = None) -> None:
         """Send the replies back on the channel they were asked on.
 
-        One failing message does not stop the next. A buyer receiving the second
-        half of an answer is better served than one receiving nothing because the
-        first half hit a rate limit.
+        ``channel_messages``, when present, carries the same content as
+        ``ChannelMessage`` objects with interactive controls attached
+        (Telegram inline keyboards, WhatsApp interactive lists). The
+        deliverer uses these to call the channel-specific send methods;
+        otherwise it falls back to plain ``send_message``.
+
+        One failing message does not stop the next. A buyer receiving the
+        second half of an answer is better served than one receiving nothing
+        because the first half hit a rate limit.
         """
-        for reply in replies:
+        client = self._client(message.channel)
+        cms = channel_messages or []
+
+        # Pair each reply with its ChannelMessage (if any) by index.
+        for i, reply in enumerate(replies):
             if not reply.strip():
                 continue
 
+            cm = cms[i] if i < len(cms) else None
+
             try:
-                self._client(message.channel).send_message(
-                    message.external_id, reply
-                )
+                if cm is not None:
+                    self._send_with_controls(message.channel, client, message.external_id, reply, cm)
+                else:
+                    client.send_message(message.external_id, reply)
             except Exception:  # noqa: BLE001 - logged; the transcript is already right
                 logger.exception(
                     "Could not deliver a reply on %s to %s",
                     message.channel,
                     message.external_id,
                 )
+
+    def _send_with_controls(
+        self,
+        channel: str,
+        client,
+        destination: str,
+        text: str,
+        cm,
+    ) -> None:
+        """Send a reply using channel-specific interactive controls."""
+        if channel == CHANNEL_TELEGRAM and cm.telegram_inline_keyboard:
+            client.send_message_with_keyboard(destination, text, cm.telegram_inline_keyboard)
+        elif channel == CHANNEL_WHATSAPP and cm.whatsapp_list_rows:
+            client.send_interactive_list(
+                destination,
+                text,
+                cm.whatsapp_list_header,
+                cm.whatsapp_list_button,
+                cm.whatsapp_list_rows,
+            )
+        else:
+            client.send_message(destination, text)
 
     # ---------- identity ----------
 
@@ -292,6 +333,7 @@ class InboundMessagingService:
         if flow_result is not None and flow_result.replies:
             return Handled(
                 replies=[rm.text for rm in flow_result.replies],
+                channel_messages=flow_result.replies,
                 conversation=conversation,
             )
 
@@ -311,13 +353,36 @@ class InboundMessagingService:
             return Handled(replies=[str(exc)], conversation=conversation)
 
         replies = [reply.body] if reply.body.strip() else []
+        channel_messages: list = []
 
         if replies:
+            updated_scope = Scope.from_json(conversation.scope_json)
+            step_msg = self.flow.present_step(updated_scope)
+            if step_msg is not None:
+                from app.messaging.presentation import ChannelMessage as _CM
+
+                # Attach the keyboard/list to the last reply (the one that
+                # ends on the selectable step). Greeting and other earlier
+                # replies stay as plain text.
+                cm = _CM(
+                    text=replies[-1],
+                    telegram_inline_keyboard=step_msg.telegram_inline_keyboard,
+                    whatsapp_list_rows=step_msg.whatsapp_list_rows,
+                    whatsapp_list_header=step_msg.whatsapp_list_header,
+                    whatsapp_list_button=step_msg.whatsapp_list_button,
+                )
+                # Pad channel_messages so cm lands on the last reply index.
+                channel_messages = [None] * (len(replies) - 1) + [cm]
+
             closed = self.closing.close(conversation)
             if closed is not None:
                 replies.append(closed.message)
 
-        return Handled(replies=replies, conversation=conversation)
+        return Handled(
+            replies=replies,
+            channel_messages=channel_messages,
+            conversation=conversation,
+        )
 
     def _run_command(
         self,

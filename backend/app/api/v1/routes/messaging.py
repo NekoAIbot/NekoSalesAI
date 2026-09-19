@@ -95,7 +95,7 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
         logger.exception("Telegram delivery %s failed", message.delivery_id)
         return ACKNOWLEDGED
 
-    service.deliver(message, handled.replies)
+    service.deliver(message, handled.replies, handled.channel_messages)
 
     return ACKNOWLEDGED
 
@@ -173,6 +173,6 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
             logger.exception("WhatsApp delivery %s failed", message.delivery_id)
             continue
 
-        service.deliver(message, handled.replies)
+        service.deliver(message, handled.replies, handled.channel_messages)
 
     return ACKNOWLEDGED

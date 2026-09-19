@@ -320,7 +320,7 @@ class TelegramPoller:
             report.duplicates += 1
             return
 
-        service.deliver(message, handled.replies)
+        service.deliver(message, handled.replies, handled.channel_messages)
         report.answered += 1
 
     # ---------- talking to Telegram ----------
