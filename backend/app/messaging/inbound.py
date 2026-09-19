@@ -130,6 +130,10 @@ def parse_telegram_update(payload: Any) -> InboundMessage | None:
 
     message = payload.get("message")
 
+    # Callback query from an inline keyboard button press.
+    if message is None and "callback_query" in payload:
+        return _parse_callback_query(payload["callback_query"])
+
     # Only fresh messages. An edit re-delivered as new text would be answered a
     # second time, which reads as the agent repeating itself for no reason.
     if not isinstance(message, dict):
@@ -238,6 +242,47 @@ def _telegram_media_kind(message: dict) -> str | None:
             return label
 
     return None
+
+
+def _parse_callback_query(callback_query: Any) -> InboundMessage | None:
+    """A button press on an inline keyboard, as an InboundMessage.
+
+    The callback_data string (e.g. "scoping:products:sales_agent") becomes the
+    message text, so the configuration flow can recognise it exactly as it
+    would a typed "scoping:..." command. The delivery id is the callback query
+    id, prefixed so it cannot collide with a message update id.
+    """
+    if not isinstance(callback_query, dict):
+        return None
+
+    query_id = callback_query.get("id")
+    if query_id is None:
+        return None
+
+    message = callback_query.get("message")
+    chat_id = None
+    if isinstance(message, dict):
+        chat = message.get("chat")
+        if isinstance(chat, dict):
+            chat_id = chat.get("id")
+
+    if chat_id is None:
+        return None
+
+    sender = callback_query.get("from") if isinstance(callback_query.get("from"), dict) else {}
+    data = callback_query.get("data")
+
+    if not isinstance(data, str) or not data.strip():
+        return None
+
+    return InboundMessage(
+        channel=CHANNEL_TELEGRAM,
+        external_id=str(chat_id),
+        delivery_id=f"tgcb:{query_id}",
+        kind=KIND_TEXT,
+        text=data.strip(),
+        sender_name=_telegram_name(sender),
+    )
 
 
 # ---------- WhatsApp ----------

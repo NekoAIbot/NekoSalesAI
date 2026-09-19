@@ -140,15 +140,52 @@ class TelegramClient:
                 json={
                     "chat_id": chat_id,
                     "text": piece,
-                    # Plain text on purpose. Follow-up copy is written by
-                    # app.followups.rules and can contain characters Telegram's
-                    # Markdown parser would reject, which would fail the send over a
-                    # stray underscore in a company name.
                     "disable_web_page_preview": True,
                 },
             )
 
             self._raise_for_response(response, chat_id)
+
+    def send_message_with_keyboard(
+        self,
+        chat_id: str,
+        text: str,
+        inline_keyboard: list[list[dict[str, str]]],
+    ) -> None:
+        """Send a message with an inline keyboard.
+
+        ``inline_keyboard`` is a list of rows, each a list of buttons with
+        ``text`` and ``callback_data`` keys.
+        """
+        if not self._token:
+            raise MessagingNotConfigured("TELEGRAM_BOT_TOKEN is not set.")
+
+        for piece in split_for_delivery(text):
+            response = self._transport.post(
+                f"{self._base}/bot{self._token}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": piece,
+                    "disable_web_page_preview": True,
+                    "reply_markup": {"inline_keyboard": inline_keyboard},
+                },
+            )
+
+            self._raise_for_response(response, chat_id)
+
+    def answer_callback_query(self, callback_query_id: str, text: str = "") -> None:
+        """Acknowledge a button press so Telegram stops the loading spinner."""
+        if not self._token:
+            return
+
+        try:
+            response = self._transport.post(
+                f"{self._base}/bot{self._token}/answerCallbackQuery",
+                json={"callback_query_id": callback_query_id, "text": text},
+            )
+            self._raise_for_response(response, f"callback:{callback_query_id}")
+        except MessagingError:
+            pass  # An answering failure is not worth a retry
 
     @staticmethod
     def _raise_for_response(response: httpx.Response, chat_id: str) -> None:
@@ -212,6 +249,51 @@ class WhatsAppClient:
                     "to": to_number,
                     "type": "text",
                     "text": {"preview_url": False, "body": piece},
+                },
+            )
+
+            if response.status_code >= 400:
+                raise MessagingError(
+                    f"WhatsApp refused a message to {to_number}: "
+                    f"{response.status_code} {response.text[:200]}"
+                )
+
+    def send_interactive_list(
+        self,
+        to_number: str,
+        text: str,
+        header: str,
+        button: str,
+        rows: list[dict[str, str]],
+    ) -> None:
+        """Send an interactive list message on WhatsApp.
+
+        ``rows`` is a list of dicts with ``id``, ``title``, and optionally
+        ``description`` keys.
+        """
+        if not self.configured:
+            raise MessagingNotConfigured(
+                "WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID must both be set."
+            )
+
+        for piece in split_for_delivery(text):
+            response = self._transport.post(
+                f"{self._base}/{self._phone_number_id}/messages",
+                headers={"Authorization": f"Bearer {self._token}"},
+                json={
+                    "messaging_product": "whatsapp",
+                    "recipient_type": "individual",
+                    "to": to_number,
+                    "type": "interactive",
+                    "interactive": {
+                        "type": "list",
+                        "header": {"type": "text", "text": header},
+                        "body": {"text": piece},
+                        "action": {
+                            "button": button,
+                            "sections": [{"title": header, "rows": rows}],
+                        },
+                    },
                 },
             )
 

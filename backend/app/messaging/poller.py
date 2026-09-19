@@ -58,7 +58,7 @@ READ_TIMEOUT = LONG_POLL_SECONDS + 10
 # Only what the agent can act on. Telegram batches the rest and asking for less
 # means less to discard — and, more usefully, means an update type added by a
 # future Telegram release cannot arrive unannounced.
-ALLOWED_UPDATES = ("message",)
+ALLOWED_UPDATES = ("message", "callback_query")
 
 # One 409 is a misconfiguration, not a blip: a webhook is set. Retrying would
 # hammer the API and never succeed.
