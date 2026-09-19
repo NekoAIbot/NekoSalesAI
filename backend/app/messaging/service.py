@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session
 from app.config.logging import get_logger
 from app.config.settings import settings
 from app.messaging.clients import TelegramClient, WhatsAppClient
+from app.messaging.config_flow import ConfigurationFlow, FlowResult
 from app.messaging.inbound import (
     COMMAND_HELP,
     COMMAND_PAY,
@@ -45,6 +46,8 @@ from app.messaging.inbound import (
     KIND_UNSUPPORTED,
     InboundMessage,
 )
+from app.messaging.presentation import ChannelMessage, parse_callback, render_step
+from app.sales.options import for_step
 from app.models.channel_identity import (
     CHANNEL_TELEGRAM,
     CHANNEL_WHATSAPP,
@@ -56,6 +59,7 @@ from app.products.resolver import resolve_config
 from app.repositories.organization_repository import OrganizationRepository
 from app.sales.closing import ClosingService
 from app.sales.service import ConversationError, ConversationService
+from app.sales.scoping import Scope
 
 logger = get_logger(__name__)
 
@@ -109,6 +113,7 @@ class InboundMessagingService:
         self.closing = ClosingService(db)
         self._telegram = telegram
         self._whatsapp = whatsapp
+        self.flow = ConfigurationFlow()
 
     # ---------- the two halves ----------
 
@@ -267,29 +272,47 @@ class InboundMessagingService:
         conversation: Conversation,
         message: InboundMessage,
     ) -> Handled:
+        # The interactive flow handles only explicit selections: Telegram
+        # inline-keyboard callbacks ("scoping:products:sales_agent") and
+        # WhatsApp numbered lists ("1", "1, 3"). Everything else — questions,
+        # greetings, free-text answers — goes straight to the agent.
+        scope = Scope.from_json(conversation.scope_json)
+        flow_result: FlowResult | None = None
+
+        step = scope.next_step
+        if step is not None:
+            options = for_step(step)
+            if not options.free_text:
+                text = message.text.strip()
+                is_callback = parse_callback(text) is not None
+                is_numbered = self.flow._is_numbered_selection(text, options)
+                if is_callback or is_numbered:
+                    flow_result = self.flow.handle_message(conversation, message, scope)
+
+        if flow_result is not None and flow_result.replies:
+            return Handled(
+                replies=[rm.text for rm in flow_result.replies],
+                conversation=conversation,
+            )
+
+        if flow_result is not None and flow_result.handled and not flow_result.selection_text:
+            return Handled(replies=[], conversation=conversation)
+
+        text = flow_result.selection_text if flow_result is not None else None
+        agent_text = text if text is not None else message.text
+
         try:
             reply = self.conversations.handle_visitor_message(
                 conversation,
-                message.text,
+                agent_text,
                 external_id=message.delivery_id,
             )
         except ConversationError as exc:
-            # Too long, or empty after stripping. The limit is the agent's, so
-            # the explanation is too — repeating it here is the only way the
-            # buyer learns why nothing happened.
             return Handled(replies=[str(exc)], conversation=conversation)
 
-        # An empty body means a human has the thread and the agent stayed quiet.
-        # Sending anything at all would be the AI talking over its colleague.
         replies = [reply.body] if reply.body.strip() else []
 
         if replies:
-            # A browser closes itself: the widget sees ready_to_buy, posts to the
-            # checkout route and redirects. A phone has no widget, so without
-            # this the agent's own words — "the next thing you'll see is their
-            # secure page" — were a promise nothing kept. The link comes from
-            # ClosingService, which every channel shares, so the price on it is
-            # the one the engine derived and not one this file assembled.
             closed = self.closing.close(conversation)
             if closed is not None:
                 replies.append(closed.message)
