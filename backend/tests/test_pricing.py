@@ -219,8 +219,29 @@ def test_a_channel_we_cannot_answer_on_is_refused():
 
 
 def test_too_many_integrations_goes_to_a_human():
+    """The self-service ceiling. Above it, per-system setup genuinely needs a
+    human (data access, credentials, per-system mapping) — the engine refuses
+    rather than pretending. Below it, any count is served by the same flow."""
     with pytest.raises(PricingError, match="needs a human to scope it"):
-        Requirement(integrations=tuple(f"system_{i}" for i in range(11)))
+        Requirement(integrations=tuple(f"system_{i}" for i in range(51)))
+
+
+def test_a_large_integration_count_is_served_by_the_same_flow():
+    """15 integrations is a count, not a scoping job. The buyer gets a quote
+    with 15 slots, not a handoff to a team."""
+    quote = price(
+        Requirement(
+            product_type=PRODUCT_SALES_AGENT,
+            integrations=tuple(f"integration_slot_{i}" for i in range(1, 16)),
+        )
+    )
+    integration_lines = [
+        item for item in quote.line_items if item.dimension == "integration"
+    ]
+    assert len(integration_lines) == 15
+    # No invented system names on the quote.
+    for item in integration_lines:
+        assert "slot" in item.label
 
 
 def test_a_support_agent_has_its_own_base():
@@ -320,7 +341,7 @@ def test_quote_endpoint_refuses_volume_beyond_ceiling(client):
 def test_a_ceiling_is_refused_in_prose_a_buyer_can_read(client):
     """Every ceiling answers as a 400 carrying the engine's own sentence."""
     ceilings = [
-        ({"integrations": [f"System {i}" for i in range(12)]}, "needs a human"),
+        ({"integrations": [f"System {i}" for i in range(52)]}, "needs a human"),
         ({"languages": [f"Language {i}" for i in range(8)]}, "At most"),
         ({"monthly_conversations": MAX_QUOTABLE_CONVERSATIONS + 1}, "price by hand"),
     ]

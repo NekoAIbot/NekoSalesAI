@@ -437,6 +437,59 @@ _OWN_LIMITS_PATTERNS = (
 
 _EMAIL_PATTERN = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
+# Asking what one of *our products* is or does. These must be answered from the
+# canonical catalog — never escalated, never read as an intake answer. A buyer
+# mid-configuration asking "what does sales mean?" is the exact case that used
+# to hit the unknown-question fallback and get "I'll pass that to the team",
+# which is the worst available answer to a question the catalog answers.
+#
+# Recognised before the pending-answer path for the same reason
+# _WHAT_WE_OFFER_PATTERNS is: "sales" is a product word, so without this gate
+# the question scores as the buyer *choosing* the sales product.
+_PRODUCT_QUESTION_PATTERNS = (
+    r"\bwhat (is|are|do(es)?|can) (the )?(sales|support|workforce)\b"
+    r"[^.!?]*\b(mean|do|does|is|are|include|cover|handle)\b",
+    r"\bwhat (is|are) (an? )?(ai )?(sales|support) (rep|representative|agent)\b",
+    r"\bwhat (is|are) (an? )?workforce\b",
+    r"\bwhat (is|are) (the )?workforce (agent|product|option)\b",
+    r"\bwhat (is|are) (the )?(sales|support) (agent|option|product|one)\b",
+    r"\b(explain|describe|tell me about) (the )?(sales|support|workforce)\b",
+    r"\b(explain|describe|tell me about) (what )?(sales|support)( is| means| does)?\b",
+    r"\bwhat does (sales|support|workforce) (mean|do|involve|cover)\b",
+    r"\bwhat('?s| is) the difference (between|vs\.?)\b[^.!?]*\b(sales|support|workforce)\b",
+    r"\b(how|what) (is|are) (sales|support|workforce) different\b",
+    r"\bwhy (choose|pick|take|go (with|for)) (workforce|sales|support)\b",
+    r"\bcan (the )?(workforce|sales|support)( agent)? (take|process|complete|close) (orders?|sales?|payments?|checkouts?)\b",
+    r"\bcan (it|the agent|this|one) (take|process|complete|close) (orders?|sales?|payments?|checkouts?)\b",
+    r"\bcan (it|the )?(workforce|sales|support)?( agent)? check (my |the )?(stock|inventory)\b",
+    r"\bdoes (it|this) check (my |the )?(stock|inventory)\b",
+    r"\bdoes (the )?(workforce|sales|support)( agent)? (support|need|require|use) (an? )?integration\b",
+    r"\bwhat (does|can) (the )?workforce (agent|product|option) do\b",
+    r"\bwhat (does|can) (the )?(sales|support) agent do\b",
+)
+
+# The catalog facts each product question is answered from. Nothing here is
+# invented: every line is the canonical description or a capability the
+# pricing engine actually bills for.
+_PRODUCT_FACTS: dict[str, str] = {
+    "sales": (
+        "AI Sales Agent — answers your buyers, quotes your published prices, "
+        "takes payment, and follows up when someone doesn't finish an order."
+    ),
+    "support": (
+        "AI Support Agent — answers questions from your own knowledge base "
+        "(sizes, policies, stock levels you publish), and hands anything "
+        "commercial — pricing, discounts, refunds — to a person rather than "
+        "guessing."
+    ),
+    "workforce": (
+        "Workforce — the Sales and Support agents operating as one team with "
+        "shared context: one buyer's conversation carries across both, so the "
+        "sales side knows what support already told them. Priced as both "
+        "products together."
+    ),
+}
+
 # Words that mean the fragment is a sentence rather than a name or a company.
 # Checked after the polite prefixes below are stripped, so "my name is Ada
 # Nwosu" survives as "Ada Nwosu" while "here you go" is discarded.
@@ -602,6 +655,84 @@ def _mentioned_plan(text: str, config: ProductConfig) -> Plan | None:
             return plan
 
     return None
+
+
+def _product_question_answer(
+    text: str, scope=None
+) -> tuple[str, str, list[str]] | None:
+    """Answer a question about one of our products, from the catalog.
+
+    Returns (body, asked_about, grounded) or None when the text is not a
+    product question. Every fact stated comes from the canonical catalog —
+    the descriptions the pricing engine prices from, and the integration
+    capabilities it actually bills for. Nothing is inferred.
+    """
+    if not _matches(_PRODUCT_QUESTION_PATTERNS, text):
+        return None
+
+    asked = text.lower()
+
+    # Which product(s) the question is about. "Difference between sales and
+    # support" is about both. A pronoun ("can it check stock?") refers to
+    # whatever the buyer has selected — or all three if nothing is yet.
+    about: list[str] = []
+    for word, key in (
+        ("workforce", "workforce"),
+        ("sales", "sales"),
+        ("support", "support"),
+    ):
+        if re.search(rf"\b{word}\b", asked):
+            about.append(key)
+
+    if not about:
+        # A pronoun with no product named: answer about the product on the
+        # scope when there is one, otherwise the whole catalog.
+        if scope is not None and scope.products:
+            code_map = {
+                "sales_agent": "sales",
+                "support_agent": "support",
+                "workforce_agent": "workforce",
+            }
+            about = list(
+                dict.fromkeys(code_map.get(p, "sales") for p in scope.products)
+            )
+        else:
+            about = ["workforce", "sales", "support"]
+
+    grounded = [f"product:{key}_agent" for key in about]
+
+    # A capability question gets a capability answer, not just the description.
+    if re.search(r"\b(take|process|complete|close) (orders?|sales?|payments?)\b", asked):
+        can = (
+            "Yes — the sales side of the catalog quotes your published prices "
+            "and takes payment through Paystack."
+            if "sales" in about or "workforce" in about
+            else "No — the Support Agent answers questions and hands anything "
+            "commercial (pricing, payment, refunds) to a person."
+        )
+        body = f"{can}\n\n" + "\n\n".join(_PRODUCT_FACTS[k] for k in about)
+        return body, " + ".join(about), grounded
+
+    if re.search(r"\bcheck (my |the )?(stock|inventory)\b", asked):
+        can = (
+            "It can, with an inventory integration — that's one integration "
+            "slot on the quote, and the stock answers come from your system "
+            "rather than from me guessing."
+        )
+        body = f"{can}\n\n" + "\n\n".join(_PRODUCT_FACTS[k] for k in about)
+        return body, " + ".join(about), grounded + ["integration:inventory"]
+
+    if re.search(r"\bdifference\b|\bvs\.?\b|\bwhy (choose|pick|take)\b", asked):
+        body = (
+            "The difference, plainly:\n\n"
+            + "\n\n".join(_PRODUCT_FACTS[k] for k in about)
+            + "\n\nSales closes. Support answers. Workforce is both, sharing "
+            "one memory of each buyer."
+        )
+        return body, " + ".join(about), grounded
+
+    body = "\n\n".join(_PRODUCT_FACTS[k] for k in about)
+    return body, " + ".join(about), grounded
 
 
 def _intro_for(config: ProductConfig) -> str:
@@ -832,13 +963,24 @@ def _quote_summary(quote: Quote) -> str:
     )
 
 
-# Said on every computed quote. The chat asks four questions; the engine prices
-# six dimensions. Rather than let the two unasked ones sit silently at zero and
-# shape a figure the buyer never agreed to, the quote names them.
-_QUOTE_DEFAULTS_NOTE = (
-    "That is English-only, with no custom approval steps built in. Say the "
-    "word if you need either and I'll re-price it."
-)
+# Said on every computed quote. The chat asks five questions; the engine prices
+# six dimensions. Rather than let the unasked one sit silently at zero and
+# shape a figure the buyer never agreed to, the quote names it. The language
+# line is derived from the scope — a buyer who selected five languages must
+# never be told "English-only".
+def _quote_defaults_note(scope) -> str:
+    languages = scope.languages if scope and scope.languages else ("en",)
+    if len(languages) > 1:
+        lang_note = (
+            f"That is priced for {len(languages)} languages "
+            "as you selected them."
+        )
+    else:
+        lang_note = "That is English-only."
+    return (
+        f"{lang_note} No custom approval steps are built in — say the word if "
+        "you need one and I'll re-price it."
+    )
 
 
 _FAQ_STOPWORDS = frozenset({
@@ -1095,7 +1237,7 @@ def _quote_reply(
         body=(
             "Here is what that comes to, line by line:\n\n"
             f"{_quote_summary(quote)}\n\n"
-            f"{_QUOTE_DEFAULTS_NOTE}\n\n"
+            f"{_quote_defaults_note(scope)}\n\n"
             "Happy with it? I'll need your name, email and company to raise "
             "the payment."
         ),
@@ -1485,6 +1627,41 @@ def compose_reply(
             if pending is not None:
                 # The intake was mid-flight. Put the question back rather than
                 # leaving the buyer to guess where they were.
+                return _scoping_reply(
+                    scope,
+                    reasoning.signals,
+                    lead_in=body,
+                    captured_email=captured_email,
+                    rule=RULE_CAPABILITY,
+                    grounded_in=reasoning.grounded_in,
+                )
+
+            return AgentReply(
+                body=body,
+                reasoning=reasoning,
+                captured_email=captured_email,
+                scope=scope,
+            )
+
+        # A question about one specific product — "what does sales mean?",
+        # "what can the Support Agent do?", "can Workforce take orders?".
+        #
+        # Answered from the catalog, mid-intake or not, and never escalated:
+        # a buyer two answers from a price asking what they are buying is the
+        # exact moment an "I'll pass that to the team" costs the sale. The
+        # scope is untouched — the question is not an answer, so the intake
+        # question stays on the table underneath.
+        product_fact = _product_question_answer(text, scope)
+        if product_fact is not None:
+            body, asked_about, grounded = product_fact
+
+            reasoning = Reasoning(
+                rule=RULE_CAPABILITY,
+                signals=[f"visitor asked about the {asked_about} product"],
+                grounded_in=grounded,
+            )
+
+            if pending is not None:
                 return _scoping_reply(
                     scope,
                     reasoning.signals,

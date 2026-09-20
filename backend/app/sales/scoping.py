@@ -249,14 +249,13 @@ class Scope:
         if not self.is_complete:
             raise ScopingError("This build has not been scoped enough to price yet.")
 
-        # Build integrations list from count using canonical integration codes
-        canonical = ["crm", "calendar", "payment", "inventory", "accounting",
-                     "ecommerce", "pos", "helpdesk", "stock", "erp"]
+        # A count is a count. The buyer said "15 integrations", not "CRM,
+        # calendar, payment...". Inventing canonical names here put a
+        # fabricated system list on the quote — the buyer was told they were
+        # getting CRM when they had only said "15". Neutral slot labels keep
+        # the count honest; the actual systems are identified at implementation.
         n = self.integrations or 0
-        if n <= len(canonical):
-            integrations = tuple(canonical[:n])
-        else:
-            integrations = tuple(canonical + [f"integration_{i}" for i in range(len(canonical) + 1, n + 1)])
+        integrations = tuple(f"integration_slot_{i}" for i in range(1, n + 1))
 
         return Requirement(
             products=self.products,
@@ -405,19 +404,16 @@ def parse_volume(text: str) -> int | None:
     if value <= 0:
         return None
 
-    # Snap up to the next volume band — exact as "1000" snaps to 2000
-    bands = [500, 2_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000]
-    for band in bands:
-        if value <= band:
-            value = band
-            break
-    else:
-        if value > MAX_QUOTABLE_CONVERSATIONS:
-            raise ScopingError(
-                f"Above {MAX_QUOTABLE_CONVERSATIONS:,} conversations a month I "
-                "won't put a figure to it from here — that needs someone to scope "
-                "properly. I've passed it on."
-            )
+    # The exact figure the buyer gave. The pricing engine prices any volume
+    # (₦5 per conversation), so snapping 12,000 up to a 25,000 band priced the
+    # buyer for more than twice what they asked for. Bands are a UI hint for
+    # the question text, not a rounding rule for the answer.
+    if value > MAX_QUOTABLE_CONVERSATIONS:
+        raise ScopingError(
+            f"Above {MAX_QUOTABLE_CONVERSATIONS:,} conversations a month I "
+            "won't put a figure to it from here — that needs someone to scope "
+            "properly. I've passed it on."
+        )
 
     return value
 

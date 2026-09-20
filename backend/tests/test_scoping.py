@@ -111,10 +111,10 @@ def test_a_volume_spelled_out_is_read(said, expected):
     ("said", "expected"),
     [
         ("about five hundred", 500),
-        # Snapped up to the band that covers it, exactly as "1000" is. The bands
-        # are what the engine has costed, so a figure between two of them is
-        # quoted at the one above rather than interpolated.
-        ("a thousand a month", 2_000),
+        # The exact figure the buyer gave. The engine prices any volume
+        # (₦5/conversation), so a figure between old UI bands is quoted at
+        # itself, not snapped up to a band that nearly doubles it.
+        ("a thousand a month", 1_000),
         ("two thousand conversations", 2_000),
     ],
 )

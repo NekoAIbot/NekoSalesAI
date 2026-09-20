@@ -91,7 +91,13 @@ CHANNEL_NAMES: dict[str, str] = {
 
 # Integrations
 INTEGRATION_ADD_MINOR = 2_000_00
-MAX_INTEGRATIONS = 10
+
+# The self-service ceiling. Integrations are priced linearly and stored as a
+# count; there is no technical reason a buyer with 15 systems cannot be served
+# by the same flow as one with 3. Above this, the per-integration setup work
+# genuinely needs a human to scope (data access, credentials, per-system
+# mapping), so the engine refuses rather than pretending.
+MAX_INTEGRATIONS = 50
 
 INTEGRATION_LABELS: dict[str, str] = {
     "crm": "CRM",
@@ -114,6 +120,10 @@ def _integration_label(integration: str, idx: int) -> str:
         return INTEGRATION_LABELS[key]
     if re.match(r"^(integration|system)_\d+$", key):
         return f"Integration {idx}"
+    # Count-derived slots: the buyer gave a number, not a system list, so the
+    # quote names the slot rather than inventing a system to fill it.
+    if re.match(r"^integration_slot_\d+$", key):
+        return f"Integration slot {idx}"
     display = key.replace("_", " ")
     if display and display != key:
         return f"{display.title()}"

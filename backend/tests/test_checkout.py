@@ -402,8 +402,11 @@ def test_only_the_hash_of_the_api_key_is_stored(db, paid_order):
     profile = result.profiles[0]
 
     assert result.profiles[0].api_key not in (profile.api_key_hash or "")
-    from app.core.security.password import verify_password
-    assert verify_password(result.profiles[0].api_key, profile.api_key_hash)
+    # API keys are high-entropy secrets, so a deterministic SHA-256 is the
+    # correct hash: lookup by hash works and the stored value is not the key.
+    import hashlib
+    expected = hashlib.sha256(result.profiles[0].api_key.encode()).hexdigest()
+    assert profile.api_key_hash == expected
 
     # And nothing else on the row carries it either.
     stored = " ".join(
@@ -632,11 +635,13 @@ def test_rotating_the_key_invalidates_the_old_one(db, paid_order):
     rotated = service.rotate_api_key(result.profiles[0])
 
     assert rotated != result.profiles[0].api_key
-    # New key verifies against the stored hash
-    from app.core.security.password import verify_password
-    assert verify_password(rotated, result.profiles[0].api_key_hash)
+    # New key verifies against the stored SHA-256 hash
+    import hashlib
+    assert result.profiles[0].api_key_hash == hashlib.sha256(rotated.encode()).hexdigest()
     # Old key no longer verifies
-    assert not verify_password(result.profiles[0].api_key, result.profiles[0].api_key_hash)
+    assert result.profiles[0].api_key_hash != hashlib.sha256(
+        result.profiles[0].api_key.encode()
+    ).hexdigest()
 
 
 # ---------- adversarial ----------
