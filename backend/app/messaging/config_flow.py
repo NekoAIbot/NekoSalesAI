@@ -271,13 +271,29 @@ class ConfigurationFlow:
         msg = render_step(question, step)
 
         # For multi-select, mark selected options with a ✓ in the Telegram
-        # keyboard.
+        # keyboard. Tuples of dicts are frozen; rebuild with marks.
         if options.multi and msg.telegram_inline_keyboard:
+            marked_rows = []
             for row in msg.telegram_inline_keyboard:
+                new_row = []
                 for btn in row:
                     cb = btn.get("callback_data", "")
                     parsed = parse_callback(cb)
                     if parsed is not None and parsed[1] in state.selected:
-                        btn["text"] = f"✓ {btn['text']}"
+                        new_btn = dict(btn)
+                        if not btn["text"].startswith("✓"):
+                            new_btn["text"] = f"✓ {btn['text']}"
+                        new_row.append(new_btn)
+                    else:
+                        new_row.append(dict(btn))
+                marked_rows.append(tuple(new_row))
+            msg = ChannelMessage(
+                text=msg.text,
+                telegram_inline_keyboard=tuple(marked_rows),
+                whatsapp_list_rows=msg.whatsapp_list_rows,
+                whatsapp_list_header=msg.whatsapp_list_header,
+                whatsapp_list_button=msg.whatsapp_list_button,
+                free_text=msg.free_text,
+            )
 
         return msg
