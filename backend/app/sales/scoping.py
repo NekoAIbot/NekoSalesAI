@@ -333,7 +333,11 @@ class Scope:
 
 def parse_products(text: str) -> tuple[str, ...] | None:
     if _ALL_PRODUCTS.search(text):
-        return tuple(PRODUCT_ORDER)
+        # "Both" / "all of it" means the complete capability set: selling and
+        # answering. That is what Workforce *is* — the sales and support
+        # agents as one team — not Workforce plus its two components, which
+        # would charge the buyer twice for the same roles.
+        return (PRODUCT_WORKFORCE_AGENT,)
 
     remaining = _NEGATED_PRODUCT.sub(" ", text)
 
@@ -346,6 +350,11 @@ def parse_products(text: str) -> tuple[str, ...] | None:
 
     if not found:
         return None
+
+    # A buyer naming both components has described Workforce; keep the
+    # components as separate products only when they named exactly one.
+    if PRODUCT_SALES_AGENT in found and PRODUCT_SUPPORT_AGENT in found:
+        return (PRODUCT_WORKFORCE_AGENT,)
 
     return tuple(code for code in PRODUCT_ORDER if code in found)
 

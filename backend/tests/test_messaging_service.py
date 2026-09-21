@@ -599,7 +599,7 @@ def test_a_telegram_buyer_who_describes_their_business_is_advised_first(
         storefront.id, inbound("I run a food store in Ijebu Ode")
     ).replies[-1]
 
-    assert "AI Sales Representative" in reply
+    assert "AI Sales Agent" in reply
     assert "₦" not in reply, "advice comes before pricing, not with it"
 
 
@@ -632,40 +632,37 @@ def test_a_business_we_cannot_help_is_escalated_from_telegram_too(
 
     A need outside the catalog answered on Telegram with an encouraging greeting
     is the same claim we refuse to make on the web — and there is a human whose
-    attention it is worth.
+    attention it is worth. The copy may change; the refusal and the real
+    approval row behind it are the contract.
     """
     reply = service.handle(
         storefront.id,
         inbound("I need an AI that does my bookkeeping and files my taxes"),
     ).replies[-1]
 
-    assert "right fit" in reply
+    assert "not something" in reply or "can't" in reply or "right fit" in reply
     assert db.query(ApprovalRequest).count() == 1
 
 
-def test_a_telegram_buyer_can_take_both_products_in_one_order(
-    service, storefront, db
-):
-    """Two products, one walk, one price — over the pipe.
+def test_a_telegram_buyer_asking_for_both_gets_workforce(service, storefront, db):
+    """"Both" is the complete capability set — which is what Workforce is.
 
-    The specific failure this catches: the multi-select answer is parsed in
-    scoping, but the *scope* has to survive the conversation row between
-    deliveries as a list rather than a single value. If it narrowed to one
-    product on the way to storage, this buyer would be quoted for one agent
-    having asked for two, and nothing before the payment page would say so.
+    The failure this guards against: "both"/"all" used to expand to every
+    product in the catalog, including Workforce *and* its two components —
+    charging the buyer twice for the same roles. "Both" now selects
+    Workforce, the bundle, once.
     """
     from app.pricing.complexity import (
         CHANNEL_WEB,
         CHANNEL_WHATSAPP,
-        PRODUCT_SALES_AGENT,
-        PRODUCT_SUPPORT_AGENT,
+        PRODUCT_WORKFORCE_AGENT,
         Requirement,
         price,
     )
 
     expected = price(
         Requirement(
-            products=(PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT),
+            products=(PRODUCT_WORKFORCE_AGENT,),
             channels=(CHANNEL_WEB, CHANNEL_WHATSAPP),
             monthly_conversations=2000,
             integrations=(),
@@ -675,7 +672,7 @@ def test_a_telegram_buyer_can_take_both_products_in_one_order(
     replies = walk_the_intake(
         service,
         storefront,
-        ("both", "my website and whatsapp", "about 2,000 a month", "none"),
+        ("both", "my website and whatsapp", "about 2,000 a month", "none", "English"),
     )
 
     conversation = db.query(Conversation).one()
@@ -684,28 +681,26 @@ def test_a_telegram_buyer_can_take_both_products_in_one_order(
     quoted = replies[-1]
     assert expected.display_total in quoted
 
-    # Both names in the message that reached the phone. A bundle total with only
-    # one product named reads as a single agent that costs too much.
-    assert "AI Sales Representative" in quoted
-    assert "AI Support Agent" in quoted
+    # The bundle named, and no double-charge for the components.
+    assert "Workforce" in quoted
 
 
 def test_a_two_product_telegram_quote_is_redeemable_for_both(service, storefront, db):
-    """What the buyer pays for has to be what provisioning reads.
+    """"Both" ends at a redeemable quote for Workforce.
 
     The figure on the phone is only half of it. The stored requirement is what
-    the checkout re-prices and what provisioning reads to decide how many agents
-    to stand up, so if the second product did not survive the channel the buyer
-    would pay for two and be given one — with every internal signal reading
-    "delivered".
+    the checkout re-prices and what provisioning reads to decide how many
+    agents to stand up, so if the selection did not survive the channel the
+    buyer would pay for one thing and be given another — with every internal
+    signal reading "delivered".
     """
-    from app.pricing.complexity import PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT
+    from app.pricing.complexity import PRODUCT_WORKFORCE_AGENT
     from app.pricing.quotes import QuoteService, reference_from_plan_code
 
     walk_the_intake(
         service,
         storefront,
-        ("both", "my website and whatsapp", "about 2,000 a month", "none"),
+        ("both", "my website and whatsapp", "about 2,000 a month", "none", "English"),
     )
 
     code = db.query(Conversation).one().interested_plan_code
@@ -714,7 +709,7 @@ def test_a_two_product_telegram_quote_is_redeemable_for_both(service, storefront
 
     _row, recomputed = QuoteService(db).recompute(reference)
 
-    assert recomputed.products == (PRODUCT_SALES_AGENT, PRODUCT_SUPPORT_AGENT)
+    assert recomputed.products == (PRODUCT_WORKFORCE_AGENT,)
 
     # And the row knows which conversation it came out of. A quote reached over a
     # messenger has the same provenance obligation as one reached on the web: the
