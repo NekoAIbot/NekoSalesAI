@@ -76,6 +76,12 @@ class InboundMessage:
     # "photo", "sticker", "voice note" — phrased for a reply, not for a log.
     media_kind: str | None = None
 
+    # For a Telegram callback query: the message the pressed button was
+    # attached to. The deliverer edits this message in place on multi-select
+    # steps, so a selection updates the existing interaction rather than
+    # arriving as a new message. Null for every other kind of delivery.
+    callback_message_id: int | None = None
+
 
 # ---------- verification ----------
 
@@ -251,6 +257,11 @@ def _parse_callback_query(callback_query: Any) -> InboundMessage | None:
     message text, so the configuration flow can recognise it exactly as it
     would a typed "scoping:..." command. The delivery id is the callback query
     id, prefixed so it cannot collide with a message update id.
+
+    The message the button was attached to is remembered on the inbound
+    message, because answering a multi-select means *editing* that message —
+    its ✓ marks update in place rather than the chat filling with a copy of
+    the question per tap.
     """
     if not isinstance(callback_query, dict):
         return None
@@ -261,10 +272,12 @@ def _parse_callback_query(callback_query: Any) -> InboundMessage | None:
 
     message = callback_query.get("message")
     chat_id = None
+    message_id = None
     if isinstance(message, dict):
         chat = message.get("chat")
         if isinstance(chat, dict):
             chat_id = chat.get("id")
+        message_id = message.get("message_id")
 
     if chat_id is None:
         return None
@@ -282,6 +295,7 @@ def _parse_callback_query(callback_query: Any) -> InboundMessage | None:
         kind=KIND_TEXT,
         text=data.strip(),
         sender_name=_telegram_name(sender),
+        callback_message_id=message_id if isinstance(message_id, int) else None,
     )
 
 

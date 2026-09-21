@@ -307,6 +307,15 @@ class TelegramPoller:
             report.ignored += 1
             return
 
+        # A callback query is acknowledged immediately, before the reply is
+        # composed: it stops the button's loading spinner on the buyer's
+        # screen at once, and the actual answer follows as the edited message
+        # or a new one. The selection itself is already recorded — the
+        # acknowledgement is purely cosmetic, so its failure is harmless.
+        if message.callback_message_id is not None:
+            query_id = message.delivery_id.removeprefix("tgcb:")
+            self._answer_callback(query_id)
+
         try:
             handled = service.handle(organization_id, message)
         except Exception as exc:  # noqa: BLE001 - one bad update must not end the run
@@ -322,6 +331,13 @@ class TelegramPoller:
 
         service.deliver(message, handled.replies, handled.channel_messages)
         report.answered += 1
+
+    def _answer_callback(self, query_id: str) -> None:
+        """Acknowledge a button press. Never raises."""
+        try:
+            TelegramClient(bot_token=self._token).answer_callback_query(query_id)
+        except Exception:  # noqa: BLE001 - cosmetic; the answer still goes out
+            pass
 
     # ---------- talking to Telegram ----------
 

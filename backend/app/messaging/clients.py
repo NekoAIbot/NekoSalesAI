@@ -187,6 +187,46 @@ class TelegramClient:
         except MessagingError:
             pass  # An answering failure is not worth a retry
 
+    def edit_message_text(
+        self,
+        chat_id: str,
+        message_id: int,
+        text: str,
+        inline_keyboard: list[list[dict[str, str]]] | None = None,
+    ) -> bool:
+        """Edit an existing message in place. Returns True when it worked.
+
+        This is what makes a multi-select step feel like one interaction: the
+        buyer taps a button and the *same* message updates its ✓ marks, rather
+        than the chat filling with a copy of the question per selection.
+
+        Editing can legitimately fail — the message may be too old to edit, or
+        identical to what is already there. Both are fine: the caller falls
+        back to sending the update as a new message, and a buyer still gets
+        their state change either way.
+        """
+        if not self._token:
+            return False
+
+        payload: dict = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+            "disable_web_page_preview": True,
+        }
+        if inline_keyboard:
+            payload["reply_markup"] = {"inline_keyboard": inline_keyboard}
+
+        try:
+            response = self._transport.post(
+                f"{self._base}/bot{self._token}/editMessageText",
+                json=payload,
+            )
+            self._raise_for_response(response, f"edit:{chat_id}/{message_id}")
+            return True
+        except MessagingError:
+            return False
+
     @staticmethod
     def _raise_for_response(response: httpx.Response, chat_id: str) -> None:
         if response.status_code >= 400:

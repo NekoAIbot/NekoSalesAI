@@ -176,6 +176,11 @@ class InboundMessagingService:
         deliverer uses these to call the channel-specific send methods;
         otherwise it falls back to plain ``send_message``.
 
+        When the delivery was a Telegram callback query and the reply is a
+        re-render of the same interactive step, the message the button was
+        attached to is edited in place — one interaction that updates, not a
+        new message per tap. Editing failures fall back to a fresh send.
+
         One failing message does not stop the next. A buyer receiving the
         second half of an answer is better served than one receiving nothing
         because the first half hit a rate limit.
@@ -189,6 +194,30 @@ class InboundMessagingService:
                 continue
 
             cm = cms[i] if i < len(cms) else None
+
+            # A callback re-render of the same step edits the source message.
+            if (
+                cm is not None
+                and message.callback_message_id is not None
+                and message.channel == CHANNEL_TELEGRAM
+                and cm.telegram_inline_keyboard
+                and hasattr(client, "edit_message_text")
+            ):
+                edited = False
+                try:
+                    edited = client.edit_message_text(
+                        message.external_id,
+                        message.callback_message_id,
+                        reply,
+                        cm.telegram_inline_keyboard,
+                    )
+                except Exception:  # noqa: BLE001 - fall back to a fresh send
+                    logger.exception(
+                        "Editing Telegram message %s failed",
+                        message.callback_message_id,
+                    )
+                if edited:
+                    continue
 
             try:
                 if cm is not None:
