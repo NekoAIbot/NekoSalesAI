@@ -66,6 +66,18 @@ from app.sales.scoping import (
     parse_products,
     product_options,
 )
+from app.sales.context import ConversationMemory
+from app.sales.understanding import (
+    detect_correction,
+    detect_intent,
+    extract_products_mentioned,
+    is_question,
+)
+from app.sales.knowledge import (
+    PRODUCT_CAPABILITIES,
+    apply_correction,
+    describe_configuration,
+)
 from app.sales.support import (
     SetupFacts,
     asks_for_a_person,
@@ -623,6 +635,12 @@ class AgentReply:
     # redeemable quote from it, so the price the buyer was told and the price
     # the checkout re-derives come from the same requirement.
     quoted: Quote | None = None
+
+    # Memory notes: closures the service runs against the ConversationMemory
+    # after composing the reply — recording questions asked, recommendations
+    # made, decisions confirmed. Kept as callables so this dataclass stays
+    # pure data with no reference to who stores it.
+    remember: list | None = None
 
 
 def _matches(patterns: tuple[str, ...], text: str) -> bool:
@@ -1366,6 +1384,332 @@ def _support_reply(
     )
 
 
+# ---------- the conversational intelligence layer ----------
+
+
+def _conversational_reply(
+    message: str,
+    text: str,
+    scope: Scope,
+    memory: ConversationMemory | None,
+    rules_already_used: frozenset[str],
+    captured_email: str | None,
+) -> AgentReply | None:
+    """Answer the conversational part of a message, or None to fall through.
+
+    This is the advisor layer: intents (pricing request, recommendation
+    request, summary, explanation), corrections ("remove Hausa"), and
+    mid-configuration questions. Every answer is grounded in the catalog, the
+    scope, or the memory — never invented — and a pending configuration
+    question is re-presented underneath so an interrupt never costs the buyer
+    their place.
+
+    Returns None when the message is none of these things, so the
+    configuration flow can read it as the answer it may be.
+    """
+    mem = memory or ConversationMemory()
+    intent = detect_intent(text)
+    pending = scope.next_step
+    pending_question = scope.question() if pending else None
+
+    def _note_question(m: ConversationMemory) -> None:
+        if is_question(message):
+            m.note_question(message.strip())
+
+    # --- a correction to something already configured ---
+    correction = detect_correction(text)
+    if correction is not None and not scope.is_empty:
+        new_scope = apply_correction(scope, correction)
+        if new_scope is not None:
+            notes = [
+                lambda m: m.note_decision(
+                    "correction", f"{correction['kind']}: {correction}"
+                )
+            ]
+            if new_scope.is_complete:
+                return _quote_reply(
+                    new_scope,
+                    ["buyer corrected the configuration"],
+                    captured_email=captured_email,
+                )
+            return _scoping_reply(
+                new_scope,
+                ["buyer corrected the configuration"],
+                lead_in="Done — that's updated.",
+                captured_email=captured_email,
+            )
+        # The correction was refused (it would empty a required field).
+        return AgentReply(
+            body=(
+                "I can't drop that one — a build needs at least one. "
+                "Tell me what to set it to instead and I'll change it."
+            ),
+            reasoning=Reasoning(
+                rule=RULE_SCOPING,
+                signals=["buyer tried to empty a required configuration field"],
+            ),
+            scope=scope,
+            captured_email=captured_email,
+            remember=[_note_question],
+        )
+
+    # --- "what have I selected?" ---
+    if intent == "wants_summary" and not scope.is_empty:
+        body = describe_configuration(scope)
+        if pending_question:
+            body = f"{body}\n\nStill to answer: {pending_question}"
+        return AgentReply(
+            body=body,
+            reasoning=Reasoning(
+                rule=RULE_CAPABILITY,
+                signals=["buyer asked for their current configuration"],
+                grounded_in=["scope"],
+            ),
+            scope=scope,
+            captured_email=captured_email,
+            remember=[_note_question],
+        )
+
+    # --- "what do you recommend?" ---
+    if intent == "wants_recommendation":
+        return _recommendation_reply(scope, mem, captured_email, _note_question)
+
+    # --- "how much?" ---
+    if intent == "wants_pricing":
+        if scope.is_complete:
+            return _quote_reply(
+                scope,
+                ["buyer asked for the price"],
+                captured_email=captured_email,
+            )
+        # Not enough configured yet: say what's missing rather than a number.
+        missing = ", ".join(
+            step.replace("_", " ") for step in _missing_steps(scope)
+        )
+        return _scoping_reply(
+            scope,
+            ["buyer asked for pricing before the build was fully scoped"],
+            lead_in=(
+                "Happy to price it — I need a couple more things first so the "
+                f"figure is real rather than guessed. Still needed: {missing}."
+            ),
+            captured_email=captured_email,
+        )
+
+    # --- a question mid-configuration (the interrupt case) ---
+    if is_question(message) and pending_question is not None:
+        # Product questions are answered by the product-question gate further
+        # down; this catches the rest — "why do you need my channels?",
+        # "can I change that later?" — and answers from the context.
+        answer = _contextual_answer(message, scope, mem)
+        if answer is not None:
+            body, grounded = answer
+            return _scoping_reply(
+                scope,
+                ["buyer asked a question mid-configuration"],
+                lead_in=body,
+                captured_email=captured_email,
+                grounded_in=grounded,
+            )
+
+    return None
+
+
+def _missing_steps(scope: Scope) -> tuple[str, ...]:
+    from app.sales.scoping import SCOPE_STEPS
+
+    return tuple(s for s in SCOPE_STEPS if getattr(scope, s, None) is None)
+
+
+def _recommendation_reply(
+    scope: Scope,
+    memory: ConversationMemory,
+    captured_email: str | None,
+    note_question,
+) -> AgentReply:
+    """A recommendation grounded in what this buyer actually said.
+
+    Reads the memory's requirements (sell, take orders, answer questions,
+    follow up) and the scope, and recommends the product whose canonical
+    capabilities cover them — including saying when a bigger product is
+    *not* needed. Never invents a capability or a price.
+    """
+    goal = memory.fact("requirements", "goal") or ""
+    pain = memory.fact("business", "pain") or ""
+    wants_sales = any(
+        w in f"{goal} {pain}"
+        for w in ("sell", "take_orders", "close_sales", "follow_up", "losing_sales", "dropped_orders", "abandoned_carts")
+    )
+    wants_support = any(
+        w in f"{goal} {pain}"
+        for w in ("answer_questions", "repetitive_questions", "message_volume", "after_hours", "response_time")
+    )
+
+    reasons: list[str] = []
+    if wants_sales:
+        reasons.append("you want it selling — quoting prices, taking payment, following up")
+    if wants_support:
+        reasons.append("you want it answering your buyers' questions")
+
+    if wants_sales and wants_support:
+        recommended = "workforce_agent"
+        why = (
+            "Both halves of what you described — selling and answering — point "
+            "at Workforce, which is the sales and support agents operating as "
+            "one team with shared memory of each buyer."
+        )
+    elif wants_sales:
+        recommended = "sales_agent"
+        why = (
+            "What you've described is selling — and the Sales Agent covers "
+            "exactly that: answers buyers, quotes your prices, takes payment, "
+            "follows up. You don't need Workforce for this; its support half "
+            "would be paying for a role you haven't asked for."
+        )
+    elif wants_support:
+        recommended = "support_agent"
+        why = (
+            "What you've described is answering questions — and the Support "
+            "Agent covers exactly that, from your own material, around the "
+            "clock. Adding sales on top would only make sense if you also want "
+            "it closing orders."
+        )
+    else:
+        # Nothing concrete yet: ask for the one fact that decides it.
+        return _scoping_reply(
+            scope if scope.is_empty else scope,
+            ["recommendation requested before requirements were clear"],
+            lead_in=(
+                "I'd rather recommend from what you actually need than guess. "
+                "Tell me the one thing you want this to do first — sell to your "
+                "buyers, or answer their questions — and I'll take it from there."
+            ),
+            captured_email=captured_email,
+        )
+
+    name = PRODUCT_CAPABILITIES[recommended]["name"]
+    does = PRODUCT_CAPABILITIES[recommended]["does"]
+
+    notes = [
+        note_question,
+        lambda m: m.note_recommendation([recommended], why),
+    ]
+
+    reasoning = Reasoning(
+        rule=RULE_ADVICE,
+        signals=["buyer asked for a recommendation"] + reasons,
+        grounded_in=[f"product:{recommended}"],
+    )
+
+    # If the buyer has already chosen a product, the recommendation must not
+    # contradict them. It either confirms their choice covers what they asked
+    # for, or — when their stated needs point elsewhere — says so plainly and
+    # lets them decide, rather than silently switching the configuration.
+    if scope.products:
+        chosen = scope.products[0]
+        chosen_name = PRODUCT_CAPABILITIES[chosen]["name"]
+        if chosen == recommended:
+            body = (
+                f"Based on what you've told me: {why}\n\n"
+                f"{name} — {does} — is the right fit, and it's what you have "
+                "selected. We can carry on configuring it whenever you're ready."
+            )
+        else:
+            body = (
+                f"Based on what you've told me: {why}\n\n"
+                f"That points at {name} rather than {chosen_name}, which is "
+                "what you have selected. If you'd rather switch, say the word "
+                "— and if I've read your needs wrong, tell me what's different "
+                "and I'll reconsider."
+            )
+        return AgentReply(
+            body=body,
+            reasoning=reasoning,
+            scope=scope,
+            captured_email=captured_email,
+            remember=notes,
+        )
+
+    body = (
+        f"Based on what you've told me: {why}\n\n"
+        f"{name} — {does}.\n\n"
+        "Say the word and I'll configure it, or tell me what's different about "
+        "your situation and I'll reconsider."
+    )
+
+    # The buyer hasn't chosen a product yet: this recommendation can stand in
+    # for the product step — the same way the advisor's does.
+    from dataclasses import replace as _replace
+
+    new_scope = _replace(scope, products=(recommended,), recommended=(recommended,))
+    return AgentReply(
+        body=body,
+        reasoning=reasoning,
+        next_stage=STAGE_QUALIFIED,
+        scope=new_scope,
+        captured_email=captured_email,
+        remember=notes,
+    )
+
+
+def _contextual_answer(
+    message: str,
+    scope: Scope,
+    memory: ConversationMemory,
+) -> tuple[str, list[str]] | None:
+    """Answer a mid-configuration question from the authoritative context.
+
+    Returns (body, grounded) or None when the question is not one this can
+    answer. Deliberately small: these are the questions buyers actually ask
+    while configuring, each answered with a fact rather than a deflection.
+    """
+    t = message.lower()
+
+    # Why do you need to know my channels?
+    if re.search(r"\bwhy .*(channels?|where.*answer)", t):
+        return (
+            "Because where it answers changes what it costs and how it's built "
+            "— each channel beyond your website is its own connection. I'm not "
+            "asking to pad the quote; I'm asking so it's priced for what "
+            "you'll actually use.",
+            ["pricing:channel"],
+        )
+
+    # Can I change this later?
+    if re.search(r"\b(change|edit|update|switch) .*(later|afterwards|after)", t):
+        return (
+            "Yes — channels, volume and languages can all be changed after "
+            "you're live, and the price adjusts with them. Nothing you pick "
+            "now is permanent.",
+            ["policy:changes"],
+        )
+
+    # What if I get more/fewer conversations?
+    if re.search(r"\b(more|fewer|less|extra) conversations?\b", t) or re.search(
+        r"\bwhat if .*(volume|busier|grow)\b", t
+    ):
+        return (
+            "Volume is priced per conversation, so a busier month costs more "
+            "and a quieter one less — you're not locked into a band. Tell me "
+            "your rough monthly figure and I'll price that.",
+            ["pricing:volume"],
+        )
+
+    # What's included?
+    if re.search(r"\bwhat'?s included\b", t):
+        parts = [f"{PRODUCT_NAMES.get(p, p)}" for p in (scope.products or ())]
+        what = ", ".join(parts) if parts else "the build"
+        return (
+            f"{what} covers the base build, the channels you pick, your "
+            "languages, integration slots and monthly conversation volume — "
+            "the quote will show each line separately so you can see exactly "
+            "what you're paying for.",
+            ["pricing:line_items"],
+        )
+
+    return None
+
+
 def compose_reply(
     message: str,
     stage: str,
@@ -1375,6 +1719,7 @@ def compose_reply(
     rules_already_used: frozenset[str] = frozenset(),
     order_paid: bool | None = None,
     setup: SetupFacts | None = None,
+    memory: "ConversationMemory | None" = None,
 ) -> AgentReply:
     """Decide what to say to one visitor message.
 
@@ -1583,6 +1928,21 @@ def compose_reply(
             approval_request=message.strip(),
             captured_email=captured_email,
         )
+
+    # ---------- conversational intelligence ----------
+    #
+    # The layer that makes Nera an advisor rather than a questionnaire. It sits
+    # before the configuration flow so a buyer can interrupt any step with a
+    # question, a correction, or a request for a recommendation — and the
+    # configuration survives. Each rule answers from the authoritative context
+    # (catalog, scope, memory) and hands the pending question back underneath,
+    # so the buyer never loses their place.
+    if dynamic:
+        conv_reply = _conversational_reply(
+            message, text, scope, memory, rules_already_used, captured_email
+        )
+        if conv_reply is not None:
+            return conv_reply
 
     # ---------- dynamically-priced products ----------
     #

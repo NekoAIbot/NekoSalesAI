@@ -130,6 +130,13 @@ class Conversation(BaseModel):
     # list, which is most of them.
     scope_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Structured conversation memory: business facts, requirements and
+    # conversation state extracted from the dialogue, as JSON. Written by
+    # ConversationService from ``app.sales.context.ConversationMemory`` for the
+    # same reason scope_json is: the agent stays pure and never reads a column.
+    # Null on threads that predate the conversational layer.
+    context_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Set when a human takes over, so the agent stops replying.
     handed_off_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

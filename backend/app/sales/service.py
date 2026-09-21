@@ -40,6 +40,8 @@ from app.sales.agent import compose_reply
 from app.sales.approvals import ApprovalService
 from app.sales.reasoning import Reasoning
 from app.sales.rephrase import Rephraser
+from app.sales.context import ConversationMemory
+from app.sales.understanding import extract_business_facts
 from app.sales.scoping import Scope
 from app.sales.support import SetupFacts
 
@@ -211,6 +213,13 @@ class ConversationService:
             conversation.organization_id,
             conversation.workspace_profile_id,
         )
+
+        # The conversational memory: business facts, requirements and dialogue
+        # state, updated from this message before the agent composes its reply
+        # so the reply can be grounded in what this buyer actually said.
+        memory = ConversationMemory.from_json(conversation.context_json)
+        extract_business_facts(body, memory)
+
         reply = compose_reply(
             body,
             conversation.stage,
@@ -220,7 +229,16 @@ class ConversationService:
             rules_already_used=self._rules_already_used(conversation.id),
             order_paid=self._order_paid(conversation),
             setup=self._setup_facts(conversation),
+            memory=memory,
         )
+
+        # The memory persists whatever the reply did: questions the buyer asked,
+        # recommendations made, decisions confirmed.
+        if reply.remember is not None:
+            for note in reply.remember:
+                note(memory)
+
+        conversation.context_json = memory.to_json()
 
         if reply.scope is not None:
             # Written back on every turn that touched it, so the next turn asks
