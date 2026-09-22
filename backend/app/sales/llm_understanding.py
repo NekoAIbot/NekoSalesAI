@@ -335,6 +335,15 @@ class UnderstandingLLM:
             logger.info("LLM understanding unavailable (%s); deterministic path", exc)
             return None
 
+        # Rate limiting: fail fast into the deterministic path, never retry.
+        # A 429 means the provider is asking us to slow down; hammering it
+        # with retries would block the buyer's conversation and compound the
+        # limit. The deterministic engine answers this turn and the next
+        # message gets a fresh, single attempt.
+        if response.status_code == 429:
+            logger.info("LLM rate-limited; deterministic path for this turn")
+            return None
+
         if response.status_code >= 400:
             logger.info(
                 "LLM understanding refused with %s; deterministic path",

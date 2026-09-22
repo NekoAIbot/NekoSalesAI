@@ -158,8 +158,16 @@ def test_an_unknown_backend_falls_back_instead_of_failing_to_start():
     assert build_transport("nonsense").name == "console"
 
 
-def test_the_default_backend_logs_rather_than_sends():
-    """So a fresh clone runs the purchase flow without mailing anyone."""
+def test_the_default_backend_logs_rather_than_sends(monkeypatch):
+    """So a fresh clone runs the purchase flow without mailing anyone.
+
+    The machine's own ``.env`` may legitimately set MAIL_BACKEND (this
+    deployment uses smtp), so the default is asserted with the setting
+    cleared — what a fresh clone with no configuration would get.
+    """
+    from app.config import settings as settings_module
+
+    monkeypatch.setattr(settings_module.settings, "MAIL_BACKEND", "console")
     assert build_transport(None).name == "console"
 
 

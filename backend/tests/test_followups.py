@@ -127,7 +127,8 @@ def paid_order(db, storefront) -> Order:
 
 @pytest.fixture
 def workspace(db, paid_order):
-    return ProvisioningService(db).provision(paid_order).profile
+    result = ProvisioningService(db).provision(paid_order)
+    return result.profiles[0].profile
 
 
 @pytest.fixture

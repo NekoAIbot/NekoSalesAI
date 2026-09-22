@@ -177,6 +177,7 @@ def test_the_whole_intake_reaches_a_computed_price_over_the_api(client, thread):
         "just my website",
         "about 2,000 a month",
         "none",
+        "English",
     ):
         data = send(client, thread, answer).json()
 
@@ -221,6 +222,7 @@ def test_a_quote_records_the_conversation_it_was_given_in(client, thread, db):
         "just my website",
         "about 2,000 a month",
         "none",
+        "English",
     ):
         send(client, thread, answer)
 

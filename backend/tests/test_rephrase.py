@@ -537,3 +537,90 @@ def test_rephrasing_cannot_change_where_the_conversation_got_to(db, storefront):
 
     assert plain == reworded
     assert db.query(Conversation).count() == 2
+
+
+# ---------- the transactional gate ----------
+#
+# The rephraser is a ~1s model round-trip. On a transactional reply — a quote,
+# a configuration question, a payment confirmation — polish adds nothing and
+# the buyer is waiting on their phone. These tests pin the gate: the rules
+# listed in TRANSACTIONAL_RULES never reach a model, and conversational rules
+# still can.
+
+
+def test_transactional_rules_never_reach_a_model():
+    """Every rule in the gate skips the model, whatever the text."""
+    from app.sales.rephrase import TRANSACTIONAL_RULES
+
+    for rule in TRANSACTIONAL_RULES:
+        spy = FakeTransport("Something a model would say.")
+        r = Rephraser(api_key="test-key", transport=spy)
+        out = r.rephrase("Noted. Where should it answer?", rule=rule)
+        assert out == "Noted. Where should it answer?"
+        assert spy.calls == []
+
+
+def test_quote_replies_skip_the_rephraser():
+    """An itemised quote is data, not prose — it ships verbatim."""
+    spy = FakeTransport("A model's version of your quote.")
+    r = Rephraser(api_key="test-key", transport=spy)
+    out = r.rephrase(QUOTE, rule="computed_quote")
+    assert out == QUOTE
+    assert spy.calls == []
+
+
+def test_configuration_questions_skip_the_rephraser():
+    """\"Noted. Where should it answer?\" is already the right sentence."""
+    spy = FakeTransport("A model's version of the question.")
+    r = Rephraser(api_key="test-key", transport=spy)
+    out = r.rephrase(
+        "Noted. Where should it answer?", rule="scoping_the_build"
+    )
+    assert out == "Noted. Where should it answer?"
+    assert spy.calls == []
+
+
+def test_conversational_rules_still_reach_the_model():
+    """A capability answer or a recommendation can still be polished."""
+    original = (
+        "Workforce combines the AI Sales Representative and the AI Support "
+        "Representative into one coordinated AI team."
+    )
+    better = (
+        "Workforce brings the AI Sales Representative and the AI Support "
+        "Representative together as one coordinated AI team."
+    )
+    spy = FakeTransport(better)
+    r = Rephraser(api_key="test-key", transport=spy)
+    out = r.rephrase(original, rule="capability_question")
+    assert out == better
+    assert len(spy.calls) == 1
+
+
+def test_recommendation_replies_still_reach_the_model():
+    """The advisor's recommendation is prose — polish is welcome there."""
+    original = "Based on what you have described, Workforce is the fit for you."
+    better = "From what you have described, Workforce is the right fit for you."
+    spy = FakeTransport(better)
+    r = Rephraser(api_key="test-key", transport=spy)
+    out = r.rephrase(original, rule="recommended_from_business")
+    assert out == better
+    assert len(spy.calls) == 1
+
+
+def test_no_rule_still_rephrases_for_backwards_compatibility():
+    """Call sites built before the gate keep their behaviour."""
+    spy = FakeTransport("A polished version.")
+    r = Rephraser(api_key="test-key", transport=spy)
+    out = r.rephrase("A plain sentence that could read better.")
+    assert out == "A polished version."
+    assert len(spy.calls) == 1
+
+
+def test_rate_limited_rephraser_ships_composed_text():
+    """A 429 fails fast into the composed text — no retry, no block."""
+    spy = FakeTransport(None, status=429)
+    r = Rephraser(api_key="test-key", transport=spy)
+    out = r.rephrase("Workforce combines the sales and support roles.")
+    assert out == "Workforce combines the sales and support roles."
+    assert len(spy.calls) == 1  # exactly one attempt, never a retry

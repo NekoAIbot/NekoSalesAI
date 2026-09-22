@@ -289,36 +289,61 @@ class ProvisioningService:
                 ProvisionedAgent(profile=p) for p in by_order
             ))
 
-        # Check for renewal: same buyer, same role, different order
-        role = _role_for_order(order, self.db)
+        # Check for renewal: same buyer, same role, different order. The
+        # roles are read from the requirement — the full set, not the first
+        # product's — because a repeat buyer ordering two products must not
+        # have their old single profile re-pointed while the second agent
+        # they paid for is never built.
+        roles = self._roles_for_order(order)
         org = self._get_or_create_org(order)
-        existing_by_role = (
-            self.db.execute(
-                select(WorkspaceProfile).where(
-                    WorkspaceProfile.organization_id == org.id,
-                    WorkspaceProfile.role == role,
-                )
-            ).scalars().first()
-        )
-        if existing_by_role is not None:
-            # Re-point the existing profile at the new order so delivery
-            # can find it by order_id.
-            existing_by_role.order_id = order.id
-            existing_by_role.plan_code = order.plan_code
-            existing_by_role.status = PROVISION_READY
-            self.db.commit()
-            return ProvisioningResult(created=True, profiles=(
-                ProvisionedAgent(profile=existing_by_role),
-            ))
+        existing_by_role = {
+            profile.role: profile
+            for profile in (
+                self.db.execute(
+                    select(WorkspaceProfile).where(
+                        WorkspaceProfile.organization_id == org.id,
+                        WorkspaceProfile.role.in_(roles),
+                    )
+                ).scalars().all()
+            )
+        }
+        missing = tuple(r for r in roles if r not in existing_by_role)
 
-        agents = self._provision_for_role(order, role)
+        if not missing:
+            # A full renewal: every role this order paid for already exists.
+            # Re-point each at the new order so delivery can find them by
+            # order_id.
+            renewed = []
+            for role in roles:
+                profile = existing_by_role[role]
+                profile.order_id = order.id
+                profile.plan_code = order.plan_code
+                profile.status = PROVISION_READY
+                renewed.append(ProvisionedAgent(profile=profile))
+            self.db.commit()
+            return ProvisioningResult(created=True, profiles=tuple(renewed))
+
+        # A partial renewal — some roles exist, some are new. The existing
+        # profiles are re-used (re-pointed, not duplicated: the org+role pair
+        # is unique) and only the missing roles are built, so a buyer adding
+        # a support agent to their sales workspace gets exactly one of each.
+        agents = list(self._provision_for_role(order, missing))
+        for role in roles:
+            if role in existing_by_role:
+                profile = existing_by_role[role]
+                profile.order_id = order.id
+                profile.plan_code = order.plan_code
+                profile.status = PROVISION_READY
+                agents.append(ProvisionedAgent(profile=profile))
+        if agents:
+            self.db.commit()
 
         if not agents:
             raise ProvisioningError(
                 f"No agents provisioned for order {order.paystack_reference}."
             )
 
-        return ProvisioningResult(created=True, profiles=agents)
+        return ProvisioningResult(created=True, profiles=tuple(agents))
 
     def _existing_profiles(self, order: Order) -> list[WorkspaceProfile]:
         """Find existing profiles for this order.
@@ -356,7 +381,7 @@ class ProvisioningService:
         )
 
     def _provision_for_role(
-        self, order: Order, role: str
+        self, order: Order, roles: tuple[str, ...]
     ) -> tuple[ProvisionedAgent, ...]:
         requirement = None
         if order.plan_code:
@@ -376,14 +401,10 @@ class ProvisioningService:
 
         agents: list[ProvisionedAgent] = []
 
-        # For Workforce, create both sales and support agents
-        roles_to_create = [role]
-        if requirement.product_type == PRODUCT_WORKFORCE_AGENT:
-            roles_to_create = [ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT]
-        elif requirement.products and len(requirement.products) > 1:
-            roles_to_create = [
-                PRODUCT_TYPE_TO_ROLE.get(p, CATALOG_ROLE) for p in requirement.products
-            ]
+        # The caller read the full role set from the requirement (Workforce
+        # and multi-product orders expand to more than one role), so the
+        # roles are built as given rather than re-derived here.
+        roles_to_create = list(roles)
 
         for agent_role in roles_to_create:
             org = self._get_or_create_org(order)
@@ -404,6 +425,12 @@ class ProvisioningService:
                 widget_token=_build_widget_token(),
                 status=PROVISION_READY,
             )
+
+            # The moment the workspace went live. Every follow-up offset is
+            # counted from this, and FollowUpService refuses to schedule
+            # without it — a workspace that is ready but undated would never
+            # hear from us again.
+            profile.ready_at = datetime.now(timezone.utc)
 
             import json as _json
             from datetime import datetime as _dt, timezone as _tz
@@ -562,12 +589,23 @@ class ProvisioningService:
             ) from exc
 
         if requirement.products:
-            roles = tuple(
-                PRODUCT_TYPE_TO_ROLE.get(p, CATALOG_ROLE)
-                for p in requirement.products
-            )
+            # Workforce is one product that builds two agents — the sales and
+            # the support role — so it expands here, at the single place that
+            # translates products into roles. Everything downstream (renewal
+            # matching, profile creation) then sees the true role set.
+            roles = []
+            for product in requirement.products:
+                if product == PRODUCT_WORKFORCE_AGENT:
+                    roles.extend((ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT))
+                else:
+                    roles.append(PRODUCT_TYPE_TO_ROLE.get(product, CATALOG_ROLE))
+            roles = tuple(dict.fromkeys(roles))
         else:
-            roles = (PRODUCT_TYPE_TO_ROLE.get(requirement.product_type, CATALOG_ROLE),)
+            product = requirement.product_type
+            if product == PRODUCT_WORKFORCE_AGENT:
+                roles = (ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT)
+            else:
+                roles = (PRODUCT_TYPE_TO_ROLE.get(product, CATALOG_ROLE),)
 
         for role in roles:
             if role not in PRODUCT_TYPE_TO_ROLE.values():

@@ -1147,6 +1147,7 @@ def test_the_buy_panel_can_read_the_price_of_a_two_product_quote(
     assert quote["display_total"] == expected.display_total
     assert quote["billing_period"]
 
-    # Both products named, so the price is not attributed to only one of them.
-    assert "Sales" in quote["product_name"]
-    assert "Support" in quote["product_name"]
+    # "Sales and support" selects Workforce — the two agents operating as one
+    # team — so the price is named for the bundle the buyer is buying, not
+    # attributed to one of its halves.
+    assert quote["product_name"] == "Workforce"

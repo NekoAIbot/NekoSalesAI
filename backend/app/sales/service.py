@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -214,6 +215,10 @@ class ConversationService:
             conversation.workspace_profile_id,
         )
 
+        # Phase timings, for the latency log line at the end of the turn.
+        # perf_counter because these are intervals, not wall-clock times.
+        t_recognize = time.perf_counter()
+
         # The conversational memory: business facts, requirements and dialogue
         # state, updated from this message before the agent composes its reply
         # so the reply can be grounded in what this buyer actually said.
@@ -231,6 +236,7 @@ class ConversationService:
             setup=self._setup_facts(conversation),
             memory=memory,
         )
+        t_composed = time.perf_counter()
 
         # The memory persists whatever the reply did: questions the buyer asked,
         # recommendations made, decisions confirmed.
@@ -300,10 +306,29 @@ class ConversationService:
         # is here rather than in a channel, so the widget, Telegram and WhatsApp
         # get the same wording instead of three drifting voices.
         #
+        # The rule travels with the call: transactional replies (quotes,
+        # configuration questions, payment state) skip the model entirely —
+        # their copy is canonical formatting and the buyer is waiting.
+        #
         # What is stored is what the buyer saw. A transcript that shows the
         # composed text while the buyer read something else would make every
         # later dispute unanswerable.
-        body_for_visitor = self.rephraser.rephrase(reply.body)
+        body_for_visitor = self.rephraser.rephrase(
+            reply.body, rule=reply.reasoning.rule
+        )
+        t_rephrased = time.perf_counter()
+
+        # One line per turn, at INFO, naming each phase: where the time went
+        # is only answerable if the phases are visible separately. compose
+        # includes any LLM understanding call (the slow path lives there);
+        # rephrase is its own number so the gate's effect is measurable.
+        logger.info(
+            "turn latency: recognize+compose=%.0fms (rule=%s) rephrase=%.0fms total=%.0fms",
+            (t_composed - t_recognize) * 1000,
+            reply.reasoning.rule,
+            (t_rephrased - t_composed) * 1000,
+            (t_rephrased - t_recognize) * 1000,
+        )
 
         agent_message = Message(
             conversation_id=conversation.id,

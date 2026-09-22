@@ -322,8 +322,14 @@ class PurchaseRun:
             )
 
     def _products_bought(self, order: Order) -> set:
-        """The roles this order paid for, read back from the priced requirement."""
+        """The roles this order paid for, read back from the priced requirement.
+
+        Products are translated into the roles provisioning builds — Workforce
+        is one product that builds two agents — because that is what the
+        profiles on the workspace are named by.
+        """
         from app.models.quote import Quote
+        from app.payments.provisioning import PRODUCT_TYPE_TO_ROLE
         from app.pricing.quotes import reference_from_plan_code, requirement_from_json
 
         reference = reference_from_plan_code(order.plan_code)
@@ -340,7 +346,22 @@ class PurchaseRun:
 
         requirement = requirement_from_json(quote.requirement_json)
 
-        return set(getattr(requirement, "products", ()) or ())
+        # The same translation the provisioner performs, so the check asks
+        # "did they get the roles their products build" rather than comparing
+        # product codes against role codes.
+        products = tuple(getattr(requirement, "products", ()) or ())
+        if not products:
+            product = getattr(requirement, "product_type", None)
+            products = (product,) if product else ()
+
+        roles: set = set()
+        for product in products:
+            if product == "workforce_agent":
+                roles.update(("sales_agent", "support_agent"))
+            else:
+                roles.add(PRODUCT_TYPE_TO_ROLE.get(product, "sales_agent"))
+
+        return roles
 
     # ---------- did they find out ----------
 

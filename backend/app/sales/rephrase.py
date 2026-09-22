@@ -52,6 +52,38 @@ from app.pricing.complexity import PRODUCT_NAMES
 
 logger = get_logger(__name__)
 
+# Rules whose replies are canonical formatting rather than prose. These skip
+# the rephraser entirely: an itemised quote, a configuration question or a
+# payment confirmation is *data* — the figures and the exact question are the
+# contract — and a ~1s model round-trip on each one is pure latency on the
+# buyer's phone with nothing to show for it.
+#
+# The rule strings are the values in Reasoning.rule (see app.sales.agent);
+# compared as strings so this module needs no import of the agent.
+#
+# What stays rephrasable, deliberately: capability_question, advice /
+# recommended_from_business, plan_detail_question, faq_match,
+# customer_knowledge_match, greeting, and unknown_question_escalated —
+# conversational and explanatory replies where natural wording genuinely
+# improves how Nera reads. recommended_from_business keeps the rephraser
+# because it is the advisor's prose recommendation, but its figures are
+# already protected by the fact verifier (money, numbers, references).
+TRANSACTIONAL_RULES = frozenset({
+    "scoping_the_build",          # configuration questions and "Noted."
+    "computed_quote",             # itemised quotes and re-prices
+    "buy_intent",                 # payment confirmations / contact requests
+    "buyer_reported_paying",      # payment state — canonical only
+    "contact_captured",           # state confirmations
+    "pricing_question",           # "how much?" — the quote, verbatim
+    "courtesy",                   # "continue" / "yes" / "no" acknowledgements
+    "problem_diagnosed",          # support state
+    "problem_needs_a_person",     # support escalation state
+    "no_published_pricing_escalated",
+    "off_script_custom_terms",
+    "off_script_discount_request",
+    "commercial_question_outside_role",
+})
+
 
 # ---------- the facts a rephrasing may not touch ----------
 
@@ -277,6 +309,10 @@ class Rephraser:
         self._base = (base_url or settings.GROQ_BASE_URL).rstrip("/")
         self._model = model or settings.GROQ_MODEL
         self._transport = transport or _HttpxTransport(settings.LLM_TIMEOUT_SECONDS)
+        # An explicitly-injected key means the caller (usually a test with a
+        # fake transport) wants this client live regardless of the TESTING
+        # flag; only the ambient .env key is suppressed under test.
+        self._explicit_key = api_key is not None
 
     @property
     def enabled(self) -> bool:
@@ -285,7 +321,7 @@ class Rephraser:
         # making copy assertions meaningless and the run slow.
         from app.config.settings import settings as _settings
 
-        if getattr(_settings, "TESTING", False):
+        if getattr(_settings, "TESTING", False) and not self._explicit_key:
             return False
         return bool(self._key)
 
@@ -317,6 +353,12 @@ class Rephraser:
             logger.info("Rephrasing unavailable (%s); sending composed text", exc)
             return None
 
+        # Rate limiting: fail fast, never retry. Polish is optional; a buyer
+        # waiting on a reply is not served by hammering a throttled provider.
+        if response.status_code == 429:
+            logger.info("Rephrasing rate-limited; sending composed text")
+            return None
+
         if response.status_code >= 400:
             logger.info(
                 "Rephrasing refused with %s; sending composed text",
@@ -338,12 +380,21 @@ class Rephraser:
         # they are stripped rather than rejected.
         return content.strip().strip('"').strip()
 
-    def rephrase(self, text: str) -> str:
+    def rephrase(self, text: str, rule: str | None = None) -> str:
         """The same message, better worded — or the same message.
+
+        ``rule`` is the reasoning rule that composed the reply. Transactional
+        rules (configuration, quotes, payment, corrections) skip the model
+        entirely: their copy is canonical formatting — itemised figures,
+        exact questions, state confirmations — where polish adds nothing and
+        a ~1s round-trip is pure latency on the buyer's phone.
 
         Never raises, and never returns something that failed verification.
         """
         if not self.enabled or not text or not text.strip():
+            return text
+
+        if rule is not None and rule in TRANSACTIONAL_RULES:
             return text
 
         candidate = self._candidate(text)
