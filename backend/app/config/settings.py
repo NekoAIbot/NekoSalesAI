@@ -55,9 +55,21 @@ class Settings(BaseSettings):
     BREVO_API_KEY: str = ""
 
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    # The current Groq catalog. llama-3.3-70b-versatile was retired; gpt-oss-20b
+    # is the fastest chat model available on this key (~1.1s). Override with
+    # GROQ_MODEL in .env if the catalog changes again.
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
     LLM_TIMEOUT_SECONDS: float = 3.5
+    # The semantic-understanding calls get a longer budget than rephrasing:
+    # they run only on the slow path (messages the deterministic engine could
+    # not read) and a timeout there falls back to deterministic behaviour
+    # rather than degrading the answer.
+    LLM_UNDERSTANDING_TIMEOUT_SECONDS: float = 6.0
+
+    # Set by the test suite (tests/conftest.py) so a live GROQ_API_KEY in the
+    # developer's .env cannot make the tests non-deterministic.
+    TESTING: bool = False
 
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_BASE_URL: str = "https://api.telegram.org"

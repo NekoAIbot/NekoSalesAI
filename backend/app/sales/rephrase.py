@@ -280,6 +280,13 @@ class Rephraser:
 
     @property
     def enabled(self) -> bool:
+        # Tests run with the deterministic engine only: a live key in the
+        # developer's .env would otherwise rephrase every reply in the suite,
+        # making copy assertions meaningless and the run slow.
+        from app.config.settings import settings as _settings
+
+        if getattr(_settings, "TESTING", False):
+            return False
         return bool(self._key)
 
     def _candidate(self, text: str) -> str | None:

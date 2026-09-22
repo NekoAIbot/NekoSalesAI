@@ -17,10 +17,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config.settings import settings
 from app.database.base import Base
 from app.database.session import get_db
 from app.main import app
 from app.models import Organization
+
+# The suite runs the deterministic engine only. A live GROQ_API_KEY in the
+# developer's .env would otherwise rephrase every reply and call the provider
+# from the LLM slow path, making copy assertions meaningless and the run
+# both slow and non-deterministic.
+settings.TESTING = True
 
 
 @pytest.fixture

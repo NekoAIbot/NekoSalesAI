@@ -64,6 +64,7 @@ from app.sales.scoping import (
     answer as answer_scope,
     channel_names,
     parse_products,
+    parse_volume,
     product_options,
 )
 from app.sales.context import ConversationMemory
@@ -478,6 +479,8 @@ _PRODUCT_QUESTION_PATTERNS = (
     r"\bdoes (the )?(workforce|sales|support)( agent)? (support|need|require|use) (an? )?integration\b",
     r"\bwhat (does|can) (the )?workforce (agent|product|option) do\b",
     r"\bwhat (does|can) (the )?(sales|support) agent do\b",
+    r"\bwhat (exactly|precisely|actually) (does|can|is) (the )?(workforce|sales|support|it)( agent)?( do)?\b",
+    r"\bwhat (exactly|precisely|actually) does (workforce|sales|support)( agent)? do\b",
 )
 
 # The catalog facts each product question is answered from. Nothing here is
@@ -1384,6 +1387,312 @@ def _support_reply(
     )
 
 
+# ---------- the LLM semantic slow path ----------
+
+# Module-level client, constructed once. Injectable for tests via
+# ``_set_llm_client``; a None key means every call is a no-op and the
+# deterministic path is the only path.
+_llm_client: "UnderstandingLLM | None" = None
+
+
+def _set_llm_client(client: "UnderstandingLLM | None") -> None:
+    """Test hook: swap in a fake, or None to force the deterministic path."""
+    global _llm_client
+    _llm_client = client
+
+
+def _get_llm_client() -> "UnderstandingLLM | None":
+    global _llm_client
+    if _llm_client is None:
+        from app.sales.llm_understanding import UnderstandingLLM
+
+        client = UnderstandingLLM()
+        _llm_client = client if client.enabled else False  # type: ignore[assignment]
+    if _llm_client is False:
+        return None
+    return _llm_client  # type: ignore[return-value]
+
+
+# Below this confidence the model's read is not applied to anything. The
+# buyer still gets the deterministic fallback; a guessed interpretation is
+# worse than an honest re-ask.
+_LLM_MIN_CONFIDENCE = 0.6
+
+
+def _llm_semantic_reply(
+    message: str,
+    scope: Scope,
+    memory: ConversationMemory | None,
+    captured_email: str | None,
+) -> AgentReply | None:
+    """One LLM attempt at reading what the deterministic parsers could not.
+
+    Returns an AgentReply whose scope changes were applied through the same
+    deterministic validators as everything else, or None to fall back to the
+    existing behaviour. The LLM never touches prices or the quote: if the
+    scope completes, the pricing engine prices it exactly as before.
+    """
+    client = _get_llm_client()
+    if client is None:
+        return None
+
+    from app.sales.llm_understanding import build_context_summary
+
+    mem = memory or ConversationMemory()
+    result = client.understand(message, build_context_summary(mem, scope))
+    if result is None or result.confidence < _LLM_MIN_CONFIDENCE:
+        return None
+
+    pending = scope.next_step
+    notes: list = []
+
+    # A question: answer it from the canonical context, and put the pending
+    # configuration question back underneath — the interrupt-safe behaviour.
+    if result.intent == "question":
+        answer = _semantic_question_answer(message, result, scope, mem)
+        if answer is not None:
+            body, grounded = answer
+            if pending is not None:
+                return _scoping_reply(
+                    scope,
+                    ["LLM read a question the keyword rules missed"],
+                    lead_in=body,
+                    captured_email=captured_email,
+                    grounded_in=grounded,
+                )
+            return AgentReply(
+                body=body,
+                reasoning=Reasoning(
+                    rule=RULE_CAPABILITY,
+                    signals=["LLM read a question the keyword rules missed"],
+                    grounded_in=grounded,
+                ),
+                scope=scope,
+                captured_email=captured_email,
+                remember=[lambda m: m.note_question(message.strip())],
+            )
+        # Not a question we can answer from the catalog: fall through to the
+        # deterministic behaviour rather than letting the model improvise.
+        return None
+
+    # A correction the deterministic patterns did not catch.
+    if result.intent == "correction" and not scope.is_empty:
+        new_scope = scope
+        applied = False
+
+        if result.remove:
+            for code in result.remove:
+                if code in (scope.languages or ()):
+                    from dataclasses import replace as _replace
+                    kept = tuple(l for l in new_scope.languages if l != code)
+                    if kept:
+                        new_scope = _replace(new_scope, languages=kept)
+                        applied = True
+                if code in (scope.channels or ()):
+                    from dataclasses import replace as _replace
+                    kept = tuple(c for c in new_scope.channels if c != code)
+                    if kept:
+                        new_scope = _replace(new_scope, channels=kept)
+                        applied = True
+
+        if result.volume is not None and result.volume > 0:
+            from dataclasses import replace as _replace
+            new_scope = _replace(new_scope, monthly_conversations=result.volume)
+            applied = True
+
+        if applied:
+            notes.append(
+                lambda m: m.note_decision("llm_correction", message.strip()[:100])
+            )
+            if new_scope.is_complete:
+                return _quote_reply(
+                    new_scope,
+                    ["LLM read a correction the keyword rules missed"],
+                    captured_email=captured_email,
+                )
+            return _scoping_reply(
+                new_scope,
+                ["LLM read a correction the keyword rules missed"],
+                lead_in="Done — that's updated.",
+                captured_email=captured_email,
+            )
+        return None
+
+    # An answer to the pending configuration step, read semantically.
+    if pending is not None:
+        new_scope = _apply_semantic_values(scope, result, pending)
+        if new_scope is not None and new_scope != scope:
+            if new_scope.is_complete:
+                return _quote_reply(
+                    new_scope,
+                    [f"LLM read the {pending} answer"],
+                    captured_email=captured_email,
+                )
+            return _scoping_reply(
+                new_scope,
+                [f"LLM read the {pending} answer"],
+                lead_in="Noted.",
+                captured_email=captured_email,
+            )
+
+    # An explicit product choice that changes what is selected — "okay let's
+    # use Workforce" after a Sales Agent was recommended. The buyer's own
+    # words are the strongest provenance there is; switching is not a
+    # contradiction, it is a decision.
+    if result.products and tuple(result.products) != tuple(scope.products or ()):
+        from dataclasses import replace as _replace
+
+        new_scope = _replace(scope, products=tuple(result.products))
+        if pending is not None:
+            return _scoping_reply(
+                new_scope,
+                ["LLM read an explicit product choice"],
+                lead_in="Noted — switched.",
+                captured_email=captured_email,
+            )
+        if new_scope.is_complete:
+            return _quote_reply(
+                new_scope,
+                ["LLM read an explicit product choice"],
+                captured_email=captured_email,
+            )
+        return AgentReply(
+            body="Noted — switched.",
+            reasoning=Reasoning(
+                rule=RULE_SCOPING,
+                signals=["LLM read an explicit product choice"],
+            ),
+            next_stage=STAGE_QUALIFIED,
+            scope=new_scope,
+            captured_email=captured_email,
+        )
+
+    return None
+
+
+def _apply_semantic_values(
+    scope: Scope,
+    result,
+    pending: str,
+) -> Scope | None:
+    """Apply the LLM's validated values to the pending scope step.
+
+    Uses the same parsers as the deterministic path, so the validation is
+    identical: a volume is snapped by ``parse_volume``'s rules, products go
+    through ``parse_products``' bundle logic, and nothing the canonical
+    catalogs do not contain can land on the scope.
+    """
+    from dataclasses import replace as _replace
+
+    if pending == "channels" and result.channels:
+        # Web is always included, matching the deterministic parser.
+        channels = list(result.channels)
+        if "web" not in channels:
+            channels.append("web")
+        return _replace(scope, channels=tuple(channels))
+
+    if pending == "languages" and result.languages:
+        return _replace(scope, languages=result.languages)
+
+    if pending == "monthly_conversations" and result.volume:
+        parsed = parse_volume(str(result.volume))
+        if parsed is not None:
+            return _replace(scope, monthly_conversations=parsed)
+
+    if pending == "integrations" and result.integrations is not None:
+        if 0 <= result.integrations <= 50:
+            return _replace(scope, integrations=result.integrations)
+
+    if pending == "products" and result.products:
+        # Both components named = Workforce, matching parse_products.
+        if len(result.products) >= 2:
+            return _replace(scope, products=("workforce_agent",))
+        return _replace(scope, products=result.products)
+
+    return None
+
+
+def _semantic_question_answer(
+    message: str,
+    result,
+    scope: Scope,
+    memory: ConversationMemory,
+) -> tuple[str, list[str]] | None:
+    """Answer a semantically-read question from the canonical catalog.
+
+    The model decides *that* it is a question and what it is about; the
+    answer's facts come from PRODUCT_CAPABILITIES and the scope — never from
+    the model's own knowledge.
+    """
+    topic = (result.topic or "").lower()
+    t = message.lower()
+
+    # Order-taking, in any phrasing.
+    if any(
+        w in topic
+        for w in ("order", "buy", "purchase", "checkout", "payment", "sales side", "run my sales")
+    ) or re.search(r"\b(take|handle|collect|process|receive|run)\b.*\b(orders?|sales?|payments?|purchases?)\b", t):
+        about = scope.products or ()
+        can = (
+            "Yes — the sales side of the catalog quotes your published prices "
+            "and takes payment through Paystack."
+            if any(p in ("sales_agent", "workforce_agent") for p in about) or not about
+            else "Not on its own — the Support Agent answers questions and hands "
+            "anything commercial (pricing, payment, refunds) to a person."
+        )
+        body = can
+        if about:
+            body += "\n\n" + "\n\n".join(
+                f"{PRODUCT_CAPABILITIES[p]['name']} — {PRODUCT_CAPABILITIES[p]['does']}."
+                for p in about
+            )
+        else:
+            body += "\n\nThe Sales Agent does exactly that; Workforce adds the support side on top."
+        return body, [f"product:{p}" for p in about] or ["product:sales_agent"]
+
+    # Comparison / "what's the point of both".
+    if any(w in topic for w in ("difference", "both agents", "compare", "why both", "point of")):
+        parts = [
+            f"{PRODUCT_CAPABILITIES[code]['name']} — {PRODUCT_CAPABILITIES[code]['does']}."
+            for code in ("sales_agent", "support_agent", "workforce_agent")
+        ]
+        return (
+            "Sales closes. Support answers. Workforce is both, sharing one "
+            "memory of each buyer:\n\n" + "\n\n".join(parts),
+            ["product:sales_agent", "product:support_agent", "product:workforce_agent"],
+        )
+
+    # "What exactly does Workforce do?" — a named-product explanation.
+    if any(w in topic for w in ("what", "explain", "describe", "do")) or result.products:
+        # What the buyer asked about outranks what is selected: a Workforce
+        # question deserves a Workforce answer even with Sales Agent chosen.
+        from app.sales.understanding import extract_products_mentioned
+
+        mentioned = extract_products_mentioned(message)
+        about: tuple[str, ...] = mentioned or result.products or tuple(scope.products or ())
+        if about:
+            parts = [
+                f"{PRODUCT_CAPABILITIES[code]['name']} — {PRODUCT_CAPABILITIES[code]['does']}.\n"
+                f"It can: {'; '.join(PRODUCT_CAPABILITIES[code]['can'][:3])}."
+                for code in about
+            ]
+            return (
+                "\n\n".join(parts),
+                [f"product:{p}" for p in about],
+            )
+
+    # "Would this work if my customers are on WhatsApp?" — channel fit.
+    if "whatsapp" in topic or "channel" in topic or re.search(r"\bwhatsapp\b", t):
+        return (
+            "Yes — WhatsApp is one of the channels it can answer on. It's "
+            "₦8,000 a month on top of the base, and every message your "
+            "customers send there gets answered by the same AI.",
+            ["pricing:channel"],
+        )
+
+    return None
+
+
 # ---------- the conversational intelligence layer ----------
 
 
@@ -1453,6 +1762,31 @@ def _conversational_reply(
             remember=[_note_question],
         )
 
+    # --- an explicit product choice that changes what is selected ---
+    # Deterministic and first: "okay let's use Workforce" after a Sales Agent
+    # was recommended. The buyer's own words are the strongest provenance
+    # there is; switching is a decision, not a contradiction. Runs before
+    # the LLM because the deterministic mention-extraction is reliable and
+    # free.
+    if not is_question(message):
+        mentioned = extract_products_mentioned(message)
+        if mentioned and tuple(mentioned) != tuple(scope.products or ()):
+            from dataclasses import replace as _replace
+
+            new_scope = _replace(scope, products=tuple(mentioned))
+            if new_scope.is_complete:
+                return _quote_reply(
+                    new_scope,
+                    ["buyer switched product mid-conversation"],
+                    captured_email=captured_email,
+                )
+            return _scoping_reply(
+                new_scope,
+                ["buyer switched product mid-conversation"],
+                lead_in="Noted — switched.",
+                captured_email=captured_email,
+            )
+
     # --- "what have I selected?" ---
     if intent == "wants_summary" and not scope.is_empty:
         body = describe_configuration(scope)
@@ -1511,6 +1845,25 @@ def _conversational_reply(
                 captured_email=captured_email,
                 grounded_in=grounded,
             )
+
+        # No deterministic answer: the LLM reads the question semantically
+        # and it is answered from the canonical catalog, with the pending
+        # question preserved underneath.
+        llm_reply = _llm_semantic_reply(message, scope, memory, captured_email)
+        if llm_reply is not None:
+            return llm_reply
+
+    # --- a correction the deterministic patterns did not catch ---
+    # Guarded so an ordinary answer to the pending question goes to the
+    # deterministic pending-answer path, not the LLM. Two cases reach the
+    # LLM here: the pending parser cannot read the message, or the scope is
+    # already complete (no pending step — the buyer is correcting something
+    # on a finished configuration, which is when corrections matter most).
+    if not scope.is_empty:
+        if pending is None or answer_scope(scope, pending, text) is None:
+            llm_reply = _llm_semantic_reply(message, scope, memory, captured_email)
+            if llm_reply is not None:
+                return llm_reply
 
     return None
 
@@ -2798,6 +3151,19 @@ def compose_reply(
         pending_question = scope.question()
 
         if pending_question is not None:
+            # The deterministic parsers could not read this as an answer.
+            # Before falling back to re-asking, give the LLM one chance to
+            # read it semantically — "can it basically run my sales side"
+            # carries no keyword any regex will ever catch. Its validated
+            # result is applied through the same deterministic machinery;
+            # a failure or a low-confidence read falls through to the
+            # existing behaviour unchanged.
+            llm_reply = _llm_semantic_reply(
+                message, scope, memory, captured_email
+            )
+            if llm_reply is not None:
+                return llm_reply
+
             return _scoping_reply(
                 scope,
                 [
