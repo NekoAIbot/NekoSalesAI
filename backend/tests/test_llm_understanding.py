@@ -379,3 +379,36 @@ def test_llm_products_both_components_become_workforce(with_llm):
         memory=ConversationMemory(),
     )
     assert reply.scope.products == ("workforce_agent",)
+
+
+def test_a_pure_acknowledgement_never_calls_the_llm(with_llm):
+    """\"continue\" after a quote is agreement, not a question or a correction.
+
+    The completed-scope correction path used to send it to the LLM — a ~2.5s
+    round-trip to interpret the one word a human never needs explained.
+    """
+    fake = with_llm(
+        SemanticResult(intent="other", confidence=0.99, from_llm=True)
+    )
+    reply = compose_reply(
+        "continue",
+        "ready_to_buy",
+        scope=_complete_scope(),
+        memory=ConversationMemory(),
+    )
+    assert fake.calls == []
+    assert reply.reasoning.rule == "courtesy"
+
+
+def test_a_courtesy_acknowledgement_mid_scoping_never_calls_the_llm(with_llm):
+    """\"okay\" mid-configuration is an acknowledgement, not a question."""
+    fake = with_llm(
+        SemanticResult(intent="question", confidence=0.99, from_llm=True)
+    )
+    reply = compose_reply(
+        "okay",
+        "qualified",
+        scope=Scope(products=("workforce_agent",)),
+        memory=ConversationMemory(),
+    )
+    assert fake.calls == []

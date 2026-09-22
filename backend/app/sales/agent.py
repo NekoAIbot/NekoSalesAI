@@ -1082,6 +1082,7 @@ _COURTESIES = frozenset(
     great great! nice nice! cool cool! perfect perfect! lovely lovely!
     good good! brilliant brilliant! excellent excellent! wonderful
     yes yes! yeah yep yup sure sure! noted noted! understood
+    continue proceed go-ahead ahead next done finished
     bye goodbye later
     """.split()
 )
@@ -1849,9 +1850,14 @@ def _conversational_reply(
         # No deterministic answer: the LLM reads the question semantically
         # and it is answered from the canonical catalog, with the pending
         # question preserved underneath.
-        llm_reply = _llm_semantic_reply(message, scope, memory, captured_email)
-        if llm_reply is not None:
-            return llm_reply
+        #
+        # A pure acknowledgement is not a question, whatever the question
+        # detector made of it — "okay" after a quote is agreement, not
+        # something a model needs to interpret — so it never reaches the LLM.
+        if not _is_courtesy(message):
+            llm_reply = _llm_semantic_reply(message, scope, memory, captured_email)
+            if llm_reply is not None:
+                return llm_reply
 
     # --- a correction the deterministic patterns did not catch ---
     # Guarded so an ordinary answer to the pending question goes to the
@@ -1859,7 +1865,8 @@ def _conversational_reply(
     # LLM here: the pending parser cannot read the message, or the scope is
     # already complete (no pending step — the buyer is correcting something
     # on a finished configuration, which is when corrections matter most).
-    if not scope.is_empty:
+    # An acknowledgement is neither: it carries nothing to correct.
+    if not scope.is_empty and not _is_courtesy(message):
         if pending is None or answer_scope(scope, pending, text) is None:
             llm_reply = _llm_semantic_reply(message, scope, memory, captured_email)
             if llm_reply is not None:
