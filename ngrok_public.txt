@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NekoSalesAI — Hire an AI employee</title>
+  <meta name="description" content="Nera builds the AI your business needs, and hands it over working.">
+
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
+</head>
+<body class="">
+  
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <span class="brand-mark">◆</span>
+      NekoSalesAI
+    </a>
+    <nav class="nav">
+      <a class="nav-link" href="#problems">Problems</a>
+      <a class="nav-link" href="#products">Products</a>
+      <a class="nav-link" href="#how">How it works</a>
+      <a class="nav-link" href="#trust">Trust</a>
+      <a class="nav-link" href="#builder">Build</a>
+      <a class="btn btn--sm" href="#chat">Talk to Nera</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <!-- HERO -->
+  <section class="hero" id="hero">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow">Nera — AI workforce</span>
+          <h1>Your business doesn't need another chatbot.<br>It needs an AI employee.</h1>
+          <p class="hero-sub">
+            Nera builds AI workers that sell and support your customers — configured
+            around your business, bounded by your rules, available 24/7.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn--lg" href="#builder">Build your AI agent</a>
+            <a class="btn btn--ghost btn--lg" href="#demo">See Nera in action</a>
+          </div>
+          <p class="hero-note">
+            <span aria-hidden="true">↘</span>
+            Ask Nera for a discount it has not been authorised to give and it will
+            tell you so, then bring in someone who can decide.
+          </p>
+        </div>
+
+        <figure class="hero-proof" id="hero-proof" aria-label="Scripted demonstration">
+          <figcaption class="hero-proof-head">
+            <span class="proof-tag">Example exchange</span>
+            <span class="proof-sub">scripted, so you know what to expect</span>
+          </figcaption>
+
+          <div class="hero-proof-log" id="hero-proof-log" aria-hidden="true"></div>
+
+          <ol class="hero-proof-script" id="hero-proof-script">
+            <li data-role="visitor" data-who="Buyer">Can you do 40% off if we sign today?</li>
+            <li data-role="agent" data-who="Nera" data-trace="rule: off-list terms → human · auto-discount ceiling: 0%">
+              I can't approve that — it's not on our price list. I've passed it to the team and you'll hear back today.
+            </li>
+            <li data-role="visitor" data-who="Buyer">What can you actually build?</li>
+            <li data-role="agent" data-who="Nera" data-trace="source: buildable catalog · anything outside it: escalated">
+              Two AI workers: an AI Sales Representative and an AI Support Agent.
+              Anything beyond those, I'll tell you upfront and bring in the team — I'd rather scope it properly than promise it.
+            </li>
+            <li data-role="visitor" data-who="Buyer">How much for both?</li>
+            <li data-role="agent" data-who="Nera" data-trace="source: bundle pricing · Workforce: ₦299,000/month">
+              The Workforce bundle — Sales plus Support — is ₦299,000/month. That's the price for both working together.
+            </li>
+          </ol>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROBLEMS -->
+  <section class="section section--sunk" id="problems">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">The problem</span>
+        <h2>Your business is losing opportunities while you sleep.</h2>
+        <p>
+          Every minute a buyer waits for an answer is a minute they might find someone
+          else. The businesses that win are the ones that respond first, consistently,
+          and professionally — at 2 AM, on WhatsApp, on Telegram, on web.
+        </p>
+      </div>
+
+      <div class="problems-grid">
+        <div class="problem-card">
+          <div class="problem-icon">!</div>
+          <h3>Missed enquiries</h3>
+          <p>Buyers arrive outside office hours and leave without a trace. No capture, no follow-up, no sale.</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">⏱</div>
+          <h3>Slow responses</h3>
+          <p>Every hour of delay reduces the chance of closing. Speed is not a luxury; it's the conversion window.</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">↻</div>
+          <h3>Repetitive questions</h3>
+          <p>Your team answers the same questions all day. That is time they are not spending on complex buyers.</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">🌙</div>
+          <h3>After-hours demand</h3>
+          <p>The internet never closes. Your buyers do not wait for 9 AM. They wait for the first responder.</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">⚡</div>
+          <h3>Staff workload</h3>
+          <p>Burnout from volume means mistakes, shortcuts, and inconsistency. Humans need rest. Your revenue does not.</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">⚠</div>
+          <h3>Inconsistent responses</h3>
+          <p>Different people give different answers. One wrong quote or promise can cost trust you never get back.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCTS -->
+  <section class="section" id="products">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Products</span>
+        <h2>Two AI workers. One workforce.</h2>
+        <p>
+          Nera builds two specialised AI employees today. Each is priced by what it
+          actually has to do — not by a fixed tier. The bundle combines both at an
+          intentional discount.
+        </p>
+      </div>
+
+      <div class="products-grid">
+        <article class="product-card">
+          <div class="product-head">
+            <h3>Nera Sales</h3>
+            <p class="product-tagline">Your AI Sales Representative</p>
+          </div>
+          <div class="product-price">
+            <span class="product-amount">₦199,000</span>
+            <span class="product-period">/ month</span>
+          </div>
+          <ul class="product-list">
+            <li>Engages prospects and answers product questions</li>
+            <li>Quotes your published prices and takes payment</li>
+            <li>Follows configured workflows and escalation rules</li>
+            <li>Operates on web, Telegram, WhatsApp, or email</li>
+          </ul>
+          <a class="btn btn--lg" href="#builder" data-plan="Nera Sales">Configure Nera Sales</a>
+        </article>
+
+        <article class="product-card">
+          <div class="product-head">
+            <h3>Nera Support</h3>
+            <p class="product-tagline">Your AI Customer Support Representative</p>
+          </div>
+          <div class="product-price">
+            <span class="product-amount">₦149,000</span>
+            <span class="product-period">/ month</span>
+          </div>
+          <ul class="product-list">
+            <li>Answers questions from your knowledge base</li>
+            <li>Escalates to your team when it cannot help</li>
+            <li>Never invents a policy or a price</li>
+            <li>Operates on web, Telegram, WhatsApp, or email</li>
+          </ul>
+          <a class="btn btn--lg" href="#builder" data-plan="Nera Support">Configure Nera Support</a>
+        </article>
+
+        <article class="product-card product-card--featured">
+          <div class="product-badge">Workforce</div>
+          <div class="product-head">
+            <h3>Nera Workforce</h3>
+            <p class="product-tagline">Sales + Support in one AI workforce</p>
+          </div>
+          <div class="product-price">
+            <span class="product-amount">₦299,000</span>
+            <span class="product-period">/ month</span>
+          </div>
+          <ul class="product-list">
+            <li>Everything in Nera Sales</li>
+            <li>Everything in Nera Support</li>
+            <li>One coordinated workforce under your control</li>
+            <li>Priority provisioning and shared context</li>
+          </ul>
+          <a class="btn btn--accent btn--lg" href="#builder" data-plan="Nera Workforce">Configure Nera Workforce</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="section section--sunk" id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">How it works</span>
+        <h2>Six steps from conversation to deployment</h2>
+        <p>
+          You describe the job. Nera prices what it takes to build it and shows the arithmetic.
+          You pay, it builds, you get the keys.
+        </p>
+      </div>
+
+      <ol class="flow">
+        <li class="flow-step">
+          <span class="flow-num">01</span>
+          <h3>Describe</h3>
+          <p>Tell Nera what your business needs. It names the AI that does it — or says plainly that it cannot build that one yet.</p>
+        </li>
+        <li class="flow-step">
+          <span class="flow-num">02</span>
+          <h3>Configure</h3>
+          <p>Choose channels, integrations, languages, volume, and workflows. Every choice is optional.</p>
+        </li>
+        <li class="flow-step">
+          <span class="flow-num">03</span>
+          <h3>Quote</h3>
+          <p>Nera computes the price server-side and shows every line item. No hidden fees. No guesswork.</p>
+        </li>
+        <li class="flow-step">
+          <span class="flow-num">04</span>
+          <h3>Pay</h3>
+          <p>Pay securely through Paystack. The amount is locked when you continue — it cannot change after.</p>
+        </li>
+        <li class="flow-step">
+          <span class="flow-num">05</span>
+          <h3>Provision</h3>
+          <p>We build your agent, configure it, and send you credentials to your inbox.</p>
+        </li>
+        <li class="flow-step">
+          <span class="flow-num">06</span>
+          <h3>Deploy</h3>
+          <p>Your AI employee goes live under your name, on your catalog, talking to your buyers.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- NERA DEMO -->
+  <section class="section" id="demo">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Demonstration</span>
+        <h2>Watch Nera work</h2>
+        <p>
+          This is a scripted demonstration of the kind of exchange Nera handles.
+          In a real conversation, the same rules, pricing, and checkout flow apply.
+        </p>
+      </div>
+
+      <div class="demo-player" id="demo-player">
+        <div class="demo-scene" id="demo-scene-1">
+          <div class="demo-customer">
+            <div class="demo-avatar">B</div>
+            <div class="demo-bubble">Hi, I need an AI that answers our buyers on WhatsApp and takes payment. What would that cost?</div>
+          </div>
+          <div class="demo-agent">
+            <div class="demo-avatar">N</div>
+            <div class="demo-bubble demo-bubble--pending">...</div>
+          </div>
+        </div>
+
+        <div class="demo-scene hidden" id="demo-scene-2">
+          <div class="demo-customer">
+            <div class="demo-avatar">B</div>
+            <div class="demo-bubble">We also want support. Can we do both together?</div>
+          </div>
+          <div class="demo-agent">
+            <div class="demo-avatar">N</div>
+            <div class="demo-bubble">
+              Yes — that would be the Nera Workforce: an AI Sales Representative plus an AI Support Agent.
+              That bundle is <strong>₦299,000/month</strong>.
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-scene hidden" id="demo-scene-3">
+          <div class="demo-customer">
+            <div class="demo-avatar">B</div>
+            <div class="demo-bubble">Can you give us a discount for an annual commitment?</div>
+          </div>
+          <div class="demo-agent">
+            <div class="demo-avatar">N</div>
+            <div class="demo-bubble">
+              I'm not authorised to change the published price. I've flagged this for the team —
+              someone will review it and reply to you directly.
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-scene hidden" id="demo-scene-4">
+          <div class="demo-agent">
+            <div class="demo-avatar">N</div>
+            <div class="demo-bubble">
+              <span class="demo-step">Quote</span>
+              <span class="demo-arrow">→</span>
+              <span class="demo-step">Checkout</span>
+              <span class="demo-arrow">→</span>
+              <span class="demo-step">Payment</span>
+              <span class="demo-arrow">→</span>
+              <span class="demo-step">Provisioning</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-controls">
+          <button class="btn" id="demo-replay" type="button">Replay demonstration</button>
+        </div>
+
+        <p class="demo-note">Example exchange — scripted demonstration</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRUST -->
+  <section class="section section--sunk" id="trust">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Trust</span>
+        <h2>Provable restraint</h2>
+        <p>
+          Nera is built around one rule: it will not invent something it cannot do.
+          That is not a marketing promise — it is the way the engine is written.
+        </p>
+      </div>
+
+      <div class="trust-grid">
+        <div class="trust-item">
+          <h3>What Nera knows</h3>
+          <p>Your configured business information, approved products and services, authorised pricing where applicable, and the workflows you have defined.</p>
+        </div>
+        <div class="trust-item">
+          <h3>What Nera does not do</h3>
+          <p>It does not invent prices, products, promises, or capabilities. If you ask for a discount it is not configured to provide, it will say so and escalate to a human.</p>
+        </div>
+        <div class="trust-item">
+          <h3>What happens after payment</h3>
+          <p>Provisioning is a real process. You receive credentials, access, and instructions by email. The agent is configured and tested before it goes live.</p>
+        </div>
+        <div class="trust-item">
+          <h3>Simulated vs real</h3>
+          <p>Scripted demonstrations on this page are clearly labelled. The chat panel below is Nera itself — the same engine that would price and build your AI.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BUILDER -->
+  <section class="section" id="builder">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Builder</span>
+        <h2>Build your AI agent</h2>
+        <p>
+          Describe what you need. Nera computes the price server-side and shows you
+          every line item. No card needed. Nothing is charged until you choose to continue.
+        </p>
+      </div>
+
+      <div class="builder">
+        <form class="builder-form" id="builder-form" novalidate>
+          <div class="field">
+            <label class="field-label" for="b-product">What should Nera do?</label>
+            <select class="field-input" id="b-product" name="product_type">
+              <option value="sales_agent">Nera Sales — AI Sales Representative</option>
+              <option value="support_agent">Nera Support — AI Support Representative</option>
+              <option value="sales_agent,support_agent">Nera Workforce — Sales + Support</option>
+            </select>
+            <p class="field-note" id="b-product-note"></p>
+          </div>
+
+          <fieldset class="field">
+            <legend class="field-label">Where should Nera answer?</legend>
+            <div class="checks">
+              <label class="check">
+                <input type="checkbox" name="channels" value="web" checked>
+                <span>Web widget <span class="check-hint">included</span></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="channels" value="telegram">
+                <span>Telegram</span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="channels" value="whatsapp">
+                <span>WhatsApp</span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="channels" value="email">
+                <span>Email</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="b-volume">Conversations a month</label>
+              <select class="field-input" id="b-volume" name="monthly_conversations">
+                <option value="500">Up to 500</option>
+                <option value="2000">Up to 2,000</option>
+                <option value="10000">Up to 10,000</option>
+                <option value="50000">Up to 50,000</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label class="field-label" for="b-integrations">Systems to connect</label>
+              <input class="field-input" type="number" id="b-integrations" name="integrations" min="0" max="10" step="1" value="0">
+              <p class="field-note">Your CRM, calendar, helpdesk — anything we have to talk to.</p>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="b-languages">Extra languages</label>
+              <input class="field-input" type="number" id="b-languages" name="languages" min="0" max="5" step="1" value="0">
+              <p class="field-note">Beyond English.</p>
+            </div>
+
+            <div class="field">
+              <label class="field-label" for="b-workflows">Custom workflow steps</label>
+              <input class="field-input" type="number" id="b-workflows" name="workflow_steps" min="0" max="20" step="1" value="0">
+              <p class="field-note">Approval gates, handoffs, rules specific to you.</p>
+            </div>
+          </div>
+
+          <button class="btn btn--lg" type="submit" id="b-submit">
+            Generate my quote
+          </button>
+
+          <p class="builder-note">
+            No card needed to see the price. Nothing is charged until you choose to continue.
+          </p>
+        </form>
+
+        <aside class="builder-quote" id="builder-quote" aria-live="polite">
+          <div class="quote-empty" id="quote-empty">
+            <p>Your price appears here, itemised.</p>
+          </div>
+
+          <div class="quote-body hidden" id="quote-body">
+            <div class="quote-product" id="quote-product"></div>
+
+            <div class="quote-total" id="quote-total">
+              <span class="quote-amount" id="quote-amount"></span>
+              <span class="quote-period" id="quote-period"></span>
+            </div>
+
+            <ul class="quote-lines" id="quote-lines"></ul>
+
+            <form class="quote-buy" id="quote-buy">
+              <label class="field-label" for="q-email">
+                Your email, to send the receipt and login to
+              </label>
+              <input class="field-input" type="email" id="q-email" name="email" required autocomplete="email" placeholder="you@company.com">
+
+              <input class="field-input" type="text" id="q-company" name="company" autocomplete="organization" placeholder="Company name (optional)">
+
+              <button class="btn btn--lg" type="submit" id="q-submit">
+                Continue to payment
+              </button>
+            </form>
+          </div>
+
+          <p class="quote-error hidden" id="quote-error" role="alert"></p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section section--sunk" id="faq">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Questions</span>
+        <h2>The things people ask first</h2>
+      </div>
+
+      <div class="faq-list">
+        
+        <details class="faq-item">
+          <summary>Does Nera do the selling for me?</summary>
+          <p class="faq-answer">No. Nera is the builder. It creates the AI that does the selling, and that AI is what sits on your site and answers your buyers — with your prices, your product and your name on it. Nera&#39;s job ends when the thing it built is working in your hands.</p>
+        </details>
+        
+        <details class="faq-item">
+          <summary>What can Nera build?</summary>
+          <p class="faq-answer">Today it builds and hands over two AI workers: an AI sales representative that answers buyers, quotes your published prices and takes payment, and an AI support agent that answers questions from your own material and escalates anything commercial. Ask for anything else and it says so and puts you in front of a human rather than pretending it can already ship it.</p>
+        </details>
+        
+        <details class="faq-item">
+          <summary>How is a build priced?</summary>
+          <p class="faq-answer">By what it has to do, not by a tier you have to fit into: which channels it answers on, how much traffic it handles, how many of your systems it has to talk to, how many languages, how many custom steps. You see every line that made up the figure before any card is involved.</p>
+        </details>
+        
+        <details class="faq-item">
+          <summary>Can the AI make up a price or a discount?</summary>
+          <p class="faq-answer">No — neither Nera nor anything it builds. Nera quotes only what the pricing engine computes, and the AI it builds you quotes only the prices you publish. Ask either for anything else and it says it needs to check with a human, and raises the request for someone to approve or decline.</p>
+        </details>
+        
+        <details class="faq-item">
+          <summary>What happens if it does not know the answer?</summary>
+          <p class="faq-answer">It tells you it does not know and passes the question to a human. It is built to say so rather than guess.</p>
+        </details>
+        
+        <details class="faq-item">
+          <summary>Do you do cold outreach or scraped email lists?</summary>
+          <p class="faq-answer">No. Nera and everything it builds only answer people who come to you. Neither sends unsolicited messages.</p>
+        </details>
+        
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section" id="cta">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Get started</span>
+        <h2>Ready to build your AI workforce?</h2>
+        <p>Describe what you need. Nera will tell you what it can build, what it will cost, and what to expect next.</p>
+      </div>
+      <div class="cta-actions">
+        <a class="btn btn--lg" href="#builder">Start building</a>
+        <a class="btn btn--ghost btn--lg" href="#chat">Talk to Nera</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>NekoSalesAI</span>
+    <a class="link" href="mailto:hello@nekosales.ai">hello@nekosales.ai</a>
+  </div>
+</footer>
+
+<section class="section section--sunk" id="chat">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Try it</span>
+      <h2>Ask Nera yourself</h2>
+      <p>This is Nera itself — the same builder that would price and build your AI.</p>
+    </div>
+
+    
+    <div class="chat" id="chat-panel">
+      <div class="chat-head">
+        <div class="chat-avatar">N</div>
+        <div class="chat-head-text">
+          <div class="chat-title">Nera</div>
+          <div class="chat-status">
+            <span class="status-dot"></span>
+            <span id="chat-stage">Ready</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-log" id="chat-log" aria-live="polite"></div>
+
+      <div class="buy hidden" id="buy-panel">
+        <div class="buy-head">
+          <span class="buy-label">Ready when you are</span>
+          <span class="buy-price" id="buy-price"></span>
+        </div>
+
+        <form class="buy-form" id="buy-form">
+          <input type="text" id="buy-name" placeholder="Your name" autocomplete="name" maxlength="150">
+          <input type="email" id="buy-email" placeholder="Work email" autocomplete="email" maxlength="255" required>
+          <input type="text" id="buy-company" placeholder="Company" autocomplete="organization" maxlength="255">
+          <button class="btn" type="submit" id="buy-send">Continue to payment</button>
+        </form>
+
+        <div class="chat-error hidden" id="buy-error"></div>
+        <p class="buy-note" id="buy-note"></p>
+      </div>
+
+      <div class="chat-suggestions" id="chat-suggestions">
+        <button class="chip" type="button">What can you build?</button>
+        <button class="chip" type="button">What would it cost?</button>
+        <button class="chip" type="button">Can I get a discount?</button>
+      </div>
+
+      <div class="chat-error hidden" id="chat-error"></div>
+
+      <form class="chat-form" id="chat-form">
+        <textarea class="chat-input" id="chat-input" rows="1" placeholder="Ask about pricing, features, anything…" autocomplete="off"></textarea>
+        <button class="btn" type="submit" id="chat-send">Send</button>
+      </form>
+    </div>
+    
+  </div>
+</section>
+
+  
+<script src="/static/js/chat.js" defer></script>
+<script src="/static/js/builder.js" defer></script>
+<script src="/static/js/page.js" defer></script>
+
+</body>
+</html>
