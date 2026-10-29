@@ -9,6 +9,8 @@ services:
     healthCheckPath: /
     autoDeploy: true
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
       - key: ENVIRONMENT
         value: production
       - key: DEBUG
