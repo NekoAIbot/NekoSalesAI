@@ -41,7 +41,15 @@ from app.models.conversation import (
     STAGE_READY_TO_BUY,
 )
 from app.products.config import Faq, Plan, ProductConfig
-from app.pricing.complexity import PRODUCT_NAMES, PricingError, Quote, price
+from app.pricing.complexity import (
+    PRODUCT_NAMES,
+    PRODUCT_SALES_AGENT,
+    PRODUCT_SUPPORT_AGENT,
+    PRODUCT_WORKFORCE_AGENT,
+    PricingError,
+    Quote,
+    price,
+)
 from app.sales.reasoning import (
     Reasoning,
     capability_reference,
@@ -63,9 +71,12 @@ from app.sales.scoping import (
     ScopingError,
     answer as answer_scope,
     channel_names,
+    describe_extracted_lead_in,
+    extract_natural_scope,
     parse_products,
     parse_volume,
     product_options,
+    retain_scope_from_memory,
 )
 from app.sales.context import ConversationMemory
 from app.sales.understanding import (
@@ -1774,17 +1785,38 @@ def _conversational_reply(
         if mentioned and tuple(mentioned) != tuple(scope.products or ()):
             from dataclasses import replace as _replace
 
-            new_scope = _replace(scope, products=tuple(mentioned))
+            chosen_prods = (
+                (PRODUCT_WORKFORCE_AGENT,)
+                if PRODUCT_SALES_AGENT in mentioned and PRODUCT_SUPPORT_AGENT in mentioned
+                else tuple(mentioned)
+            )
+            new_scope = _replace(scope, products=chosen_prods)
+            new_scope, extra = extract_natural_scope(new_scope, text)
+            signals = ["buyer selected product"]
+            if extra:
+                signals.extend([f"extracted {e} from message" for e in extra])
+
+            if memory is not None:
+                new_scope, retained = retain_scope_from_memory(new_scope, memory)
+                if retained:
+                    signals.extend([f"retained {r} from previous turns" for r in retained])
+
             if new_scope.is_complete:
                 return _quote_reply(
                     new_scope,
-                    ["buyer switched product mid-conversation"],
+                    signals,
                     captured_email=captured_email,
                 )
+
+            lead_in = (
+                describe_extracted_lead_in(["product"] + extra if extra else ["product"], new_scope)
+                if (extra or scope.products is None)
+                else "Noted — switched."
+            )
             return _scoping_reply(
                 new_scope,
-                ["buyer switched product mid-conversation"],
-                lead_in="Noted — switched.",
+                signals,
+                lead_in=lead_in,
                 captured_email=captured_email,
             )
 
@@ -1831,8 +1863,11 @@ def _conversational_reply(
             captured_email=captured_email,
         )
 
-    # --- a question mid-configuration (the interrupt case) ---
-    if is_question(message) and pending_question is not None:
+    # --- a question or hesitation mid-configuration (the interrupt case) ---
+    is_clarification = is_question(message) or bool(
+        re.search(r"\b(?:not sure|don'?t know|no idea|confused)\b", text)
+    )
+    if is_clarification and pending_question is not None:
         # Product questions are answered by the product-question gate further
         # down; this catches the rest — "why do you need my channels?",
         # "can I change that later?" — and answers from the context.
@@ -2024,6 +2059,44 @@ def _contextual_answer(
     while configuring, each answered with a fact rather than a deflection.
     """
     t = message.lower()
+
+    # What channels can I choose / support?
+    if re.search(r"\b(?:what|which)\s+channels?\b", t) or re.search(r"\bchannels?\s+(?:can|do)\s+you\b", t):
+        return (
+            "I support your website, WhatsApp, Telegram, and email. You can "
+            "pick any combination of them — website is included in every build, "
+            "and additional channels are priced separately.",
+            ["pricing:channel"],
+        )
+
+    # What systems can it integrate with?
+    if re.search(r"\b(?:what|which)\s+(?:systems?|integrations?|apps?)\b", t) or re.search(r"\bcan it (?:integrate|connect|talk)\b", t):
+        return (
+            "Nera can integrate with your CRM, appointment calendar, inventory/stock "
+            "tracking, or customer helpdesk. You only need slots for the systems "
+            "it actively reads from or writes to — or you can choose 'none' if "
+            "it runs standalone.",
+            ["pricing:integrations"],
+        )
+
+    # Which languages?
+    if re.search(r"\b(?:what|which)\s+languages?\b", t) or re.search(r"\b(?:speak|understand)\s+(?:hausa|igbo|yoruba|pidgin)\b", t):
+        return (
+            "Nera supports English, Nigerian Pidgin, Yoruba, Hausa, and Igbo. "
+            "You can choose any language or combination of languages for your "
+            "buyers.",
+            ["pricing:languages"],
+        )
+
+    # Not sure about volume?
+    if re.search(r"\b(?:not sure|don'?t know|estimate|how many)\s+.*(?:volume|conversations?|chats?)\b", t) or re.search(r"\bhow (?:do i|should i) (?:know|estimate)\b", t):
+        return (
+            "If you're not sure, 500 or 1,000 conversations a month is a common "
+            "starting point for most small businesses. Because volume is priced "
+            "per conversation rather than locked in a rigid tier, you can adjust "
+            "it as you grow.",
+            ["pricing:volume"],
+        )
 
     # Why do you need to know my channels?
     if re.search(r"\bwhy .*(channels?|where.*answer)", t):
@@ -2498,20 +2571,49 @@ def compose_reply(
             )
 
         # A recommendation was made on the previous turn and the buyer is
-        # asking about price or buying. Accept the recommended products and
-        # move forward — the product question was already answered by the
+        # accepting it, asking about price or buying. Accept the recommended products
+        # and move forward — the product question was already answered by the
         # advisor, so asking it again would make the buyer repeat themselves.
         if (
             pending == STEP_PRODUCT
             and scope.recommended is not None
             and scope.products is None
-            and (_matches(_PRICING_PATTERNS, text) or _matches(_BUY_PATTERNS, text))
+            and (
+                _matches(_PRICING_PATTERNS, text)
+                or _matches(_BUY_PATTERNS, text)
+                or _matches(_AGREEMENT_PATTERNS, text)
+            )
         ):
-            scope = replace(scope, products=scope.recommended)
+            rec = scope.recommended
+            if PRODUCT_SALES_AGENT in rec and PRODUCT_SUPPORT_AGENT in rec:
+                rec_prods = (PRODUCT_WORKFORCE_AGENT,)
+            else:
+                rec_prods = rec
+            scope = replace(scope, products=rec_prods)
+            scope, extra = extract_natural_scope(scope, text)
+            signals = ["visitor accepted recommendation via agreement or pricing intent"]
+            if extra:
+                signals.extend([f"extracted {e} from acceptance message" for e in extra])
+
+            if memory is not None:
+                scope, retained = retain_scope_from_memory(scope, memory)
+                if retained:
+                    signals.extend([f"retained {r} from previous turns" for r in retained])
+
+            if scope.is_complete:
+                return _quote_reply(
+                    scope, signals, captured_email=captured_email
+                )
+
+            lead_in = (
+                describe_extracted_lead_in(["product"] + extra if extra else ["product"], scope)
+                if extra
+                else "Noted."
+            )
             return _scoping_reply(
                 scope,
-                ["visitor accepted recommendation via pricing intent"],
-                lead_in="Noted.",
+                signals,
+                lead_in=lead_in,
                 captured_email=captured_email,
             )
 
@@ -2542,18 +2644,43 @@ def compose_reply(
                     scope=scope,
                 )
 
+            extra_extracted: list[str] = []
+            if filled is None:
+                filled, extra_extracted = extract_natural_scope(scope, text, pending)
+                if not extra_extracted:
+                    filled = None
+
             if filled is not None:
-                signals = [f"visitor answered {pending}"]
+                signals = [f"visitor answered {pending}"] if not extra_extracted else []
+                filled, extra = extract_natural_scope(filled, text)
+                if not extra_extracted and extra:
+                    pending_dim = "product" if pending == STEP_PRODUCT else pending
+                    all_extracted = [pending_dim] + extra
+                else:
+                    all_extracted = extra_extracted + extra
+                if all_extracted:
+                    signals.extend([f"extracted {e} from natural message" for e in all_extracted])
+
+                if memory is not None:
+                    filled, retained = retain_scope_from_memory(filled, memory)
+                    if retained:
+                        signals.extend([f"retained {r} from previous turns" for r in retained])
 
                 if filled.is_complete:
                     return _quote_reply(
                         filled, signals, captured_email=captured_email
                     )
 
+                lead_in = (
+                    describe_extracted_lead_in(all_extracted, filled)
+                    if all_extracted
+                    else "Noted."
+                )
+
                 return _scoping_reply(
                     filled,
                     signals,
-                    lead_in="Noted.",
+                    lead_in=lead_in,
                     captured_email=captured_email,
                 )
 

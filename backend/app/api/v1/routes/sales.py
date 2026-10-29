@@ -6,7 +6,8 @@ thread. Everything staff-facing lives in ``routes/sales_admin.py`` behind
 authentication.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.catalog import COMPANY, FAQS, STOREFRONT_CONFIG
@@ -17,6 +18,7 @@ from app.payments import PaymentsNotConfigured, PaystackError, PaystackRejectedR
 from app.payments.checkout import CheckoutError, CheckoutService
 from app.pricing.quotes import reference_from_plan_code
 from app.repositories.organization_repository import OrganizationRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.checkout import OrderOut
 from app.schemas.sales import (
     ConversationCheckoutIn,
@@ -31,6 +33,31 @@ router = APIRouter(
     prefix="/sales",
     tags=["Sales Conversation"],
 )
+
+
+def _is_authorized_admin(request: Request, db: Session) -> bool:
+    """Validate whether the incoming request is genuinely authenticated as a trusted admin.
+    Client-controlled headers alone (e.g. X-Nera-Debug-Reasoning or any custom admin secret header)
+    are NEVER trusted to grant administrative access. Administrative privileges strictly require
+    server-side cryptographic verification of an active admin session via JWT Bearer token.
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return False
+
+    token = auth_header[7:].strip()
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        user_id = int(payload.get("sub", 0))
+    except (JWTError, KeyError, ValueError):
+        return False
+
+    user = UserRepository(db).get_by_id(user_id)
+    return bool(user and user.is_active and user.is_admin)
 
 
 def _default_organization_id(db: Session) -> int:
@@ -108,13 +135,18 @@ def get_catalog():
     response_model=ConversationOut,
     status_code=status.HTTP_201_CREATED,
 )
-def start_conversation(db: Session = Depends(get_db)):
+def start_conversation(request: Request, db: Session = Depends(get_db)):
+    include_reasoning = (
+        request.headers.get("X-Nera-Debug-Reasoning") == "true"
+        and _is_authorized_admin(request, db)
+    )
     service = ConversationService(db)
     conversation = service.start(_default_organization_id(db))
 
     return ConversationOut.from_model(
         conversation,
         service.messages(conversation.id),
+        include_reasoning=include_reasoning,
     )
 
 
@@ -122,13 +154,22 @@ def start_conversation(db: Session = Depends(get_db)):
     "/conversations/{token}",
     response_model=ConversationOut,
 )
-def get_conversation(token: str, db: Session = Depends(get_db)):
+def get_conversation(
+    token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    include_reasoning = (
+        request.headers.get("X-Nera-Debug-Reasoning") == "true"
+        and _is_authorized_admin(request, db)
+    )
     service = ConversationService(db)
     conversation = _load_conversation(token, db)
 
     return ConversationOut.from_model(
         conversation,
         service.messages(conversation.id),
+        include_reasoning=include_reasoning,
     )
 
 
@@ -140,8 +181,13 @@ def get_conversation(token: str, db: Session = Depends(get_db)):
 def send_message(
     token: str,
     payload: VisitorMessageIn,
+    request: Request,
     db: Session = Depends(get_db),
 ):
+    include_reasoning = (
+        request.headers.get("X-Nera-Debug-Reasoning") == "true"
+        and _is_authorized_admin(request, db)
+    )
     service = ConversationService(db)
     conversation = _load_conversation(token, db)
 
@@ -153,7 +199,7 @@ def send_message(
             detail=str(exc),
         ) from exc
 
-    return MessageOut.from_model(reply)
+    return MessageOut.from_model(reply, include_reasoning=include_reasoning)
 
 
 @router.patch(

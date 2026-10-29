@@ -6,6 +6,7 @@ Rule-based and dated. See ``app.followups.rules`` for the calendar itself.
 from app.followups.rules import RULES, RULES_BY_CODE, FollowUpContext, Rule
 from app.followups.service import (
     Delivery,
+    FollowUpClaimConflict,
     FollowUpSendError,
     FollowUpService,
     Sender,
@@ -16,6 +17,7 @@ __all__ = [
     "RULES",
     "RULES_BY_CODE",
     "Delivery",
+    "FollowUpClaimConflict",
     "FollowUpContext",
     "FollowUpSendError",
     "FollowUpService",

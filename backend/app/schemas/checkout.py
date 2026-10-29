@@ -41,6 +41,7 @@ class CheckoutRequest(BaseModel):
     integrations: tuple[str, ...] = Field(default=(), max_length=200)
     languages: tuple[str, ...] = Field(default=(), max_length=200)
     monthly_conversations: int = Field(default=500, ge=0)
+    callback_url: str | None = Field(default=None, max_length=500)
 
 
 class OrderOut(BaseModel):

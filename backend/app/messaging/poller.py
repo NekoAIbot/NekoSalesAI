@@ -29,9 +29,11 @@ buyer being answered twice by an AI that appears not to remember saying it.
 from __future__ import annotations
 
 import argparse
+import inspect
 import signal
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -40,12 +42,18 @@ from app.config import build
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import settings
 from app.database.session import SessionLocal
+from app.followups.runner import RunReport, run_due
 from app.messaging.clients import TelegramClient, WhatsAppClient
 from app.messaging.inbound import parse_telegram_update
 from app.messaging.service import InboundMessagingService, storefront_organization_id
 from app.payments.delivery import DeliveryPusher, DeliveryReport, DeliveryService
 
 logger = get_logger(__name__)
+
+# How often to check for post-sale follow-ups that have become due.
+# Follow-ups are scheduled in days, not seconds, so checking every five minutes
+# is timely without needlessly querying the database on every long poll.
+FOLLOWUP_CHECK_INTERVAL_SECONDS = 300.0
 
 # How long Telegram holds the connection open waiting for something to happen.
 # Long polling: 25 seconds of silence costs one request, not twenty-five.
@@ -98,6 +106,17 @@ class PollReport:
         )
 
 
+def _runner_accepts_now(runner: Any) -> bool:
+    """Determine whether the runner callable accepts a 'now' parameter."""
+    try:
+        params = inspect.signature(runner).parameters
+        return "now" in params or any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+        )
+    except (ValueError, TypeError):
+        return False
+
+
 class TelegramPoller:
     """Pulls updates from Telegram and answers them.
 
@@ -115,12 +134,17 @@ class TelegramPoller:
         session_factory=SessionLocal,
         service_factory=InboundMessagingService,
         push_clients=None,
+        followup_runner=None,
+        followup_interval_seconds: float = FOLLOWUP_CHECK_INTERVAL_SECONDS,
     ) -> None:
         self._token = bot_token if bot_token is not None else settings.TELEGRAM_BOT_TOKEN
         self._base = (base_url or settings.TELEGRAM_BASE_URL).rstrip("/")
         self._fetch = fetch or self._http_fetch
         self._session_factory = session_factory
         self._service_factory = service_factory
+        self._followup_runner = followup_runner or run_due
+        self._followup_interval = followup_interval_seconds
+        self._last_followup_check: float = 0.0
 
         # Where a post-payment message goes out. Injectable for the same reason
         # ``fetch`` is: delivering a paid order is the most consequential thing
@@ -173,6 +197,13 @@ class TelegramPoller:
             # mean the quieter the thread, the longer the buyer waits, which is
             # exactly backwards.
             self.reconcile_payments()
+
+            # Follow-ups, throttled by interval, whether or not anybody messaged.
+            #
+            # Follow-ups are scheduled when an order is provisioned, and without a periodic
+            # runner they remain in the database indefinitely. The poller is the only
+            # autonomous background loop in this deployment.
+            self.reconcile_followups()
 
             if once or self._stopping:
                 return total
@@ -250,6 +281,64 @@ class TelegramPoller:
 
         for error in report.errors:
             logger.warning("Payment reconcile: %s", error)
+
+        return report
+
+    # ---------- follow-ups ----------
+
+    def reconcile_followups(
+        self,
+        *,
+        now: datetime | None = None,
+        force: bool = False,
+    ) -> RunReport:
+        """Send post-sale follow-ups that have become due.
+
+        Like payment reconciliation, this lives here because the poller is the
+        only long-running process with an autonomous loop. Follow-ups are
+        scheduled when an order is provisioned, and without a periodic runner
+        they remain in the database indefinitely.
+
+        Throttled to run at most once every ``followup_interval`` seconds (default
+        300s / 5 minutes) so that rapid polling cycles do not repeatedly query the
+        database.
+
+        Never raises. A transient mail error, database issue, or bad recipient
+        address must not crash the Telegram poller or delay message processing.
+        """
+        current_time = time.monotonic()
+        if (
+            not force
+            and self._followup_interval > 0
+            and (current_time - self._last_followup_check < self._followup_interval)
+        ):
+            return RunReport()
+
+        self._last_followup_check = current_time
+        db = None
+
+        try:
+            db = self._session_factory()
+            if _runner_accepts_now(self._followup_runner):
+                report = self._followup_runner(db, now=now)
+            else:
+                report = self._followup_runner(db)
+        except Exception as exc:
+            logger.exception("Follow-up check failed")
+            return RunReport(failed=1, errors=[f"follow-up check raised: {exc}"])
+        finally:
+            if db is not None:
+                try:
+                    if hasattr(db, "close"):
+                        db.close()
+                except Exception:
+                    logger.exception("Closing follow-up database session failed")
+
+        if report.due > 0:
+            logger.info("Follow-up run: %s", report.summary())
+
+        for error in report.errors:
+            logger.warning("Follow-up error: %s", error)
 
         return report
 

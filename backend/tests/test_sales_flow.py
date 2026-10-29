@@ -22,11 +22,29 @@ from app.models.organization import Organization
 @pytest.fixture
 def storefront(db) -> Organization:
     """The org the public chat sells for, matching settings."""
+    from app.models.user import User
+
     org = Organization(
         name="NekoSalesAI Demo",
         slug=settings.STOREFRONT_ORG_SLUG,
     )
     db.add(org)
+    db.flush()
+
+    # Ensure system admin user exists for verified admin test flows
+    admin_user = db.query(User).filter(User.id == 9999).first()
+    if not admin_user:
+        admin_user = User(
+            id=9999,
+            full_name="System Admin",
+            email="admin@system.test",
+            password_hash="fakehash",
+            is_active=True,
+            is_admin=True,
+            organization_id=org.id,
+        )
+        db.add(admin_user)
+
     db.commit()
     db.refresh(org)
     return org
@@ -73,9 +91,20 @@ def desk_headers(client, storefront, db) -> dict[str, str]:
 
 
 def send(client, token, body):
+    from jose import jwt
+
+    admin_token = jwt.encode(
+        {"sub": "9999"},
+        settings.SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
     return client.post(
         f"/api/v1/sales/conversations/{token}/messages",
         json={"body": body},
+        headers={
+            "Authorization": f"Bearer {admin_token}",
+            "X-Nera-Debug-Reasoning": "true",
+        },
     )
 
 
@@ -125,7 +154,20 @@ def test_catalog_endpoint_publishes_no_price_at_all(client):
 
 
 def test_starting_a_conversation_returns_a_greeting(client, storefront):
-    response = client.post("/api/v1/sales/conversations")
+    from jose import jwt
+
+    admin_token = jwt.encode(
+        {"sub": "9999"},
+        settings.SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+    response = client.post(
+        "/api/v1/sales/conversations",
+        headers={
+            "Authorization": f"Bearer {admin_token}",
+            "X-Nera-Debug-Reasoning": "true",
+        },
+    )
 
     assert response.status_code == 201
     data = response.json()

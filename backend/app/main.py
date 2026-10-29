@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.api import api_router
@@ -135,3 +135,19 @@ app.mount(
     StaticFiles(directory=str(Path(__file__).parent / "web" / "static")),
     name="static",
 )
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
+if FRONTEND_DIR.is_dir():
+    app.mount(
+        "/frontend",
+        StaticFiles(directory=str(FRONTEND_DIR)),
+        name="frontend",
+    )
+
+    @app.api_route("/v2", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/v2/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_greenfield_frontend(full_path: str = ""):
+        index_file = FRONTEND_DIR / "index.html"
+        if index_file.is_file():
+            return FileResponse(index_file)
+        return JSONResponse(status_code=404, content={"detail": "Frontend index.html not found"})

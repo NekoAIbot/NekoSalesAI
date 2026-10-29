@@ -320,6 +320,8 @@ class ProvisioningService:
                 profile.plan_code = order.plan_code
                 profile.status = PROVISION_READY
                 renewed.append(ProvisionedAgent(profile=profile))
+            if order.organization_id != org.id:
+                order.organization_id = org.id
             self.db.commit()
             return ProvisioningResult(created=True, profiles=tuple(renewed))
 
@@ -408,6 +410,8 @@ class ProvisioningService:
 
         for agent_role in roles_to_create:
             org = self._get_or_create_org(order)
+            if order.organization_id != org.id:
+                order.organization_id = org.id
             agent_name = self._agent_name(agent_role)
 
             profile = WorkspaceProfile(
@@ -451,14 +455,16 @@ class ProvisioningService:
 
             # Create admin user for the workspace
             new_user_created = False
+            raw_temp_password = None
             if not self.db.execute(
                 select(_User).where(_User.email == order.buyer_email)
             ).scalars().first():
+                raw_temp_password = _build_temporary_password()
                 buyer_user = _User(
                     email=order.buyer_email,
                     full_name=order.buyer_name or order.buyer_email,
                     organization_id=org.id,
-                    password_hash=hash_password(_build_temporary_password()),
+                    password_hash=hash_password(raw_temp_password),
                     is_admin=True,
                 )
                 self.db.add(buyer_user)
@@ -474,7 +480,7 @@ class ProvisioningService:
                 ProvisionedAgent(
                     profile=profile,
                     _api_key=api_key,
-                    temporary_password=_build_temporary_password() if new_user_created else None,
+                    temporary_password=raw_temp_password if new_user_created else None,
                 )
             )
 

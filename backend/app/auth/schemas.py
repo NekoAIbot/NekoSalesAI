@@ -26,6 +26,7 @@ class UserResponse(BaseModel):
     email_verified: bool
     totp_enabled: bool
     organization_id: int | None = None
+    organization_name: str | None = None
 
     model_config = {
         "from_attributes": True
@@ -120,6 +121,20 @@ class ResetPasswordRequest(BaseModel):
 
 
 # ===========================
+# Profile & Password Update Schemas
+# ===========================
+
+class ProfileUpdateRequest(BaseModel):
+    full_name: str | None = Field(default=None, min_length=2, max_length=120)
+    company_name: str | None = Field(default=None, min_length=2, max_length=150)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+# ===========================
 # Recovery Code Schemas
 # ===========================
 
@@ -127,3 +142,5 @@ class RecoveryCodeVerifyRequest(BaseModel):
     email: EmailStr
     password: str
     recovery_code: str
+
+

@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.catalog import COMPANY
@@ -40,6 +40,7 @@ from app.models.conversation import Conversation
 from app.models.follow_up import (
     STATUS_CANCELLED,
     STATUS_SCHEDULED,
+    STATUS_SENDING,
     STATUS_SENT,
     FollowUp,
 )
@@ -48,9 +49,65 @@ from app.models.workspace_profile import WorkspaceProfile
 
 logger = get_logger(__name__)
 
+# Maximum time a follow-up can remain in STATUS_SENDING before being deemed
+# abandoned by a crashed or unresponsive worker and reclaimed for retry.
+CLAIM_TIMEOUT = timedelta(minutes=5)
+
+
+def _ensure_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def reclaim_stale_claims(
+    db: Session,
+    now: datetime | None = None,
+    timeout: timedelta = CLAIM_TIMEOUT,
+) -> int:
+    """Reclaim follow-ups stuck in 'sending' state due to a worker crash.
+
+    If a process crashes between acquiring an in-flight lease and completing
+    delivery or marking the record as sent, the row remains in STATUS_SENDING.
+    Once ``timeout`` has elapsed, the lease is considered expired and the row
+    is restored to STATUS_SCHEDULED so subsequent runner passes will retry it.
+
+    Returns the number of reclaimed rows.
+    """
+    moment = _ensure_utc(now) or datetime.now(timezone.utc)
+    cutoff = moment - timeout
+
+    result = db.execute(
+        update(FollowUp)
+        .where(
+            FollowUp.status == STATUS_SENDING,
+            or_(
+                FollowUp.updated_at <= cutoff,
+                FollowUp.updated_at.is_(None),
+            ),
+        )
+        .values(
+            status=STATUS_SCHEDULED,
+            updated_at=moment,
+        )
+    )
+    if result.rowcount > 0:
+        db.commit()
+        logger.warning(
+            "Reclaimed %d stale follow-up(s) stuck in sending lease",
+            result.rowcount,
+        )
+    return result.rowcount
+
 
 class FollowUpSendError(Exception):
     """Delivery failed. The follow-up stays open."""
+
+
+class FollowUpClaimConflict(FollowUpSendError):
+    """The follow-up was claimed or is currently in-flight by another worker."""
 
 
 @dataclass(frozen=True)
@@ -164,6 +221,7 @@ class FollowUpService:
     ) -> list[FollowUp]:
         """Follow-ups owed as of ``now``, oldest first."""
         moment = now or datetime.now(timezone.utc)
+        reclaim_stale_claims(self.db, now=moment)
 
         return list(
             self.db.execute(
@@ -203,11 +261,28 @@ class FollowUpService:
     # ---------- sending ----------
 
     def send(self, follow_up: FollowUp) -> FollowUp:
-        """Deliver one follow-up, after checking it is still warranted."""
-        if follow_up.status != STATUS_SCHEDULED:
+        """Deliver one follow-up, after checking it is still warranted.
+
+        Uses an atomic lease (STATUS_SENDING) to prevent concurrent duplicate sends.
+        If delivery succeeds, it transitions to STATUS_SENT.
+        If delivery fails with an exception, it immediately rolls back to STATUS_SCHEDULED.
+        If the process crashes during transmission, the lease will expire after
+        CLAIM_TIMEOUT and be reclaimed on the next runner pass, preventing silent drops.
+        """
+        now_dt = datetime.now(timezone.utc)
+        stale_cutoff = now_dt - CLAIM_TIMEOUT
+
+        if follow_up.status not in (STATUS_SCHEDULED, STATUS_SENDING):
             raise FollowUpSendError(
                 f"This follow-up is already {follow_up.status}."
             )
+
+        if follow_up.status == STATUS_SENDING:
+            updated_at = _ensure_utc(follow_up.updated_at)
+            if updated_at and updated_at > stale_cutoff:
+                raise FollowUpClaimConflict(
+                    f"This follow-up is currently in-flight (status: {follow_up.status})."
+                )
 
         rule = RULES_BY_CODE.get(follow_up.rule_code)
 
@@ -246,11 +321,144 @@ class FollowUpService:
         if not recipient:
             return self.cancel(follow_up, "No email address on file.")
 
-        self.sender.send(Delivery(to_email=recipient, subject=subject, body=body))
-
-        follow_up.status = STATUS_SENT
-        follow_up.sent_at = datetime.now(timezone.utc)
+        # 1. ATOMIC LEASE ACQUISITION:
+        # Transition from scheduled (or expired in-flight claim) to sending.
+        # If another worker already claimed or sent this row concurrently,
+        # the conditional UPDATE affects 0 rows, preventing duplicate sends.
+        claim_stmt = (
+            update(FollowUp)
+            .where(
+                FollowUp.id == follow_up.id,
+                or_(
+                    FollowUp.status == STATUS_SCHEDULED,
+                    and_(
+                        FollowUp.status == STATUS_SENDING,
+                        or_(
+                            FollowUp.updated_at <= stale_cutoff,
+                            FollowUp.updated_at.is_(None),
+                        ),
+                    ),
+                ),
+            )
+            .values(
+                status=STATUS_SENDING,
+                updated_at=now_dt,
+                subject=subject,
+                body=body,
+                reasoning_json=reasoning.to_json(),
+            )
+        )
+        claimed = self.db.execute(claim_stmt)
         self.db.commit()
+
+        if claimed.rowcount == 0:
+            raise FollowUpClaimConflict(
+                f"This follow-up is already being processed or has status {follow_up.status}."
+            )
+
+        # 2. DELIVER VIA SENDER:
+        try:
+            self.sender.send(Delivery(to_email=recipient, subject=subject, body=body))
+        except Exception:
+            # Delivery failed: revert back to scheduled so the next run can retry,
+            # ensuring transient mail failures do not lose scheduled messages.
+            # Fencing check: only revert if this worker still owns the lease. If another
+            # worker already reclaimed or completed it, do not overwrite their state.
+            self.db.execute(
+                update(FollowUp)
+                .where(
+                    FollowUp.id == follow_up.id,
+                    FollowUp.status == STATUS_SENDING,
+                    FollowUp.updated_at == now_dt,
+                )
+                .values(status=STATUS_SCHEDULED, updated_at=datetime.now(timezone.utc))
+            )
+            self.db.commit()
+            raise
+
+        # 3. SUCCESS TRANSITION:
+        # Fencing check: transition to sent only if this worker still owns the lease.
+        success_dt = datetime.now(timezone.utc)
+        claim_res = self.db.execute(
+            update(FollowUp)
+            .where(
+                FollowUp.id == follow_up.id,
+                FollowUp.status == STATUS_SENDING,
+                FollowUp.updated_at == now_dt,
+            )
+            .values(
+                status=STATUS_SENT,
+                sent_at=success_dt,
+                updated_at=success_dt,
+            )
+        )
+        self.db.commit()
+
+        if claim_res.rowcount == 0:
+            # The lease expired during outbound transmission.
+            # Inspect the current row state to check whether safe salvage is possible
+            # without overwriting newer state from a competing claim.
+            current_row = self.db.get(FollowUp, follow_up.id)
+            if current_row is None:
+                raise FollowUpSendError(
+                    f"Follow-up {follow_up.id} disappeared while sending was in progress."
+                )
+
+            if current_row.status == STATUS_SCHEDULED:
+                # SAFE AUTOMATIC SALVAGE:
+                # The lease expired and reclaim_stale_claims restored the row to STATUS_SCHEDULED,
+                # but no competing worker has claimed it into STATUS_SENDING yet.
+                # Since this worker already delivered the message to the recipient,
+                # atomically transitioning from STATUS_SCHEDULED to STATUS_SENT prevents
+                # subsequent runner passes from sending an avoidable duplicate message.
+                salvaged = self.db.execute(
+                    update(FollowUp)
+                    .where(
+                        FollowUp.id == follow_up.id,
+                        FollowUp.status == STATUS_SCHEDULED,
+                    )
+                    .values(
+                        status=STATUS_SENT,
+                        sent_at=success_dt,
+                        updated_at=success_dt,
+                    )
+                )
+                self.db.commit()
+                if salvaged.rowcount > 0:
+                    logger.warning(
+                        "Follow-up %s lease expired during slow send (acquired %s) "
+                        "but was successfully salvaged to sent from scheduled state.",
+                        follow_up.id,
+                        now_dt,
+                    )
+                    self.db.refresh(follow_up)
+                    return follow_up
+
+            # Safe automatic salvage is not possible:
+            # - If status is STATUS_SENT: another worker already claimed and sent it (duplicate delivered externally).
+            # - If status is STATUS_SENDING: another worker holds the active lease and is sending.
+            # - If status is STATUS_CANCELLED: cancelled by user or workflow.
+            # We must NOT overwrite the newer worker's state. Document the ambiguity.
+            logger.warning(
+                "Follow-up %s lease expired during slow send (acquired %s) and could not "
+                "be salvaged; competing status is %r (updated_at=%s). Leaving current state intact.",
+                follow_up.id,
+                now_dt,
+                current_row.status,
+                current_row.updated_at,
+            )
+            self.db.refresh(follow_up)
+            if current_row.status == STATUS_SENDING:
+                raise FollowUpClaimConflict(
+                    f"Follow-up {follow_up.id} was reclaimed and claimed by another worker "
+                    f"while slow send was in flight."
+                )
+            if current_row.status != STATUS_SENT:
+                raise FollowUpSendError(
+                    f"Follow-up {follow_up.id} lease expired and row transitioned to {current_row.status}."
+                )
+            return follow_up
+
         self.db.refresh(follow_up)
 
         logger.info(
@@ -269,7 +477,7 @@ class FollowUpService:
         desk would have no way to clear a follow-up it had actually actioned,
         and the queue would only ever grow.
         """
-        if follow_up.status != STATUS_SCHEDULED:
+        if not follow_up.is_open:
             raise FollowUpSendError(
                 f"This follow-up is already {follow_up.status}."
             )

@@ -3,17 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}{{ company.name }}{% endblock %}</title>
-  <meta name="description" content="{{ company.tagline }}">
+  <title>{% block title %}Nera — AI-Powered Business Automation{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}Automate the work behind your business. Nera helps coordinate tasks and execute supported workflows, so you can spend less time managing routine operations and more time growing your business.{% endblock %}">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 
   <link rel="stylesheet" href="/static/css/app-v4.css">
   <link rel="stylesheet" href="/static/css/builder.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
+  <link rel="stylesheet" href="/static/css/animations.css">
+  <link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
+  <link rel="apple-touch-icon" href="/static/brand/nera-icon-192.svg">
+  {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <a class="skip-link" href="#main">Skip to content</a>

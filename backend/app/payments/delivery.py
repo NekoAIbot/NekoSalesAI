@@ -415,6 +415,7 @@ class DeliveryService:
                     Order.checkout_url.is_not(None),
                 )
                 .order_by(Order.id.desc())
+                .limit(10)
             ).scalars().all()
         )
 

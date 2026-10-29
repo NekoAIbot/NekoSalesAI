@@ -40,14 +40,45 @@ def create_organization(
 
 
 @router.get(
+    "/me",
+    response_model=OrganizationResponse,
+)
+def get_my_organization(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve the current authenticated user's organization."""
+    if not current_user.organization_id:
+        raise HTTPException(
+            status_code=404,
+            detail="No organization associated with this account.",
+        )
+    service = OrganizationService(db)
+    org = service.get(current_user.organization_id)
+    if not org:
+        raise HTTPException(
+            status_code=404,
+            detail="Organization not found.",
+        )
+    return org
+
+
+@router.get(
     "/",
     response_model=list[OrganizationResponse],
 )
 def list_organizations(
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """List organizations. Regular users only see their own organization."""
     service = OrganizationService(db)
-    return service.list()
+    if current_user.is_admin:
+        return service.list()
+    if current_user.organization_id:
+        org = service.get(current_user.organization_id)
+        return [org] if org else []
+    return []
 
 
 @router.get(
@@ -56,10 +87,16 @@ def list_organizations(
 )
 def get_organization(
     organization_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Get organization by ID with multi-tenant isolation."""
+    if current_user.organization_id != organization_id and not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to access this organization.",
+        )
     service = OrganizationService(db)
-
     organization = service.get(organization_id)
 
     if organization is None:
@@ -78,8 +115,15 @@ def get_organization(
 def update_organization(
     organization_id: int,
     data: OrganizationUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Update organization with strict ownership validation."""
+    if current_user.organization_id != organization_id and not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to modify this organization.",
+        )
     service = OrganizationService(db)
 
     organization = service.update(
@@ -101,8 +145,15 @@ def update_organization(
 )
 def delete_organization(
     organization_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Delete organization with ownership verification."""
+    if current_user.organization_id != organization_id and not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to delete this organization.",
+        )
     service = OrganizationService(db)
 
     deleted = service.delete(organization_id)
@@ -138,6 +189,11 @@ def list_workspace_profiles(
             "agent_name": p.agent_name,
             "status": p.status,
             "company_name": p.company_name,
+            "widget_token": p.widget_token,
+            "plan_code": p.plan_code,
+            "greeting": p.greeting,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "ready_at": p.ready_at.isoformat() if p.ready_at else None,
         }
         for p in profiles
     ]

@@ -80,7 +80,11 @@ def test_an_unreachable_telegram_is_waited_out_rather_than_hammered(monkeypatch)
 
         return UNREACHABLE
 
-    poller = TelegramPoller(bot_token="test-token", fetch=fetch)
+    poller = TelegramPoller(
+        bot_token="test-token",
+        fetch=fetch,
+        session_factory=lambda: _NullSession(),
+    )
     poller.run()
 
     assert sleeps.delays, (
@@ -211,7 +215,11 @@ def test_once_drains_what_is_waiting_and_returns(monkeypatch):
         calls["n"] += 1
         return _ok()
 
-    poller = TelegramPoller(bot_token="test-token", fetch=fetch)
+    poller = TelegramPoller(
+        bot_token="test-token",
+        fetch=fetch,
+        session_factory=lambda: _NullSession(),
+    )
     report = poller.run(once=True)
 
     assert calls["n"] == 1

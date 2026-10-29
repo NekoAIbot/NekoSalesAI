@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-label="Nera — Concept B: workforce connection">
+  <!-- Two nodes and a link: sales + support, connected under one roof. -->
+  <!-- The angle and the dot are the whole idea: two things working together. -->
+  <path d="M18 18 L18 46 L34 46"
+        stroke="#1c5d43" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M34 30 L46 30"
+        stroke="#1c5d43" stroke-width="5.5" stroke-linecap="round"/>
+  <circle cx="46" cy="30" r="4.5" fill="#fbfaf9"/>
+</svg>

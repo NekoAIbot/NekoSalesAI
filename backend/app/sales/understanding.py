@@ -185,6 +185,27 @@ def extract_business_facts(text: str, memory: ConversationMemory) -> None:
                 provenance=EXTRACTED,
             )
 
+    # Volume: extract mentions like "about 1,000 chats a month", "2,000 inquiries monthly"
+    volume_match = re.search(
+        r"(?:around|about|roughly|approx(?:imately)?|handle|get|receive|have)?\s*"
+        r"(\d[\d,]*\s*(?:k\b|thousand\b)?)\s*"
+        r"(?:conversations?|chats?|messages?|inquiries|enquiries|visitors?|leads?|a month|monthly|per month)",
+        lowered,
+    )
+    if volume_match:
+        from app.sales.scoping import parse_volume
+        vol = parse_volume(volume_match.group(0))
+        if vol:
+            memory.remember("business", "monthly_volume", str(vol), provenance=EXTRACTED)
+
+    # Languages: extract mentions like "in English and Pidgin", "we speak Yoruba"
+    from app.sales.scoping import parse_languages
+    langs = parse_languages(lowered)
+    if langs:
+        from app.pricing.complexity import LANGUAGES
+        lang_names = [LANGUAGES.get(l, l) for l in langs]
+        memory.remember("requirements", "languages", ", ".join(lang_names), provenance=EXTRACTED)
+
 
 def extract_products_mentioned(text: str) -> list[str]:
     """Canonical product codes the buyer named in this message."""

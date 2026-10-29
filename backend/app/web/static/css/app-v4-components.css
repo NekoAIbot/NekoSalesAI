@@ -45,7 +45,7 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 50% 50% at 50% 0%, rgba(200, 146, 74, 0.05), transparent 60%);
+    radial-gradient(ellipse 50% 50% at 50% 0%, rgba(16, 185, 129, 0.05), transparent 60%);
   pointer-events: none;
 }
 

@@ -1,0 +1,1058 @@
+/* ================================================================
+   Nera 2.0 Greenfield Design System — Components & Layout
+   Original, purpose-built components adhering to visual guidelines.
+   Approved Palette:
+   - Deep Green: #064E3B
+   - Emerald: #10B981
+   - Electric Blue: #3B82F6
+   - Navy: #0F172A
+   - Ivory: #F8FAF7
+   - Slate: #64748B
+   ================================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  min-height: 100%;
+  background-color: var(--bg-ground);
+  color: var(--ivory);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img, svg {
+  display: block;
+  max-width: 100%;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Background Atmosphere Glow */
+.nera-atmosphere {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: 
+    radial-gradient(ellipse 70% 35% at 50% -10%, rgba(6, 78, 59, 0.40), transparent 70%),
+    radial-gradient(ellipse 50% 25% at 85% 50%, rgba(59, 130, 246, 0.14), transparent 70%),
+    radial-gradient(ellipse 50% 25% at 15% 75%, rgba(16, 185, 129, 0.10), transparent 70%);
+}
+
+.nera-page-container {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.nera-content-wrapper {
+  flex: 1 0 auto;
+  max-width: var(--max-w-content);
+  margin: 0 auto;
+  padding: var(--space-8) var(--gutter) var(--space-16);
+  width: 100%;
+}
+
+/* ================================================================
+   Navigation Shell
+   ================================================================ */
+.nera-nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: var(--header-height);
+  background: rgba(7, 13, 20, 0.88);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+}
+
+.nera-nav-inner {
+  max-width: var(--max-w-content);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+
+.nera-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.nera-nav-brand img {
+  height: 34px;
+  width: auto;
+}
+
+.nera-nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  list-style: none;
+}
+
+.nera-nav-link {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--slate-light);
+  transition: color var(--dur-fast) var(--ease-smooth);
+  position: relative;
+  padding: var(--space-2) 0;
+}
+
+.nera-nav-link:hover,
+.nera-nav-link.active {
+  color: var(--ivory);
+}
+
+.nera-nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--grad-ribbon);
+  border-radius: var(--radius-full);
+}
+
+.nera-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.nera-nav-toggle-btn {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--ivory);
+  font-size: 1.25rem;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.nera-nav-mobile-drawer {
+  position: absolute;
+  top: var(--header-height);
+  left: 0;
+  right: 0;
+  background: rgba(7, 13, 20, 0.98);
+  border-bottom: 1px solid var(--border-card);
+  padding: 20px 24px;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(20px);
+}
+
+.nera-mobile-nav-link {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ivory-dim);
+  padding: 10px 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: color 0.15s ease;
+}
+
+.nera-mobile-nav-link:hover,
+.nera-mobile-nav-link:focus {
+  color: var(--emerald-light);
+}
+
+.nera-mobile-nav-link:last-child {
+  border-bottom: none;
+}
+
+/* ================================================================
+   Buttons
+   ================================================================ */
+.nera-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 10px 22px;
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--dur-base) var(--ease-spring);
+  text-decoration: none;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.nera-btn:disabled, .nera-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.nera-btn-primary {
+  background: var(--grad-ribbon);
+  color: #070D14;
+  font-weight: 700;
+  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.35);
+}
+
+.nera-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 26px rgba(16, 185, 129, 0.5), 0 0 14px rgba(59, 130, 246, 0.4);
+}
+
+.nera-btn-primary:active {
+  transform: translateY(0);
+}
+
+.nera-btn-secondary {
+  background: var(--bg-surface-elevated);
+  color: var(--ivory);
+  border-color: var(--border-card);
+}
+
+.nera-btn-secondary:hover {
+  background: var(--bg-surface-overlay);
+  border-color: var(--electric-blue);
+  transform: translateY(-1px);
+}
+
+.nera-btn-ghost {
+  background: transparent;
+  color: var(--slate-light);
+}
+
+.nera-btn-ghost:hover {
+  color: var(--ivory);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nera-btn-sm {
+  padding: 6px 14px;
+  font-size: 0.8125rem;
+  border-radius: var(--radius-sm);
+}
+
+.nera-btn-lg {
+  padding: 14px 28px;
+  font-size: 1.0625rem;
+  border-radius: var(--radius-lg);
+}
+
+/* ================================================================
+   Cards & Surfaces
+   ================================================================ */
+.nera-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-card);
+  transition: transform var(--dur-base) var(--ease-spring), border-color var(--dur-base) var(--ease-smooth);
+}
+
+.nera-card-interactive {
+  cursor: pointer;
+}
+
+.nera-card-interactive:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-blue-glow);
+  box-shadow: var(--shadow-elevated), 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+.nera-card-highlight {
+  border-color: var(--border-emerald-glow);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.07) 0%, rgba(11, 19, 31, 1) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.nera-card-highlight::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--grad-ribbon);
+}
+
+/* ================================================================
+   Badges & Pills
+   ================================================================ */
+.nera-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--ivory);
+}
+
+.nera-badge-emerald {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: var(--emerald-light);
+}
+
+.nera-badge-blue {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: var(--electric-blue-light);
+}
+
+.nera-badge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--emerald);
+}
+
+/* ================================================================
+   Forms & Controls
+   ================================================================ */
+.nera-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.nera-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ivory-dim);
+}
+
+.nera-input, .nera-select, .nera-textarea {
+  background: var(--bg-ground);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  color: var(--ivory);
+  padding: 12px 16px;
+  font-size: 0.9375rem;
+  transition: border-color var(--dur-fast) var(--ease-smooth), box-shadow var(--dur-fast) var(--ease-smooth);
+  width: 100%;
+}
+
+.nera-input:focus, .nera-select:focus, .nera-textarea:focus {
+  outline: none;
+  border-color: var(--electric-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+.nera-input::placeholder, .nera-textarea::placeholder {
+  color: var(--slate);
+}
+
+.nera-select option {
+  background: var(--bg-surface-elevated);
+  color: var(--ivory);
+}
+
+/* ================================================================
+   Hero Section — Split Canvas Composition
+   ================================================================ */
+.nera-hero-split {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: var(--space-10);
+  align-items: center;
+  padding: var(--space-10) 0 var(--space-12);
+}
+
+.nera-hero-title {
+  font-size: clamp(2.4rem, 4.5vw, 3.8rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin: var(--space-4) 0;
+  color: #FFFFFF;
+}
+
+.nera-hero-title .gradient-text {
+  background: var(--grad-ribbon);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.nera-hero-sub {
+  font-size: clamp(1.0625rem, 1.8vw, 1.25rem);
+  color: var(--slate-light);
+  line-height: 1.6;
+  margin-bottom: var(--space-8);
+}
+
+.nera-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+/* ================================================================
+   Nera Business Automation Orchestration Network
+   Visualizes: BUSINESS ACTIVITY → NERA ORCHESTRATION → AUTOMATED WORKFLOWS → COMPLETED OUTCOMES
+   ================================================================ */
+.operating-canvas {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-2xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-elevated);
+  position: relative;
+}
+
+.canvas-header {
+  padding: 14px 20px;
+  background: var(--bg-surface-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.canvas-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* 4-Stage Operational Pipeline Track */
+.pipeline-track {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  background: var(--bg-ground);
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  position: relative;
+}
+
+.pipeline-step {
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+  position: relative;
+  transition: all var(--dur-base) var(--ease-smooth);
+}
+
+.pipeline-step.active {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: var(--emerald);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+}
+
+.pipeline-step-num {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--slate);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.pipeline-step.active .pipeline-step-num {
+  color: var(--emerald-light);
+  font-weight: 700;
+}
+
+.pipeline-step-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ivory);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Central Orchestration Network Canvas */
+.orchestration-network {
+  background: radial-gradient(circle at center, rgba(16, 185, 129, 0.08) 0%, rgba(7, 13, 20, 0.95) 70%);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-xl);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.orchestration-core {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(11, 19, 43, 0.85);
+  border: 1px solid var(--border-emerald-glow);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.2);
+  text-align: center;
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.orchestration-emblem-wrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(59, 130, 246, 0.25));
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+  margin-bottom: 8px;
+}
+
+.orchestration-nodes-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.node-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: all var(--dur-base) var(--ease-smooth);
+}
+
+.node-card.active {
+  border-color: rgba(59, 130, 246, 0.6);
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 0 14px rgba(59, 130, 246, 0.2);
+}
+
+.node-card-tag {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--electric-blue-light);
+  text-transform: uppercase;
+}
+
+.node-card-name {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--ivory);
+}
+
+.node-card-status {
+  font-size: 0.6875rem;
+  color: var(--emerald-light);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Live Operational Task Stream Ticker */
+.task-ticker {
+  background: var(--bg-ground);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ivory-dim);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.task-ticker-badge {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--emerald-light);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.task-ticker-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--slate-light);
+}
+
+.canvas-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  background: var(--bg-ground);
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+}
+
+.metric-box {
+  text-align: center;
+}
+
+.metric-val {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--emerald-light);
+}
+
+.metric-lbl {
+  font-size: 0.75rem;
+  color: var(--slate);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Capabilities Matrix & Status System */
+.capability-matrix-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.capability-matrix-table th {
+  background: var(--bg-surface-elevated);
+  padding: 14px 20px;
+  text-align: left;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--slate-light);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.capability-matrix-table td {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.875rem;
+  color: var(--ivory);
+}
+
+.capability-matrix-table tr:last-child td {
+  border-bottom: none;
+}
+
+.badge-status-verified {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--emerald-light);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badge-status-config {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--electric-blue-light);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badge-status-planned {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--slate-light);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ================================================================
+   Product Architecture Grid
+   ================================================================ */
+.nera-product-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-8);
+  margin-bottom: var(--space-10);
+}
+
+.workforce-banner-card {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.4) 0%, rgba(11, 19, 31, 0.95) 50%, rgba(15, 23, 42, 0.8) 100%);
+  border: 1px solid var(--border-emerald-glow);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-8);
+  position: relative;
+  overflow: hidden;
+}
+
+.workforce-banner-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--grad-ribbon);
+}
+
+/* ================================================================
+   Chat / Agent Simulation HUD
+   ================================================================ */
+.nera-chat-hud {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-2xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-elevated);
+}
+
+.nera-chat-hud-header {
+  padding: var(--space-4) var(--space-6);
+  background: var(--bg-surface-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nera-chat-hud-body {
+  padding: var(--space-6);
+  min-height: 340px;
+  max-height: 480px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.nera-chat-hud-footer {
+  padding: var(--space-4) var(--space-6);
+  background: var(--bg-surface-elevated);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.bubble {
+  max-width: 84%;
+  padding: 12px 18px;
+  border-radius: var(--radius-lg);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.bubble-user {
+  align-self: flex-end;
+  background: var(--bg-surface-overlay);
+  border: 1px solid var(--border-card);
+  color: var(--ivory);
+  border-bottom-right-radius: var(--radius-xs);
+}
+
+.bubble-agent {
+  align-self: flex-start;
+  background: rgba(6, 78, 59, 0.35);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--ivory);
+  border-bottom-left-radius: var(--radius-xs);
+}
+
+.bubble-agent-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--emerald-light);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* ================================================================
+   Tabs & Selectors
+   ================================================================ */
+.nera-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--bg-surface-elevated);
+  padding: var(--space-1);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  width: fit-content;
+}
+
+.nera-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--slate-light);
+  padding: 8px 18px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-smooth);
+}
+
+.nera-tab-btn.active {
+  background: var(--bg-surface);
+  color: var(--ivory);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* ================================================================
+   Typography & Monospace
+   ================================================================ */
+.nera-mono {
+  font-family: var(--font-mono);
+}
+
+.nera-price-tag {
+  font-family: var(--font-mono);
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: var(--ivory);
+  letter-spacing: -0.03em;
+}
+
+.nera-price-period {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--slate);
+  font-family: var(--font-sans);
+}
+
+/* ================================================================
+   Footer
+   ================================================================ */
+.nera-footer {
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(7, 13, 20, 0.95);
+  padding: var(--space-12) var(--gutter) var(--space-8);
+  margin-top: auto;
+}
+
+.nera-footer-inner {
+  max-width: var(--max-w-content);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: var(--space-8);
+}
+
+.nera-footer-brand p {
+  color: var(--slate);
+  font-size: 0.875rem;
+  margin-top: var(--space-3);
+  max-width: 320px;
+}
+
+.nera-footer-col h4 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--ivory);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-4);
+}
+
+.nera-footer-col ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.nera-footer-col a {
+  font-size: 0.875rem;
+  color: var(--slate-light);
+  transition: color var(--dur-fast) var(--ease-smooth);
+}
+
+.nera-footer-col a:hover {
+  color: var(--emerald-light);
+}
+
+.nera-footer-bottom {
+  max-width: var(--max-w-content);
+  margin: var(--space-8) auto 0;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: var(--slate);
+}
+
+/* Responsive Breakdown across 360px, 390px, 430px, 768px, 1280px, 1440px */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+@media (max-width: 1280px) {
+  .nera-content-wrapper {
+    padding: 0 var(--space-4);
+  }
+}
+
+@media (max-width: 992px) {
+  .nera-hero-split {
+    grid-template-columns: 1fr;
+    text-align: center;
+    gap: var(--space-8);
+  }
+  .nera-hero-actions {
+    justify-content: center;
+  }
+  .nera-product-grid {
+    grid-template-columns: 1fr;
+  }
+  .nera-grid-3 {
+    grid-template-columns: 1fr;
+  }
+  .nera-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .nera-nav-links {
+    display: none;
+  }
+  .nav-login-link {
+    display: none;
+  }
+  .nera-nav-toggle-btn {
+    display: block;
+  }
+  .nera-footer-inner {
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+  }
+  .nera-footer-bottom {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+  .nera-hero-title {
+    font-size: 2.2rem;
+  }
+  .bubble {
+    max-width: 92%;
+  }
+  .pipeline-track {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .orchestration-nodes-grid {
+    grid-template-columns: 1fr;
+  }
+  .workforce-banner-card > div {
+    grid-template-columns: 1fr !important;
+  }
+  /* Build View 2-column layout to 1 column */
+  div[style*="grid-template-columns: 1.35fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+  /* Products card 2-column to 1 column */
+  div[style*="grid-template-columns: 1.25fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .nera-hero-title {
+    font-size: 1.85rem;
+    line-height: 1.15;
+  }
+  .nera-hero-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  .nera-hero-actions a {
+    width: 100%;
+    text-align: center;
+  }
+  .canvas-metrics {
+    grid-template-columns: 1fr;
+  }
+  .pipeline-track {
+    grid-template-columns: 1fr;
+  }
+  .nav-cta-btn {
+    font-size: 0.75rem;
+    padding: 6px 10px;
+  }
+  .nera-card {
+    padding: 20px !important;
+  }
+  .operating-canvas {
+    border-radius: var(--radius-lg);
+  }
+  .canvas-body {
+    padding: 16px;
+  }
+}

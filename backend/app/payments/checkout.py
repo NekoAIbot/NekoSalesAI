@@ -23,7 +23,7 @@ from app.config.logging import get_logger
 from app.config.settings import settings
 from app.models.conversation import STAGE_CLOSED_WON, Conversation
 from app.models.configuration import WorkspaceConfiguration
-from app.models.order import ORDER_PAID, ORDER_PENDING, Order
+from app.models.order import ORDER_ABANDONED, ORDER_PAID, ORDER_PENDING, Order
 from app.models.quote import Quote
 from app.models.workspace_profile import WorkspaceProfile
 from app.payments import Charge, PaystackClient, PaystackError, PaymentsNotConfigured, dump_payload
@@ -128,6 +128,7 @@ class CheckoutService:
         integrations: tuple[str, ...] = (),
         languages: tuple[str, ...] = (),
         monthly_conversations: int = 500,
+        callback_url: str | None = None,
     ) -> Order:
         """Create a pending order and its payment link."""
         # Build the builder_requirement dict if the buyer sent configuration.
@@ -206,8 +207,9 @@ class CheckoutService:
             currency=plan.currency,
             reference=reference,
             callback_url=(
-                f"{settings.PUBLIC_BASE_URL.rstrip('/')}"
-                f"/checkout/return?reference={reference}"
+                callback_url.strip()
+                if callback_url and callback_url.strip().startswith(("http://", "https://"))
+                else f"{settings.PUBLIC_BASE_URL.rstrip('/')}/v2/checkout/return?reference={reference}"
             ),
             metadata={
                 "plan_code": plan.code,

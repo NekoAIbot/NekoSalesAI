@@ -1,16 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Demo — {{ company.name }}{% endblock %}
+{% block title %}Interactive Demo — Nera{% endblock %}
+{% block meta_description %}Watch Nera engage buyers, quote prices line-by-line with provable restraint, and escalate cleanly to human review.{% endblock %}
 
 {% block content %}
-<!-- ============================================================
-   NAVIGATION
-   ============================================================ -->
 <nav class="nav">
   <div class="container nav-inner">
-    <a class="nav-logo" href="/">
-      <span class="nav-logo-mark">N</span>
-      <span>Nera</span>
+    <a class="nav-logo" href="/" aria-label="Nera Home">
+      <img src="/static/brand/nera-logo.svg" alt="Nera" height="28" style="height:28px;width:auto;">
     </a>
     <div class="nav-links">
       <a class="nav-link" href="/products">Products</a>
@@ -21,10 +18,10 @@
       <a class="nav-link" href="/trust">Trust</a>
     </div>
     <div class="nav-actions">
-      <a class="nav-cta magnetic-btn" href="/build">Get started</a>
       <a class="nav-link" href="/login">Sign in</a>
+      <a class="nav-cta magnetic-btn" href="/build">Build your AI</a>
     </div>
-    <button class="nav-mobile-toggle" aria-label="Menu">
+    <button class="nav-mobile-toggle" aria-label="Toggle Menu" type="button">
       <span class="hamburger"><span></span><span></span><span></span></span>
     </button>
   </div>
@@ -37,7 +34,7 @@
       <a class="nav-mobile-link" href="/pricing">Pricing</a>
       <a class="nav-mobile-link" href="/trust">Trust</a>
       <a class="nav-mobile-link" href="/login">Sign in</a>
-      <a class="nav-mobile-link" href="/build">Get started</a>
+      <a class="nav-mobile-link nav-mobile-cta" href="/build">Build your AI</a>
     </div>
   </div>
 </nav>
@@ -108,45 +105,51 @@
   <div class="container footer-inner">
     <div>
       <div class="footer-brand">
-        <span class="footer-brand-mark">N</span>
-        NekoSalesAI
+        <img src="/static/brand/nera-logo.svg" alt="Nera" height="26" style="height:26px;width:auto;">
       </div>
-      <div style="color:var(--ink-3);font-size:0.78rem;line-height:1.5;margin-top:4px;">
-        Nera — the AI workforce for serious businesses.
+      <div style="color:var(--ink-3);font-size:0.82rem;line-height:1.6;margin-top:8px;">
+        Nera — AI-Powered Business Automation.<br>
+        Automate the work behind your business.
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;font-size:0.75rem;color:var(--emerald);">
+        <span>Built for Growth</span>
+        <span>·</span>
+        <span>Designed for People</span>
       </div>
     </div>
     <div>
-      <div class="footer-col-title">Product</div>
+      <div class="footer-col-title">AI Agents</div>
       <div class="footer-links">
-        <a class="footer-link" href="/">Home</a>
-        <a class="footer-link" href="/products">Products</a>
-        <a class="footer-link" href="/workforce">Workforce</a>
-        <a class="footer-link" href="/demo">Demo</a>
-        <a class="footer-link" href="/build">Build</a>
+        <a class="footer-link" href="/products">All Products</a>
+        <a class="footer-link" href="/products">AI Sales Representative</a>
+        <a class="footer-link" href="/products">AI Support Agent</a>
+        <a class="footer-link" href="/workforce">Unified Workforce</a>
+        <a class="footer-link" href="/build">Build Your Own</a>
       </div>
     </div>
     <div>
       <div class="footer-col-title">Company</div>
       <div class="footer-links">
+        <a class="footer-link" href="/demo">Interactive Demo</a>
         <a class="footer-link" href="/pricing">Pricing</a>
-        <a class="footer-link" href="/trust">Trust</a>
-        <a class="footer-link" href="/login">Sign in</a>
+        <a class="footer-link" href="/trust">Trust &amp; Restraint</a>
+        <a class="footer-link" href="/login">Customer Sign In</a>
       </div>
     </div>
     <div>
-      <div class="footer-col-title">Status</div>
+      <div class="footer-col-title">System Status</div>
       <div class="footer-links">
         <span class="footer-link" style="color:var(--signal-live);cursor:default;">
-          <span class="status-live-dot" style="display:inline;width:6px;height:6px;margin-right:5px;vertical-align:middle;"></span>
+          <span class="status-live-dot" style="display:inline-block;width:6px;height:6px;margin-right:6px;vertical-align:middle;background:var(--emerald);border-radius:50%;"></span>
           All systems operational
         </span>
-        <span class="footer-link" style="cursor:default;color:var(--ink-3);">Pricing · ₦</span>
+        <span class="footer-link" style="cursor:default;color:var(--ink-3);">Test mode active · ₦</span>
       </div>
     </div>
   </div>
   <div class="footer-bottom">
-    <span>&copy; NekoSalesAI. Nera is the AI workforce for businesses.</span>
-    <span class="mono" style="font-size:0.6rem;letter-spacing:0.1em;">PROVABLE RESTRAINT</span>
+    <span>&copy; {{ now.year if now else '2026' }} Nera. All rights reserved.</span>
+    <span class="mono" style="font-size:0.65rem;letter-spacing:0.12em;">PROVABLE RESTRAINT</span>
   </div>
 </footer>
 {% endblock %}

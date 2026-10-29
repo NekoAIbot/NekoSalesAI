@@ -425,6 +425,8 @@ def test_provisioning_creates_an_admin_login_for_the_buyer(db, paid_order):
     assert user.organization_id == result.profiles[0].organization_id
     assert result.temporary_password
     assert user.password_hash != result.temporary_password
+    from app.core.security import verify_password
+    assert verify_password(result.temporary_password, user.password_hash) is True
 
 
 # ---------- delivering a two-product purchase ----------

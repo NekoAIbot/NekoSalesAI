@@ -29,6 +29,10 @@ from app.models import Organization
 # both slow and non-deterministic.
 settings.TESTING = True
 
+# The suite uses the memory transport by default so no test can quietly connect
+# to SMTP or post to the internet, regardless of the developer's .env.
+settings.MAIL_BACKEND = "memory"
+
 
 @pytest.fixture
 def db_engine():

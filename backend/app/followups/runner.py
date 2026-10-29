@@ -33,8 +33,19 @@ from sqlalchemy.orm import Session
 from app.config.logging import configure_logging, get_logger
 from app.database.session import SessionLocal
 from app.followups.dispatcher import FollowUpDispatcher
-from app.followups.service import FollowUpSendError, FollowUpService
-from app.models.follow_up import STATUS_SCHEDULED, STATUS_SENT, FollowUp
+from app.followups.service import (
+    FollowUpClaimConflict,
+    FollowUpSendError,
+    FollowUpService,
+    reclaim_stale_claims,
+)
+from app.models.follow_up import (
+    STATUS_CANCELLED,
+    STATUS_SCHEDULED,
+    STATUS_SENDING,
+    STATUS_SENT,
+    FollowUp,
+)
 from app.models.workspace_profile import WorkspaceProfile
 
 logger = get_logger(__name__)
@@ -48,6 +59,7 @@ class RunReport:
     sent: int = 0
     cancelled: int = 0
     failed: int = 0
+    in_flight: int = 0
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -55,10 +67,15 @@ class RunReport:
         return self.failed == 0
 
     def summary(self) -> str:
-        return (
-            f"{self.due} due, {self.sent} sent, "
-            f"{self.cancelled} cancelled, {self.failed} failed"
-        )
+        parts = [
+            f"{self.due} due",
+            f"{self.sent} sent",
+            f"{self.cancelled} cancelled",
+            f"{self.failed} failed",
+        ]
+        if self.in_flight > 0:
+            parts.append(f"{self.in_flight} in-flight")
+        return ", ".join(parts)
 
 
 def due_across_organizations(
@@ -73,6 +90,7 @@ def due_across_organizations(
     rather than loosening the scoped method others depend on.
     """
     moment = now or datetime.now(timezone.utc)
+    reclaim_stale_claims(db, now=moment)
 
     return list(
         db.execute(
@@ -141,6 +159,16 @@ def run_due(
 
         try:
             result = worker.send(follow_up)
+        except FollowUpClaimConflict as exc:
+            # Another worker claimed or is actively processing this follow-up.
+            # This is benign concurrency / lease contention, not a delivery failure.
+            report.in_flight += 1
+            logger.info(
+                "Follow-up %s in-flight / claimed by another worker: %s",
+                follow_up.id,
+                exc,
+            )
+            continue
         except FollowUpSendError as exc:
             # Left scheduled on purpose. A transient mail failure should be
             # retried by the next run, and marking it sent would lose the
@@ -167,6 +195,14 @@ def run_due(
             report.errors.append(f"{follow_up.id}: still scheduled after send")
         elif result.status == STATUS_SENT:
             report.sent += 1
+        elif result.status == STATUS_SENDING:
+            # Never classify STATUS_SENDING as cancelled.
+            # If the row is still sending (e.g. concurrent lease or salvage ambiguity),
+            # count it as in_flight.
+            report.in_flight += 1
+            logger.info("Follow-up %s remains in sending lease", follow_up.id)
+        elif result.status == STATUS_CANCELLED:
+            report.cancelled += 1
         else:
             report.cancelled += 1
 

@@ -5,9 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.config.settings import settings
 from app.database.session import get_db
+from app.models.user import User
 from app.repositories.user_repository import UserRepository
 
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
@@ -40,3 +42,23 @@ def get_current_user(
         )
 
     return user
+
+
+def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_optional),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Optional authenticated user without raising 401 when token is absent."""
+    if not credentials or not credentials.credentials:
+        return None
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        user_id = int(payload["sub"])
+    except (JWTError, KeyError, ValueError):
+        return None
+
+    return UserRepository(db).get_by_id(user_id)

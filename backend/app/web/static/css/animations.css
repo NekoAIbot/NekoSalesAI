@@ -1,0 +1,239 @@
+/* ================================================================
+   Nera 2.0 Greenfield Design System — Complete Animation System
+   - Lightweight, GPU-accelerated (transform, opacity)
+   - Mobile-optimized for Termux / Android devices
+   - Metaphor: Business Activity -> Nera Orchestration -> Automated Workflows -> Completed Outcomes
+   - Full support for prefers-reduced-motion
+   ================================================================ */
+
+/* Core Motion Keyframes */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale3d(0.96, 0.96, 1);
+  }
+  to {
+    opacity: 1;
+    transform: scale3d(1, 1, 1);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translate3d(24px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ribbonShimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes pulseGlowEmerald {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(16, 185, 129, 0.5), 0 0 8px rgba(59, 130, 246, 0.3);
+  }
+}
+
+@keyframes pulseGlowBlue {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(59, 130, 246, 0.5), 0 0 8px rgba(16, 185, 129, 0.3);
+  }
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.6;
+  }
+}
+
+@keyframes floatGentle {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -6px, 0); }
+}
+
+@keyframes flowPulseTrack {
+  0% { stroke-dashoffset: 60; }
+  100% { stroke-dashoffset: 0; }
+}
+
+@keyframes nodeActivePulse {
+  0%, 100% {
+    border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+  }
+  50% {
+    border-color: rgba(59, 130, 246, 0.8);
+    box-shadow: 0 0 24px rgba(59, 130, 246, 0.4), 0 0 8px rgba(16, 185, 129, 0.4);
+  }
+}
+
+@keyframes dataPacketMove {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translate3d(100%, 0, 0); opacity: 0; }
+}
+
+@keyframes statusBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes skeletonShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes stageRingPulse {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* Utility Animation Classes */
+.anim-fade-in-up {
+  animation: fadeInUp var(--dur-slow, 400ms) var(--ease-spring, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+}
+
+.anim-fade-in {
+  animation: fadeIn var(--dur-base, 250ms) var(--ease-smooth, ease) forwards;
+}
+
+.anim-scale-in {
+  animation: scaleIn var(--dur-base, 250ms) var(--ease-spring, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+}
+
+.anim-spin {
+  animation: spin 1s linear infinite;
+}
+
+.anim-float {
+  animation: floatGentle 4s ease-in-out infinite;
+}
+
+.anim-shimmer {
+  background-size: 200% 200%;
+  animation: ribbonShimmer 6s ease infinite;
+}
+
+.anim-pulse-dot {
+  animation: pulseDot 2s ease-in-out infinite;
+}
+
+.anim-pulse-glow {
+  animation: pulseGlowEmerald 3s ease-in-out infinite;
+}
+
+.anim-pulse-blue {
+  animation: pulseGlowBlue 3s ease-in-out infinite;
+}
+
+.anim-flow-track {
+  stroke-dasharray: 6 4;
+  animation: flowPulseTrack 2s linear infinite;
+}
+
+.anim-node-pulse {
+  animation: nodeActivePulse 3s ease-in-out infinite;
+}
+
+.anim-status-blink {
+  animation: statusBlink 1.5s ease-in-out infinite;
+}
+
+.anim-skeleton {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.8s infinite;
+}
+
+/* Staggered Reveals for Lists & Grids */
+.anim-stagger-1 { animation-delay: 60ms; }
+.anim-stagger-2 { animation-delay: 120ms; }
+.anim-stagger-3 { animation-delay: 180ms; }
+.anim-stagger-4 { animation-delay: 240ms; }
+.anim-stagger-5 { animation-delay: 300ms; }
+
+/* Interactive Card & Button Micro-interactions */
+.anim-card-interactive {
+  transition: transform var(--dur-fast, 150ms) var(--ease-smooth, ease),
+              box-shadow var(--dur-fast, 150ms) var(--ease-smooth, ease),
+              border-color var(--dur-fast, 150ms) var(--ease-smooth, ease);
+  will-change: transform;
+}
+
+.anim-card-interactive:hover {
+  transform: translate3d(0, -3px, 0);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 0 16px rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+/* Pipeline Stage Stepper Active Animations */
+.pipeline-step.active .pipeline-step-num {
+  animation: stageRingPulse 2.5s infinite;
+}
+
+/* Form Input Focus Rings */
+.nera-input-animated {
+  transition: border-color var(--dur-fast, 150ms) ease,
+              box-shadow var(--dur-fast, 150ms) ease;
+}
+
+.nera-input-animated:focus {
+  border-color: var(--electric-blue, #3B82F6) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25) !important;
+}
+
+/* Toast & Notification Micro-animations */
+.nera-toast-enter {
+  animation: slideInRight var(--dur-base, 250ms) var(--ease-spring, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+}
+
+/* Reduced motion accessibility override */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

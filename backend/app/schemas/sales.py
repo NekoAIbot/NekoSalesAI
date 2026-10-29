@@ -4,11 +4,73 @@ The visitor-facing shapes never expose the integer conversation id or the
 organization id — a public chat widget gets the opaque token and nothing else.
 """
 
+import re
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.sales.reasoning import Reasoning
+
+
+def sanitize_customer_body(text: str) -> str:
+    """Sanitize any model output before returning to customer or saving to conversation.
+    Strips chain-of-thought, thinking tags, internal planning, prompt leaks,
+    unclosed tags, and malformed internal blocks.
+    """
+    if not text:
+        return ""
+
+    # 1. Strip paired thinking / reasoning / scratchpad / internal tags
+    cleaned = re.sub(
+        r"<(think|thought|reasoning|scratchpad|internal)>[\s\S]*?</\1>",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\[(think|thought|reasoning|scratchpad|internal)\][\s\S]*?\[/\1\]",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+
+    # 2. Strip unclosed opening tags that run to the end of the string (e.g. truncated streaming)
+    cleaned = re.sub(
+        r"<(think|thought|reasoning|scratchpad|internal)>[\s\S]*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\[(think|thought|reasoning|scratchpad|internal)\][\s\S]*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+
+    # 3. Strip any stray dangling tag remnants
+    cleaned = re.sub(
+        r"</?(think|thought|reasoning|scratchpad|internal)>",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\[/?(think|thought|reasoning|scratchpad|internal)\]",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+
+    # 4. Strip untagged debug/internal prefixes if model hallucinated internal monologue labels
+    cleaned = re.sub(
+        r"(?m)^(?:Internal\s+(?:Reasoning|Monologue|Thoughts?)|System\s+Prompt|Rule\s+Evaluation):\s*.*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+
+    return cleaned.strip()
 
 
 class ReasoningOut(BaseModel):
@@ -43,13 +105,14 @@ class MessageOut(BaseModel):
     reasoning: ReasoningOut | None = None
 
     @classmethod
-    def from_model(cls, message) -> "MessageOut":
+    def from_model(cls, message, include_reasoning: bool = False) -> "MessageOut":
+        sanitized = sanitize_customer_body(message.body) if message.role == "agent" else message.body
         return cls(
             id=message.id,
             role=message.role,
-            body=message.body,
+            body=sanitized,
             created_at=message.created_at,
-            reasoning=ReasoningOut.from_json(message.reasoning_json),
+            reasoning=ReasoningOut.from_json(message.reasoning_json) if include_reasoning else None,
         )
 
 
@@ -75,7 +138,7 @@ class ConversationOut(BaseModel):
     messages: list[MessageOut] = Field(default_factory=list)
 
     @classmethod
-    def from_model(cls, conversation, messages) -> "ConversationOut":
+    def from_model(cls, conversation, messages, include_reasoning: bool = False) -> "ConversationOut":
         return cls(
             token=conversation.public_token,
             stage=conversation.stage,
@@ -83,7 +146,7 @@ class ConversationOut(BaseModel):
             visitor_email=conversation.visitor_email,
             visitor_company=conversation.visitor_company,
             interested_plan_code=conversation.interested_plan_code,
-            messages=[MessageOut.from_model(m) for m in messages],
+            messages=[MessageOut.from_model(m, include_reasoning=include_reasoning) for m in messages],
         )
 
 
