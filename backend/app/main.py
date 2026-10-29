@@ -127,6 +127,28 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
+# The new vanilla-JS app is served for public and workspace page paths. Keep the
+# original templates and frontend/src-legacy available, while API routes remain
+# mounted above this catch-all page set.
+NEW_APP_INDEX = FRONTEND_DIR / "app" / "index.html"
+
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/products", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/pricing", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/trust", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/signup", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/login", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/build", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/configure", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/dashboard", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/workspace", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/settings", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/checkout/return", methods=["GET", "HEAD"], include_in_schema=False)
+async def serve_new_frontend():
+    if NEW_APP_INDEX.is_file():
+        return FileResponse(NEW_APP_INDEX)
+    return JSONResponse(status_code=404, content={"detail": "New frontend index.html not found"})
+
 app.include_router(api_router)
 app.include_router(web_router)
 
@@ -147,7 +169,7 @@ if FRONTEND_DIR.is_dir():
     @app.api_route("/v2", methods=["GET", "HEAD"], include_in_schema=False)
     @app.api_route("/v2/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve_greenfield_frontend(full_path: str = ""):
-        index_file = FRONTEND_DIR / "index.html"
+        index_file = FRONTEND_DIR / "app" / "index.html"
         if index_file.is_file():
             return FileResponse(index_file)
         return JSONResponse(status_code=404, content={"detail": "Frontend index.html not found"})

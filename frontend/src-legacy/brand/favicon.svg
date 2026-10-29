@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="favGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="50%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+  </defs>
+  <!-- Ribbon N for 32x32 -->
+  <path d="M 6 25 V 10 C 6 7 8 5 11 5 C 13 5 15 7 15 9 V 21 C 15 23 17 25 19 25 C 21 25 23 23 23 21 V 7 C 23 6 24 5 25 5 C 26 5 27 6 27 7 V 21 C 27 24 25 27 22 27 C 19 27 17 25 15 23 L 15 11 C 15 9 13 7 11 7 C 9 7 8 8 8 10 V 25 Z" fill="url(#favGrad)"/>
+  <path d="M 27 3 Q 27 6 30 6 Q 27 6 27 9 Q 27 6 24 6 Q 27 6 27 3 Z" fill="#F8FAF7"/>
+</svg>

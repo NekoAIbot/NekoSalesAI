@@ -1,0 +1,146 @@
+/* ================================================================
+   Nera 2.0 Greenfield Design System — Tokens
+   Approved Visual Identity:
+   - Deep Green: #064E3B
+   - Emerald: #10B981
+   - Electric Blue: #3B82F6
+   - Navy: #0F172A
+   - Ivory: #F8FAF7
+   - Slate: #64748B
+   ================================================================ */
+
+:root {
+  /* Brand Palette */
+  --emerald: #10B981;
+  --emerald-light: #34D399;
+  --emerald-dark: #059669;
+  --deep-green: #064E3B;
+  --deep-green-dark: #022c22;
+  --electric-blue: #3B82F6;
+  --electric-blue-light: #60A5FA;
+  --electric-blue-dark: #1D4ED8;
+  --electric-cyan: #06B6D4;
+  --slate: #64748B;
+  --slate-light: #94A3B8;
+  --slate-dark: #334155;
+  --ivory: #F8FAF7;
+  --ivory-dim: #E2E8F0;
+
+  /* Atmospheric Surfaces (Dark Depth) */
+  --bg-ground: #070D14;
+  --bg-surface: #0B131F;
+  --bg-surface-elevated: #111D2E;
+  --bg-surface-overlay: #19273C;
+  --bg-glass: rgba(11, 19, 31, 0.75);
+
+  /* Lines & Borders */
+  --border-subtle: rgba(248, 250, 247, 0.08);
+  --border-card: rgba(248, 250, 247, 0.14);
+  --border-focus: #3B82F6;
+  --border-emerald-glow: rgba(16, 185, 129, 0.4);
+  --border-blue-glow: rgba(59, 130, 246, 0.4);
+
+  /* Brand Signature Gradients */
+  --grad-ribbon: linear-gradient(135deg, #10B981 0%, #06B6D4 45%, #3B82F6 100%);
+  --grad-ribbon-subtle: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.08) 45%, rgba(59, 130, 246, 0.12) 100%);
+  --grad-card-highlight: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.12), transparent 70%);
+  --grad-surface-atm: radial-gradient(ellipse 70% 50% at 50% -20%, rgba(6, 78, 59, 0.28), transparent 70%);
+
+  /* Signals */
+  --signal-success: #10B981;
+  --signal-info: #3B82F6;
+  --signal-warning: #F59E0B;
+  --signal-error: #EF4444;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+  /* Spacing Scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Radii Scale */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-full: 9999px;
+
+  /* Shadows with ambient luminescence */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border-card);
+  --shadow-elevated: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border-card);
+  --shadow-glow-emerald: 0 0 24px rgba(16, 185, 129, 0.25);
+  --shadow-glow-blue: 0 0 24px rgba(59, 130, 246, 0.25);
+
+  /* Layout */
+  --max-w-content: 1200px;
+  --header-height: 72px;
+  --gutter: clamp(16px, 4vw, 36px);
+
+  /* Transitions */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-slow: 400ms;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: var(--font-sans);
+  background-color: var(--bg-ground);
+  color: var(--ivory);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--bg-ground);
+  color: var(--ivory);
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+::selection {
+  background: rgba(16, 185, 129, 0.3);
+  color: #FFFFFF;
+}

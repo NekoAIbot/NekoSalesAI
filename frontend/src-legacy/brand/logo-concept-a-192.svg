@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" fill="none" aria-label="Nera — Concept A mobile icon">
+  <rect width="192" height="192" rx="38" fill="#1c5d43"/>
+  <circle cx="60" cy="60" r="18" fill="#fbfaf9" opacity="0.95"/>
+  <circle cx="132" cy="60" r="18" fill="#fbfaf9" opacity="0.5"/>
+  <circle cx="60" cy="132" r="18" fill="#fbfaf9" opacity="0.5"/>
+  <circle cx="132" cy="132" r="18" fill="#fbfaf9"/>
+  <path d="M60 60 L132 60 M60 60 L60 132 M132 132 L60 132 M132 132 L132 60" stroke="#fbfaf9" stroke-width="6" opacity="0.25"/>
+  <circle cx="96" cy="96" r="9" fill="#fbfaf9"/>
+</svg>
