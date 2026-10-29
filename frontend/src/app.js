@@ -22,6 +22,8 @@ import { TrustView } from './views/TrustView.js';
 import { AuthView } from './views/AuthView.js';
 import { DashboardView } from './views/DashboardView.js';
 import { CheckoutReturnView } from './views/CheckoutReturnView.js';
+import { SettingsView } from './views/SettingsView.js';
+import { WorkspaceView } from './views/WorkspaceView.js';
 
 class App {
   constructor() {
@@ -71,6 +73,8 @@ class App {
     this.router.register('/login', AuthView);
     this.router.register('/signup', AuthView);
     this.router.register('/dashboard', DashboardView);
+    this.router.register('/workspace', WorkspaceView);
+    this.router.register('/settings', SettingsView);
     this.router.register('/checkout/return', CheckoutReturnView);
 
     // 3. Check for existing session token

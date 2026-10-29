@@ -31,6 +31,12 @@ export class DashboardView {
           </div>
         </div>
 
+        <nav class="account-tabs" aria-label="Account pages">
+          <a href="/dashboard" data-link="/dashboard" class="active" aria-current="page">Dashboard</a>
+          <a href="/workspace" data-link="/workspace">Workspace</a>
+          <a href="/settings" data-link="/settings">Settings</a>
+        </nav>
+
         <!-- Automation Operational Status HUD -->
         <div class="canvas-metrics" style="margin-bottom: 32px;">
           <div class="metric-box">

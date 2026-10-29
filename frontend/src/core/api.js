@@ -189,6 +189,20 @@ class ApiClient {
     return this.request('/api/v1/auth/me');
   }
 
+  async updateProfile({ full_name, company_name }) {
+    return this.request('/api/v1/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify({ full_name, company_name })
+    });
+  }
+
+  async changePassword(current_password, new_password) {
+    return this.request('/api/v1/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password, new_password })
+    });
+  }
+
   async getWorkspaceProfiles() {
     return this.request('/api/v1/organizations/workspace/profiles');
   }

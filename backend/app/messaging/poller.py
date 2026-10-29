@@ -365,7 +365,14 @@ class TelegramPoller:
             service = self._service_factory(db)
 
             for update in updates:
+                failures_before = report.failed
                 self._handle(service, db, organization_id, update, report)
+
+                # A failed update must not be acknowledged to Telegram. Stop this
+                # batch so a later update cannot move the offset past it; the next
+                # poll replays the failed update and any later ones in order.
+                if report.failed > failures_before:
+                    break
 
                 # After handling, never before. A crash between these two lines
                 # replays the message; a crash after an early advance would lose

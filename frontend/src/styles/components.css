@@ -1056,3 +1056,31 @@ html, body {
     padding: 16px;
   }
 }
+
+/* Account area */
+.account-page { max-width: var(--max-w-content); margin: 0 auto; padding: var(--space-10) var(--gutter); }
+.account-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); margin-bottom: var(--space-6); }
+.account-heading h1 { font-size: clamp(2rem, 4vw, 2.8rem); margin: var(--space-3) 0 var(--space-2); }
+.account-heading h2 { margin-bottom: var(--space-2); }
+.account-heading p, .account-card-copy { color: var(--slate-light); }
+.account-tabs { display: flex; gap: var(--space-2); border-bottom: 1px solid var(--border-card); margin: var(--space-6) 0 var(--space-8); }
+.account-tabs a { padding: 12px 18px; color: var(--slate-light); border-bottom: 2px solid transparent; font-weight: 600; }
+.account-tabs a:hover, .account-tabs a.active { color: var(--ivory); border-color: var(--emerald); }
+.account-settings-grid { gap: var(--space-6); }
+.account-settings-grid .nera-card { align-self: start; }
+.settings-status { min-height: 1.5em; margin-top: var(--space-3); color: var(--emerald-light); }
+.notification-toggle { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-5) 0; color: var(--ivory-dim); }
+.notification-toggle input { accent-color: var(--emerald); width: 18px; height: 18px; }
+.workspace-profile-list { display: grid; gap: var(--space-4); margin-top: var(--space-5); }
+.workspace-profile { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-5); background: var(--bg-surface-elevated); border: 1px solid var(--border-card); border-radius: var(--radius-md); }
+.workspace-profile h3 { margin: var(--space-2) 0; }
+.workspace-profile p, .workspace-profile-meta { color: var(--slate-light); }
+.workspace-empty { text-align: center; padding: var(--space-10) var(--space-4); }
+.workspace-empty p { color: var(--slate-light); margin: var(--space-3) 0 var(--space-5); }
+.nera-nav { position: sticky; top: 0; z-index: 100; }
+@media (max-width: 760px) {
+  .account-heading, .workspace-profile { align-items: flex-start; flex-direction: column; }
+  .account-tabs { overflow-x: auto; }
+  .account-tabs a { white-space: nowrap; }
+  .account-settings-grid { grid-template-columns: 1fr; }
+}
