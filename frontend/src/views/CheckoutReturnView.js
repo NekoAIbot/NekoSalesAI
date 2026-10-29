@@ -110,7 +110,7 @@ export class CheckoutReturnView {
     result.style.display = 'block';
     result.innerHTML = `
       <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid var(--emerald); border-radius: var(--radius-xl); padding: 28px; text-align: center;">
-        <div style="font-size: 2.5rem; margin-bottom: 12px;">✅</div>
+        <svg class="nera-checkmark" viewBox="0 0 32 32" aria-hidden="true" style="width: 52px; height: 52px; margin: 0 auto 12px; fill: none; stroke: var(--emerald-light); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;"><path d="M6 17l7 7L27 8" /></svg>
         <h2 style="font-size: 1.5rem; font-weight: 800; color: var(--emerald-light); margin-bottom: 8px;">
           Settlement Confirmed &amp; Provisioned!
         </h2>

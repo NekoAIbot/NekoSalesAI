@@ -1,3 +1,5 @@
+import { bindMotion } from './motion.js';
+
 /**
  * Nera 2.0 Client-Side Router
  * Supports root (/) and mounted (/v2/) subpaths.
@@ -85,6 +87,8 @@ export class Router {
           console.error('View onMounted error:', e);
         }
       }
+
+      bindMotion(this.mountPoint);
 
       // Smooth scroll to top on navigation
       window.scrollTo({ top: 0, behavior: 'smooth' });
