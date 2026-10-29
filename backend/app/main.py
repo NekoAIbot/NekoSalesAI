@@ -130,6 +130,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # The new vanilla-JS app is served for public and workspace page paths. Keep the
 # original templates and frontend/src-legacy available, while API routes remain
 # mounted above this catch-all page set.
+FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 NEW_APP_INDEX = FRONTEND_DIR / "app" / "index.html"
 
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
@@ -158,7 +159,6 @@ app.mount(
     name="static",
 )
 
-FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 if FRONTEND_DIR.is_dir():
     app.mount(
         "/frontend",
