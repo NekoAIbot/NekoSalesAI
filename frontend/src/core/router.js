@@ -1,4 +1,5 @@
 import { bindMotion } from './motion.js';
+import { store } from './store.js';
 
 /**
  * Nera 2.0 Client-Side Router
@@ -53,12 +54,21 @@ export class Router {
   }
 
   async handleRoute() {
-    const path = this.getCleanPath();
+    const requestedPath = this.getCleanPath();
     const query = this.getQueryParams();
+    let path = requestedPath;
     this.currentPath = path;
 
-    let handler = this.routes[path] || this.routes['/'] || null;
+    const protectedRoutes = new Set(['/build', '/dashboard', '/workspace', '/settings']);
+    const token = window.localStorage.getItem('nera_auth_token');
+    if (protectedRoutes.has(path) && !(store.getState().isAuthenticated && token)) {
+      const returnTo = encodeURIComponent(path + window.location.search);
+      path = '/login';
+      this.currentPath = path;
+      window.history.replaceState({}, '', `${this.basePath}/login?return_to=${returnTo}`);
+    }
 
+    let handler = this.routes[path] || this.routes['/'] || null;
     if (handler && this.mountPoint) {
       if (this.currentView && typeof this.currentView.cleanup === 'function') {
         try {

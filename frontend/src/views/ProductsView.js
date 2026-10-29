@@ -15,10 +15,10 @@ export class ProductsView {
         <section style="text-align: center; margin-bottom: 56px;">
           <div class="nera-badge nera-badge-emerald" style="margin-bottom: 12px;">Specialized Workflow Engines</div>
           <h1 style="font-size: 2.75rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 16px;">
-            AI-Powered <span class="gradient-text">Business Automation Engines</span>
+            The AI Nera <span class="gradient-text">builds for your business</span>
           </h1>
           <p style="color: var(--slate-light); font-size: 1.125rem; max-width: 680px; margin: 0 auto; line-height: 1.6;">
-            Deploy autonomous engines built to execute specific operational workflows: converting inbound buyer demand into revenue or automating tier-1 customer support.
+            Nera currently builds an AI Sales Representative and an AI Support Agent. Each is scoped to a specific job, with quotes based on your requirements.
           </p>
         </section>
 
@@ -27,10 +27,10 @@ export class ProductsView {
           <!-- Product 1: Sales Automation Engine -->
           <div class="nera-card" style="display: grid; grid-template-columns: 1.25fr 1fr; gap: 40px; align-items: center;">
             <div>
-              <div class="nera-badge nera-badge-blue" style="margin-bottom: 12px;">Commercial Conversion Engine</div>
-              <h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 12px;">Nera Sales Automation Engine</h2>
+              <div class="nera-badge nera-badge-blue" style="margin-bottom: 12px;">AI Sales Representative</div>
+              <h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 12px;">AI Sales Representative</h2>
               <p style="color: var(--slate-light); font-size: 1rem; margin-bottom: 24px; line-height: 1.6;">
-                Coordinates and executes the entire inbound sales workflow. Scopes buyer parameters, computes authoritative quotes from published rules, and collects payments via Paystack.
+                Helps handle inbound sales conversations using product and pricing information you provide. Scope the build and review a quote before checkout.
               </p>
 
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px;">
@@ -52,18 +52,13 @@ export class ProductsView {
                 </div>
               </div>
 
-              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 20px;">
-                <span class="nera-price-tag">₦199,000</span>
-                <span class="nera-price-period">/ month base (+ ₦2,500 base volume charge for 500 conv, ₦5/additional)</span>
-              </div>
+              <p style="color: var(--slate-light); margin-bottom: 20px;">Nera quotes this build from the requirements you select.</p>
 
               <div style="display: flex; gap: 12px;">
                 <a href="/build?product=sales_agent" class="nera-btn nera-btn-primary nera-btn-lg" data-link="/build">
-                  Configure Sales Engine
+                  Configure Sales Agent
                 </a>
-                <a href="/demo?agent=sales" class="nera-btn nera-btn-secondary nera-btn-lg" data-link="/demo">
-                  Simulate Sales Flow
-                </a>
+          <a href="/demo?agent=sales" class="nera-btn nera-btn-secondary nera-btn-lg" data-link="/demo">View product demo</a>
               </div>
             </div>
 
@@ -84,10 +79,10 @@ export class ProductsView {
           <!-- Product 2: Support Automation Engine -->
           <div class="nera-card" style="display: grid; grid-template-columns: 1.25fr 1fr; gap: 40px; align-items: center;">
             <div>
-              <div class="nera-badge nera-badge-emerald" style="margin-bottom: 12px;">Customer Care Engine</div>
-              <h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 12px;">Nera Support Automation Engine</h2>
+              <div class="nera-badge nera-badge-emerald" style="margin-bottom: 12px;">AI Support Agent</div>
+              <h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 12px;">AI Support Agent</h2>
               <p style="color: var(--slate-light); font-size: 1rem; margin-bottom: 24px; line-height: 1.6;">
-                Eliminates repetitive post-purchase tasks. Answers inquiries from verified documents, looks up live order and shipping status, triages return requests, and escalates edge cases to your staff.
+                Answers customer questions from the knowledge material you provide, with a path to escalate questions that need a person.
               </p>
 
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px;">
@@ -109,18 +104,13 @@ export class ProductsView {
                 </div>
               </div>
 
-              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 20px;">
-                <span class="nera-price-tag">₦149,000</span>
-                <span class="nera-price-period">/ month base (+ ₦2,500 base volume charge for 500 conv, ₦5/additional)</span>
-              </div>
+              <p style="color: var(--slate-light); margin-bottom: 20px;">Nera quotes this build from the requirements you select.</p>
 
               <div style="display: flex; gap: 12px;">
                 <a href="/build?product=support_agent" class="nera-btn nera-btn-primary nera-btn-lg" data-link="/build">
-                  Configure Support Engine
+                  Configure Support Agent
                 </a>
-                <a href="/demo?agent=support" class="nera-btn nera-btn-secondary nera-btn-lg" data-link="/demo">
-                  Simulate Support Flow
-                </a>
+              <a href="/demo?agent=support" class="nera-btn nera-btn-secondary nera-btn-lg" data-link="/demo">View product demo</a>
               </div>
             </div>
 
@@ -160,18 +150,18 @@ export class ProductsView {
               <tbody>
                 <tr>
                   <td><strong>Deterministic Math Pricing</strong></td>
-                  <td>Available &amp; Verified</td>
+                  <td>Available</td>
                   <td><span class="badge-status-verified">Active in Code (scoping.py)</span></td>
                 </tr>
                 <tr>
                   <td><strong>Paystack Webhook Settlement</strong></td>
-                  <td>Available &amp; Verified</td>
+                  <td>Available</td>
                   <td><span class="badge-status-verified">HMAC SHA512 Verified</span></td>
                 </tr>
                 <tr>
                   <td><strong>Shared Sales-to-Support State</strong></td>
-                  <td>Available &amp; Verified</td>
-                  <td><span class="badge-status-verified">Synchronized Memory</span></td>
+                  <td>Not listed as a current product capability</td>
+                  <td><span class="badge-status-planned">Not claimed</span></td>
                 </tr>
                 <tr>
                   <td><strong>Custom Knowledge Document Grounding</strong></td>
@@ -185,8 +175,8 @@ export class ProductsView {
                 </tr>
                 <tr>
                   <td><strong>ERP Inventory Synchronization</strong></td>
-                  <td>Planned Future Roadmap</td>
-                  <td><span class="badge-status-planned">In Architecture Phase</span></td>
+                  <td>Not listed as a current product capability</td>
+                  <td><span class="badge-status-planned">Not claimed</span></td>
                 </tr>
               </tbody>
             </table>

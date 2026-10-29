@@ -1,10 +1,6 @@
 /**
  * Nera 2.0 Greenfield — Demo Studio View
- * Interactive Automation Simulation Studio — Powered by Nera Brain
- * Features 3 specialized operational modes:
- *  1. Sales Automation Engine (Live backend connection to /api/v1/sales/conversations)
- *  2. Support Automation Engine (Grounded care: order tracking, grounded KB resolution, human escalation)
- *  3. Workforce Pipeline (Synchronized Sales-to-Support handoff with shared context)
+ * Public demos show the two products currently supported by Nera.
  */
 import { api } from '../core/api.js';
 import { store } from '../core/store.js';
@@ -12,7 +8,7 @@ import { store } from '../core/store.js';
 export class DemoView {
   constructor({ router }) {
     this.router = router;
-    this.activeTab = 'sales'; // 'sales' | 'support' | 'workforce'
+    this.activeTab = 'sales'; // 'sales' | 'support'
     this.salesToken = null;
     this.isSubmitting = false;
 
@@ -21,7 +17,7 @@ export class DemoView {
       {
         sender: 'support',
         meta: 'NERA SUPPORT ENGINE • RESOLUTION PIPELINE',
-        text: "Hello! I am Nera's Support Automation Engine, grounded in your operational knowledge base and live order database. You can test an order status lookup (e.g. #ORD-9842), return policy guidelines, or request human escalation."
+        text: "This tab is a visual simulation of the AI Support Agent. It does not connect to a live customer knowledge base or order system."
       }
     ];
 
@@ -47,26 +43,23 @@ export class DemoView {
         <div style="text-align: center; margin-bottom: 32px;">
           <div class="nera-badge nera-badge-emerald" style="margin-bottom: 12px;">
             <span class="nera-badge-dot anim-pulse-dot"></span>
-            Interactive Automation Studio — Powered by Nera Brain
+            Product demo
           </div>
           <h1 style="font-size: 2.25rem; font-weight: 800; letter-spacing: -0.02em;">
-            Experience <span class="gradient-text">Nera Business Automation</span>
+            See the two products <span class="gradient-text">Nera builds today</span>
           </h1>
           <p style="color: var(--slate-light); font-size: 0.9375rem; margin-top: 8px; max-width: 640px; margin-left: auto; margin-right: auto; line-height: 1.6;">
-            Test our live backend pipeline for automated sales scoping, explore grounded support resolutions, or observe synchronized cross-engine handoffs.
+            The sales demo connects to the live sales conversation route. The support tab is a visual simulation, not a live support backend.
           </p>
         </div>
 
         <!-- Tab Selector -->
         <div style="display: flex; justify-content: center; gap: 8px; margin-bottom: 24px; flex-wrap: wrap;">
           <button id="tab-btn-sales" class="nera-btn ${this.activeTab === 'sales' ? 'nera-btn-primary' : 'nera-btn-secondary'}" style="padding: 10px 20px; font-size: 0.875rem;">
-            🎯 Sales Workflow (Live Backend Engine)
+            AI Sales Representative (live)
           </button>
           <button id="tab-btn-support" class="nera-btn ${this.activeTab === 'support' ? 'nera-btn-primary' : 'nera-btn-secondary'}" style="padding: 10px 20px; font-size: 0.875rem;">
-            🛡️ Support Workflow (Interactive Simulation)
-          </button>
-          <button id="tab-btn-workforce" class="nera-btn ${this.activeTab === 'workforce' ? 'nera-btn-primary' : 'nera-btn-secondary'}" style="padding: 10px 20px; font-size: 0.875rem;">
-            🔄 Workforce Pipeline (Interactive Simulation)
+            AI Support Agent (simulation)
           </button>
         </div>
 
@@ -80,7 +73,7 @@ export class DemoView {
               <div style="display: flex; align-items: center; gap: 12px;">
                 <span class="nera-badge-dot anim-pulse-dot"></span>
                 <div>
-                  <strong style="font-size: 0.9375rem;">Nera Sales Automation Engine</strong>
+                  <strong style="font-size: 0.9375rem;">AI Sales Representative</strong>
                   <div style="font-size: 0.75rem; color: var(--emerald-light);">Live Pipeline • /api/v1/sales/conversations</div>
                 </div>
               </div>
@@ -124,8 +117,8 @@ export class DemoView {
               <div style="display: flex; align-items: center; gap: 12px;">
                 <span class="nera-badge-dot" style="background: var(--electric-blue);"></span>
                 <div>
-                  <strong style="font-size: 0.9375rem;">Nera Support Automation Engine</strong>
-                  <div style="font-size: 0.75rem; color: var(--electric-blue-light);">Grounded Knowledge &amp; Live Order Database</div>
+                  <strong style="font-size: 0.9375rem;">AI Support Agent</strong>
+                  <div style="font-size: 0.75rem; color: var(--electric-blue-light);">Support demo • simulated responses</div>
                 </div>
               </div>
               <div style="display: flex; gap: 8px;">
@@ -164,37 +157,6 @@ export class DemoView {
             </div>
           </div>
 
-          <!-- TAB 3: WORKFORCE (SYNCHRONIZED HANDOFF SIMULATION) -->
-          <div id="pane-workforce" style="display: ${this.activeTab === 'workforce' ? 'block' : 'none'};">
-            <!-- HUD Header -->
-            <div class="nera-chat-hud-header">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <span class="nera-badge-dot anim-pulse-dot"></span>
-                <div>
-                  <strong style="font-size: 0.9375rem;">Synchronized Workforce Pipeline</strong>
-                  <div style="font-size: 0.75rem; color: var(--emerald-light);">Sales Acquisition ➔ Paystack Settlement ➔ Support Care</div>
-                </div>
-              </div>
-              <button id="next-workforce-step-btn" class="nera-btn nera-btn-secondary nera-btn-sm">
-                ▶ Trigger Next Pipeline Step
-              </button>
-            </div>
-
-            <!-- Chat Messages Body -->
-            <div id="workforce-chat-messages" class="nera-chat-hud-body" style="min-height: 380px; max-height: 480px;">
-              <!-- Rendered by updateWorkforceChat() -->
-            </div>
-
-            <!-- Chat Footer Note -->
-            <div class="nera-chat-hud-footer" style="display: flex; justify-content: space-between; align-items: center;">
-              <span class="nera-mono" style="font-size: 0.8125rem; color: var(--slate-light);">
-                Shared State Token: <strong style="color: var(--emerald-light);">0 lost customer details across handoffs</strong>
-              </span>
-              <a href="/build?product=workforce_agent" class="nera-btn nera-btn-primary nera-btn-sm" data-link="/build">
-                Deploy Workforce Pipeline
-              </a>
-            </div>
-          </div>
 
         </div>
       </div>
@@ -205,7 +167,6 @@ export class DemoView {
     this.setupTabSwitching();
     this.setupSalesChat();
     this.setupSupportChat();
-    this.setupWorkforceChat();
 
     document.querySelectorAll('[data-link]').forEach(anchor => {
       anchor.addEventListener('click', (e) => {
@@ -217,7 +178,7 @@ export class DemoView {
   }
 
   setupTabSwitching() {
-    const tabs = ['sales', 'support', 'workforce'];
+    const tabs = ['sales', 'support'];
     tabs.forEach(tab => {
       const btn = document.getElementById(`tab-btn-${tab}`);
       if (btn) {
@@ -315,7 +276,7 @@ export class DemoView {
     if (type === 'agent') {
       div.innerHTML = `
         <div class="bubble-agent-meta">
-          <span>NERA SALES ENGINE</span> • <span>AUTHORITATIVE RESPONSE</span>
+          <span>NERA SALES ENGINE</span> • <span>SALES RESPONSE</span>
         </div>
         ${this.formatMarkdown(text)}
       `;
@@ -359,13 +320,13 @@ export class DemoView {
       const lower = text.toLowerCase();
 
       if (lower.includes('9842') || lower.includes('order') || lower.includes('tracking')) {
-        reply = '✅ **Order Status for #ORD-9842:**\n- **Recipient:** SwiftPay Operations (Lagos Island)\n- **Status:** In Transit (Dispatched via GIG Logistics)\n- **Estimated Delivery:** Tomorrow by 2:00 PM WAT\n- **Tracking Token:** `GIG-89410-NG`';
+        reply = 'Example only: an AI Support Agent can answer order-status questions when connected to a business's verified order system.';
       } else if (lower.includes('return') || lower.includes('policy') || lower.includes('refund')) {
-        reply = '📋 **Grounded Knowledge Base Policy:**\nStandard commercial plans offer a 14-day evaluation window. Hardware setups and custom integrations are subject to verified technical defects within 30 days. No restocking fee applies to verified defects.';
+        reply = 'Example only: an AI Support Agent can answer policy questions using material provided by the business.';
       } else if (lower.includes('operator') || lower.includes('human') || lower.includes('agent')) {
-        reply = '👤 **Human Operator Alert Dispatched:**\nI have created escalation ticket **#ESC-4409** and routed this entire conversation history to the on-call support team. An operator will take over shortly.';
+        reply = 'Example only: the AI Support Agent is designed to escalate commercial questions to a person.';
       } else {
-        reply = `I have cross-referenced our knowledge base for: "${text}". Based on your documentation, all standard inquiries are resolved within 2 hours. Would you like me to look up an order number or escalate to your assigned account executive?`;
+        reply = `This support tab is a simulation, so it cannot verify an answer about: "${text}". A deployed Support Agent answers from the business's own provided material.`;
       }
 
       this.supportMessages.push({

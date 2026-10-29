@@ -1,3 +1,5 @@
+import { store } from '../core/store.js';
+
 /**
  * Nera 2.0 Footer Component
  */
@@ -9,59 +11,19 @@ export class Footer {
   render() {
     const el = document.createElement('footer');
     el.className = 'nera-footer';
+    const state = store.getState();
     el.innerHTML = `
       <div class="nera-footer-inner">
         <div class="nera-footer-brand">
           <img src="/frontend/src/brand/nera-logo.svg" alt="Nera" height="32" />
-          <p>
-            <strong>Nera — AI-Powered Business Automation.</strong><br/>
-            Automate the work behind your business. Nera helps coordinate tasks and execute supported workflows, so you can spend less time managing routine operations and more time growing your business.
-          </p>
-          <div style="margin-top: 16px; display: inline-flex; align-items: center; gap: 8px;" class="nera-badge nera-badge-emerald">
-            <span class="nera-badge-dot"></span>
-            Operational • Orchestration Engine
-          </div>
+          <p><strong>Nera builds the AI your business needs, and hands it over working.</strong><br/>Two focused products. Quotes grounded in requirements. No invented capabilities.</p>
+          <div style="margin-top: 16px; display: inline-flex; align-items: center; gap: 8px;" class="nera-badge nera-badge-emerald"><span class="nera-badge-dot"></span> Provable restraint</div>
         </div>
-
-        <div class="nera-footer-col">
-          <h4>Automation Engines</h4>
-          <ul>
-            <li><a href="/products" data-link="/products">Sales Automation (₦199k)</a></li>
-            <li><a href="/products" data-link="/products">Support Automation (₦149k)</a></li>
-            <li><a href="/workforce" data-link="/workforce">Unified Workforce Pipeline</a></li>
-            <li><a href="/demo" data-link="/demo">Live Simulation Studio</a></li>
-          </ul>
-        </div>
-
-        <div class="nera-footer-col">
-          <h4>Platform &amp; Workflows</h4>
-          <ul>
-            <li><a href="/pricing" data-link="/pricing">Deterministic Pricing</a></li>
-            <li><a href="/build" data-link="/build">Workflow Configurator</a></li>
-            <li><a href="/trust" data-link="/trust">Provable Safety &amp; Limits</a></li>
-            <li><a href="/login" data-link="/login">Automation Workspace</a></li>
-          </ul>
-        </div>
-
-        <div class="nera-footer-col">
-          <h4>Execution &amp; Standards</h4>
-          <ul>
-            <li><a href="https://t.me" target="_blank" rel="noopener">Telegram Dispatcher</a></li>
-            <li><a href="https://paystack.com" target="_blank" rel="noopener">Paystack Settlement</a></li>
-            <li><a href="/trust" data-link="/trust">NDPR Data Isolation</a></li>
-            <li><a href="/trust" data-link="/trust">Deterministic Boundaries</a></li>
-          </ul>
-        </div>
+        <div class="nera-footer-col"><h4>Products</h4><ul><li><a href="/products" data-link="/products">AI Sales Representative</a></li><li><a href="/products" data-link="/products">AI Support Agent</a></li><li><a href="/demo" data-link="/demo">Product demo</a></li></ul></div>
+        <div class="nera-footer-col"><h4>Learn</h4><ul><li><a href="/pricing" data-link="/pricing">Pricing</a></li><li><a href="/trust" data-link="/trust">Trust &amp; boundaries</a></li><li><a href="/login" data-link="/login">Sign in</a></li></ul></div>
+        ${state.isAuthenticated ? `<div class="nera-footer-col"><h4>Your workspace</h4><ul><li><a href="/build" data-link="/build">Build</a></li><li><a href="/dashboard" data-link="/dashboard">Dashboard</a></li><li><a href="/workspace" data-link="/workspace">Workspace</a></li><li><a href="/settings" data-link="/settings">Settings</a></li></ul></div>` : ''}
       </div>
-
-      <div class="nera-footer-bottom">
-        <div>&copy; ${new Date().getFullYear()} Nera Technologies Inc. All rights reserved.</div>
-        <div style="display: flex; gap: 16px;">
-          <span>Single Source of Truth Backend</span>
-          <span>•</span>
-          <span>Deterministic Integer Quoting</span>
-        </div>
-      </div>
+      <div class="nera-footer-bottom"><div>&copy; ${new Date().getFullYear()} Nera</div><div><span>Bounded builds</span><span> · </span><span>Deterministic quotes</span></div></div>
     `;
 
     el.querySelectorAll('[data-link]').forEach(anchor => {

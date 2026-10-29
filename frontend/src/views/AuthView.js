@@ -120,7 +120,8 @@ export class AuthView {
           }
           const returnTo = this.query.get('return_to') || this.query.get('next');
           if (returnTo) {
-            this.router.navigate(returnTo);
+            const safeReturnTo = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/dashboard';
+            this.router.navigate(safeReturnTo);
           } else {
             this.router.navigate('/dashboard');
           }
