@@ -123,6 +123,25 @@ class AuthService:
         self.repository = repository
         self.db = db
 
+    def update_profile(self, user, full_name: str | None, company_name: str | None):
+        """Update a user's displayed name and their organization name."""
+        if full_name is not None:
+            user.full_name = full_name.strip()
+        if company_name is not None and company_name.strip() and user.organization:
+            user.organization.name = company_name.strip()
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def change_password(self, user, current_password: str, new_password: str) -> None:
+        """Verify the current password and save a policy-compliant replacement."""
+        if not verify_password(current_password, user.password_hash):
+            raise ValueError("Current password is incorrect.")
+
+        validate_password_policy(new_password)
+        user.password_hash = hash_password(new_password)
+        self.db.commit()
+
     def register(self, data: RegisterRequest):
         if self.repository.email_exists(data.email):
             raise ValueError("Email already exists.")

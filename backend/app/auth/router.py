@@ -154,22 +154,22 @@ def update_profile(
     db: Session = Depends(get_db),
 ):
     """Update profile information (full_name and optional organization company_name)."""
-    if payload.full_name is not None and payload.full_name.strip():
-        current_user.full_name = payload.full_name.strip()
-    if payload.company_name is not None and payload.company_name.strip() and current_user.organization:
-        current_user.organization.name = payload.company_name.strip()
-    db.commit()
-    db.refresh(current_user)
+    service = AuthService(UserRepository(db), db)
+    user = service.update_profile(
+        current_user,
+        payload.full_name,
+        payload.company_name,
+    )
     return UserResponse(
-        id=current_user.id,
-        full_name=current_user.full_name,
-        email=current_user.email,
-        is_active=current_user.is_active,
-        is_admin=current_user.is_admin,
-        email_verified=current_user.email_verified,
-        totp_enabled=current_user.totp_enabled,
-        organization_id=current_user.organization_id,
-        organization_name=current_user.organization.name if current_user.organization else None,
+        id=user.id,
+        full_name=user.full_name,
+        email=user.email,
+        is_active=user.is_active,
+        is_admin=user.is_admin,
+        email_verified=user.email_verified,
+        totp_enabled=user.totp_enabled,
+        organization_id=user.organization_id,
+        organization_name=user.organization.name if user.organization else None,
     )
 
 
@@ -183,24 +183,18 @@ def change_password(
     db: Session = Depends(get_db),
 ):
     """Change password securely verifying current password and policy."""
-    from app.core.security import hash_password, verify_password
-    from app.auth.schemas import validate_password_policy
-
-    if not verify_password(payload.current_password, current_user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect.",
-        )
+    service = AuthService(UserRepository(db), db)
     try:
-        validate_password_policy(payload.new_password)
+        service.change_password(
+            current_user,
+            payload.current_password,
+            payload.new_password,
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         ) from e
-
-    current_user.password_hash = hash_password(payload.new_password)
-    db.commit()
     return {"message": "Password updated successfully."}
 
 
