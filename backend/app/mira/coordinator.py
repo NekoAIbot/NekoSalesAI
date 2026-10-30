@@ -1,4 +1,4 @@
-"""Mira: owner-facing Telegram business manager.
+"""Zuri: owner-facing Telegram business manager.
 
 Metric answers are computed from organization-scoped database rows. Groq is used
 only to classify intent and polish an answer, never to supply metric values.
@@ -21,7 +21,7 @@ from app.models.order import ORDER_PAID, Order
 from app.models.organization import Organization
 
 HELP_TEXT = (
-    "i'm mira, your nera business manager. ask me how today or this week went, "
+    "i'm zuri, your nera business manager. ask me how today or this week went, "
     "ask for an overview, or tell me a business fact to remember. "
     "i can report paid orders, revenue and conversations from your workspace. "
     "sales actions like customer follow-ups are noted, not sent or scheduled yet."
@@ -100,7 +100,7 @@ def _understand(text: str, memories: list[str]) -> str | None:
     if not settings.GROQ_API_KEY or settings.TESTING:
         return None
     prompt = (
-        "You are Mira, a warm, concise business manager in Telegram. "
+        "You are Zuri, a warm, concise business manager in Telegram. "
         "Answer only from the supplied verified workspace facts and memory. "
         "Do not invent metrics or claim to execute work. Sales tasks can only be noted. "
         f"Verified memory: {json.dumps(memories, ensure_ascii=False)}\nOwner: {text}"
@@ -119,9 +119,30 @@ def _understand(text: str, memories: list[str]) -> str | None:
         return None
 
 
+def _help_for(db: Session, organization_id: int) -> str:
+    from app.mira.entitlements import for_organization
+
+    ent = for_organization(db, organization_id)
+    lines = [
+        "i'm zuri, your nera business manager. ask me how today or this week "
+        "went, ask for an overview, or tell me a business fact to remember. "
+        "i report verified numbers only — no guesses."
+    ]
+    if ent.has_sales:
+        lines.append("sales: i watch your paid orders and can coordinate follow-ups noted for ada.")
+    if ent.has_support:
+        lines.append("support: i watch your customer conversations and can coordinate remi.")
+    if not ent.has_any_purchase:
+        lines.append("no active purchases on your account yet — buy any nera product and my coordination features unlock as you grow.")
+    elif not (ent.has_sales and ent.has_support):
+        lines.append("buy the other agent (or workforce, both together) and more of my coordination unlocks.")
+    lines.append("sales actions like customer follow-ups are noted, not sent or scheduled yet.")
+    return "\n".join(lines)
+
+
 def respond(db: Session, organization_id: int, text: str, command: str = "", now: datetime | None = None) -> str:
-    if command in {"mira", "help"}:
-        return HELP_TEXT
+    if command in {"mira", "zuri", "help"}:
+        return _help_for(db, organization_id)
     memory_match = _MEMORY_PREFIX.match(text.strip())
     if memory_match:
         return _remember(db, organization_id, memory_match.group(1))

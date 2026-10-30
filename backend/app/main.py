@@ -16,26 +16,33 @@ from app.web.routes import router as web_router
 # starting duplicate long-poll loops. Render currently runs one Uvicorn worker.
 _poller_task = None
 _poller_stop = None
+_zuri_poller_task = None
+_zuri_poller_stop = None
 
 logger = get_logger(__name__)
 
 
-async def _run_poller(stop_event):
-    """Run the poller loop off the event loop until application shutdown."""
+async def _run_poller(stop_event, bot_token: str | None = None, label: str = "telegram"):
+    """Run a poller loop off the event loop until application shutdown.
+
+    ``bot_token`` selects which shared bot this loop polls: the buyer bot
+    (default) or the owner-facing Zuri bot. Each bot gets its own loop; both
+    route by the same account-link logic.
+    """
     import asyncio
 
     from app.messaging.poller import PollerError, TelegramPoller
 
     from app.messaging.clients import TelegramClient
 
-    poller = TelegramPoller()
+    poller = TelegramPoller(bot_token=bot_token) if bot_token else TelegramPoller()
     logger.info("Starting embedded Telegram poller")
     # A webhook set by anything else (a previous webhook-mode deploy, a setup
     # script) makes Telegram refuse getUpdates with a 409. Clear it and retry
     # with backoff instead of giving up: the poller is the buyer's front door.
     for attempt in range(5):
         run_task = asyncio.create_task(
-            asyncio.to_thread(poller.run), name="telegram-poller-loop"
+            asyncio.to_thread(poller.run), name=f"{label}-poller-loop"
         )
         stop_or_fail = asyncio.wait(
             [run_task, stop_event.wait()], return_when=asyncio.FIRST_COMPLETED
@@ -99,6 +106,22 @@ async def lifespan(app: FastAPI):
     if telegram_mode not in {"polling", "webhook"}:
         raise RuntimeError("TELEGRAM_MODE must be 'polling' or 'webhook'.")
 
+    # Zuri's own shared bot, for owners. Her loop is independent of the buyer
+    # bot's: one dying must not take the other with it.
+    global _zuri_poller_task, _zuri_poller_stop
+    zuri_token = settings.ZURI_BOT_TOKEN or settings.MIRA_BOT_TOKEN
+    if telegram_mode == "polling" and zuri_token and _zuri_poller_task is None:
+        import asyncio
+
+        from app.messaging.clients import TelegramClient as _ZuriClient
+        webhook_reset = _ZuriClient(bot_token=zuri_token).delete_webhook(drop_pending_updates=False)
+        logger.info("Zuri bot polling: deleteWebhook result=%s", webhook_reset.get("result"))
+        _zuri_poller_stop = asyncio.Event()
+        _zuri_poller_task = asyncio.create_task(
+            _run_poller(_zuri_poller_stop, bot_token=zuri_token, label="zuri"),
+            name="zuri-poller",
+        )
+
     if telegram_mode == "polling" and settings.TELEGRAM_BOT_TOKEN and _poller_task is None:
         import asyncio
 
@@ -121,6 +144,14 @@ async def lifespan(app: FastAPI):
         finally:
             _poller_task = None
             _poller_stop = None
+
+    if _zuri_poller_task is not None:
+        _zuri_poller_stop.set()
+        try:
+            await _zuri_poller_task
+        finally:
+            _zuri_poller_task = None
+            _zuri_poller_stop = None
 
     logger.info("%s shutting down", settings.APP_NAME)
 

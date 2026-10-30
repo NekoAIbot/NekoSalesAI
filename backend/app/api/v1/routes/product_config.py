@@ -12,7 +12,7 @@ our prices without a diff.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -181,3 +181,54 @@ def _first_error(exc: ValidationError) -> str:
     if not errors:  # pragma: no cover - ValidationError always carries one
         return "That answer did not work. Please try again."
     return errors[0].get("msg", "That answer did not work. Please try again.")
+
+
+class AgentNameIn(BaseModel):
+    name: str
+
+
+@router.patch(
+    "/agents/{role}/name",
+    response_model=AgentOut,
+)
+def rename_agent(
+    role: str,
+    payload: AgentNameIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Give a purchased agent its own name.
+
+    Ada and Remi are Nera's internal product names; on the customer's site and
+    in their buyers' chats the agent should carry the customer's name for it.
+    The name is written to the workspace profile (the same place provisioning
+    set the default) and reflected in the greeting, so the widget, Telegram
+    persona and emails all pick it up from one place.
+    """
+    name = payload.name.strip()[:100]
+    if not name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="give the agent a name of at least one character.",
+        )
+
+    profile = IntakeService(db).agents_for(current_user.organization_id)
+    match = [p for p in profile if p.role == role]
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"no agent with role '{role}' in this workspace.",
+        )
+
+    agent = match[0]
+    company = agent.company_name
+    agent.agent_name = name
+    role_word = "sales" if role == "sales_agent" else "support"
+    agent.greeting = f"Hi, I'm {name}. I'm the {role_word} agent for {company}. How can I help?"
+    db.commit()
+    db.refresh(agent)
+
+    service = IntakeService(db)
+    return AgentOut.from_profile(
+        agent, service.current_config(current_user.organization_id, role)
+    )

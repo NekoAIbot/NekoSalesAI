@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     # Optional second bot for owner-facing Mira. Owner access is still authorized
     # by the linked Telegram identity, not by possession of either bot token.
     MIRA_BOT_TOKEN: str = ""
+
+    # The owner-facing manager (Zuri) runs her own shared bot. Falls back to
+    # MIRA_BOT_TOKEN (the name she shipped under) when unset.
+    ZURI_BOT_TOKEN: str = ""
     TELEGRAM_BASE_URL: str = "https://api.telegram.org"
     TELEGRAM_WEBHOOK_SECRET: str = ""
     TELEGRAM_MODE: str = "polling"  # polling mode owns delivery and clears any stale webhook.
