@@ -44,7 +44,9 @@ from app.config.settings import settings
 from app.database.session import SessionLocal
 from app.followups.runner import RunReport, run_due
 from app.messaging.clients import TelegramClient, WhatsAppClient
-from app.messaging.inbound import parse_telegram_update
+from app.messaging.inbound import parse_telegram_update, COMMAND_START, COMMAND_LINK
+from app.models.channel_identity import ChannelIdentity, CHANNEL_TELEGRAM
+from sqlalchemy import select
 from app.messaging.service import InboundMessagingService, storefront_organization_id
 from app.payments.delivery import DeliveryPusher, DeliveryReport, DeliveryService
 
@@ -403,6 +405,37 @@ class TelegramPoller:
             report.ignored += 1
             return
 
+        if message.kind == "command" and message.command == COMMAND_START and message.text.strip().startswith("/start link_"):
+            from app.api.v1.routes.telegram_link import exchange_link_token
+            token = message.text.strip().split("/start link_", 1)[1].split()[0]
+            linked = False
+            try:
+                linked = bool(token) and exchange_link_token(db, token, message.external_id, message.sender_name)
+            except Exception:  # noqa: BLE001 - one invalid link must not crash polling
+                db.rollback()
+                logger.exception("Telegram account-link exchange failed")
+            response = "linked. your website and Telegram now use the same workspace." if linked else "that link is invalid or expired. create a new one in your website settings."
+            if linked:
+                identity = db.execute(select(ChannelIdentity).where(
+                    ChannelIdentity.channel == CHANNEL_TELEGRAM,
+                    ChannelIdentity.external_id == message.external_id,
+                )).scalars().first()
+            service.deliver(message, [response])
+            report.answered += 1
+            return
+
+        if message.kind == "command" and message.command == COMMAND_LINK:
+            linked_org = db.execute(select(ChannelIdentity.organization_id).where(
+                ChannelIdentity.channel == CHANNEL_TELEGRAM,
+                ChannelIdentity.external_id == message.external_id,
+            )).scalar_one_or_none()
+            if linked_org is None:
+                service.deliver(message, ["to connect your website account, create a link in your Nera website settings, then tap it here."])
+            else:
+                service.deliver(message, ["your Telegram is connected to your website workspace."])
+            report.answered += 1
+            return
+
         # A callback query is acknowledged immediately, before the reply is
         # composed: it stops the button's loading spinner on the buyer's
         # screen at once, and the actual answer follows as the edited message
@@ -412,8 +445,10 @@ class TelegramPoller:
             query_id = message.delivery_id.removeprefix("tgcb:")
             self._answer_callback(query_id)
 
+        linked_org = db.execute(select(ChannelIdentity.organization_id).where(ChannelIdentity.channel == CHANNEL_TELEGRAM, ChannelIdentity.external_id == message.external_id)).scalar_one_or_none()
+        message_org_id = linked_org or organization_id
         try:
-            handled = service.handle(organization_id, message)
+            handled = service.handle(message_org_id, message)
         except Exception as exc:  # noqa: BLE001 - one bad update must not end the run
             db.rollback()
             report.failed += 1

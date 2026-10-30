@@ -36,6 +36,7 @@ KIND_UNSUPPORTED = "unsupported"
 # they open the chat, before they have said anything — would be forwarded to the
 # agent as though a buyer had typed it.
 COMMAND_START = "start"
+COMMAND_LINK = "link"
 COMMAND_HELP = "help"
 COMMAND_RESET = "reset"
 
@@ -49,8 +50,8 @@ COMMAND_PAY = "pay"
 _COMMAND_ALIASES = {
     "new": COMMAND_RESET,
     "restart": COMMAND_RESET,
-    "link": COMMAND_PAY,
     "checkout": COMMAND_PAY,
+    "connect": COMMAND_LINK,
 }
 
 

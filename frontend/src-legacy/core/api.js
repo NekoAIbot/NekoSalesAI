@@ -185,6 +185,10 @@ class ApiClient {
     });
   }
 
+  async createTelegramLinkToken() {
+    return this.request("/api/v1/telegram/link-token", { method: "POST" });
+  }
+
   async getMe() {
     return this.request('/api/v1/auth/me');
   }

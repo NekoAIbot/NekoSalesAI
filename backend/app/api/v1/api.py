@@ -10,6 +10,7 @@ from app.api.v1.routes.organizations import router as organization_router
 from app.api.v1.routes.pricing import router as pricing_router
 from app.api.v1.routes.product_config import router as product_config_router
 from app.api.v1.routes.sales import router as sales_router
+from app.api.v1.routes.telegram_link import router as telegram_link_router
 from app.api.v1.routes.sales_admin import router as sales_desk_router
 from app.api.v1.routes.widget import router as widget_router
 from app.auth.router import router as auth_router
@@ -29,4 +30,5 @@ api_router.include_router(product_config_router)
 api_router.include_router(checkout_router)
 api_router.include_router(widget_router)
 api_router.include_router(messaging_router)
+api_router.include_router(telegram_link_router)
 api_router.include_router(health_router)
