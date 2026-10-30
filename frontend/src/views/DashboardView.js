@@ -14,7 +14,7 @@ export class DashboardView {
 
   async render() {
     return `
-      <div class="anim-fade-in-up" style="max-width: 1040px; margin: 0 auto;">
+      <div class="workspace-dashboard anim-fade-in-up" style="max-width: 1040px; margin: 0 auto;">
         <!-- Header -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 36px; flex-wrap: wrap; gap: 16px;">
           <div>
