@@ -39,7 +39,7 @@ REFERENCE_PREFIX = "neko"
 REFERENCE_BYTES = 12
 
 # How much of the configuration hash to store.
-CONFIG_HASH_BYTES = 16
+CONFIG_HASH_BYTES = 8  # column is String(16): 16 hex chars
 
 
 class CheckoutError(ValueError):
