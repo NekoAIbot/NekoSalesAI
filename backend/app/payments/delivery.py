@@ -87,6 +87,7 @@ class DeliveryReport:
     newly_paid: int = 0
     provisioned: int = 0
     delivered: int = 0
+    nudged: int = 0
     pushes: list[Push] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -105,6 +106,7 @@ class DeliveryReport:
             f"{self.newly_paid} newly paid",
             f"{self.provisioned} provisioned",
             f"{self.delivered} delivered",
+            f"{self.nudged} nudged",
         ]
 
         if self.errors:
@@ -250,6 +252,17 @@ class DeliveryService:
 
         if verify_pending:
             self._verify_pending(report)
+
+        # Half-finished checkouts get one nudge, after the paid-order work.
+        # Failure here costs a nudge, never a payment, so it is best-effort.
+        try:
+            from app.payments.recovery import RecoveryService
+
+            report.nudged = RecoveryService(self.db).run()
+        except Exception:  # noqa: BLE001
+            self.db.rollback()
+            report.errors.append("abandoned-checkout follow-up: unexpected failure")
+            logger.exception("Abandoned-checkout follow-up pass failed")
 
         for order in self._undelivered_paid():
             try:
