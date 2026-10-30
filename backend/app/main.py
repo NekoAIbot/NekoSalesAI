@@ -12,11 +12,42 @@ from app.config.logging import configure_logging, get_logger
 from app.config.settings import settings
 from app.web.routes import router as web_router
 
+# A process-local guard prevents two lifespan entries in the same worker from
+# starting duplicate long-poll loops. Render currently runs one Uvicorn worker.
+_poller_task = None
+_poller_stop = None
+
 logger = get_logger(__name__)
+
+
+async def _run_poller(stop_event):
+    """Run the poller loop off the event loop until application shutdown."""
+    import asyncio
+
+    from app.messaging.poller import PollerError, TelegramPoller
+
+    poller = TelegramPoller()
+    logger.info("Starting embedded Telegram poller")
+    run_task = asyncio.create_task(asyncio.to_thread(poller.run), name="telegram-poller-loop")
+    try:
+        await stop_event.wait()
+    finally:
+        poller.stop()
+        try:
+            await asyncio.wait_for(run_task, timeout=40)
+        except asyncio.TimeoutError:
+            logger.warning("Telegram poller did not stop within the long-poll timeout")
+        except PollerError as exc:
+            logger.error("Telegram poller cannot start: %s", exc)
+        except Exception:
+            logger.exception("Telegram poller exited with an error")
+        logger.info("Embedded Telegram poller stopped")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _poller_task, _poller_stop
+
     configure_logging()
     logger.info(
         "%s v%s starting (env=%s, db=%s)",
@@ -38,7 +69,23 @@ async def lifespan(app: FastAPI):
             "Set SECRET_KEY in .env before deploying."
         )
 
+    if settings.TELEGRAM_BOT_TOKEN and _poller_task is None:
+        import asyncio
+
+        _poller_stop = asyncio.Event()
+        _poller_task = asyncio.create_task(_run_poller(_poller_stop), name="telegram-poller")
+    elif not settings.TELEGRAM_BOT_TOKEN:
+        logger.warning("Telegram poller is disabled: TELEGRAM_BOT_TOKEN is not configured")
+
     yield
+
+    if _poller_task is not None:
+        _poller_stop.set()
+        try:
+            await _poller_task
+        finally:
+            _poller_task = None
+            _poller_stop = None
 
     logger.info("%s shutting down", settings.APP_NAME)
 
