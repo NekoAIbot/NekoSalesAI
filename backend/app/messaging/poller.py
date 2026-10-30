@@ -136,6 +136,12 @@ class TelegramPoller:
         followup_interval_seconds: float = FOLLOWUP_CHECK_INTERVAL_SECONDS,
     ) -> None:
         self._token = bot_token if bot_token is not None else settings.TELEGRAM_BOT_TOKEN
+        # The owner bot never runs the buyer sales flow; see the routing below.
+        self._is_owner_bot = bool(
+            bot_token
+            and bot_token
+            not in {None, "", settings.TELEGRAM_BOT_TOKEN}
+        )
         self._base = (base_url or settings.TELEGRAM_BASE_URL).rstrip("/")
         self._fetch = fetch or self._http_fetch
         self._session_factory = session_factory
@@ -450,6 +456,20 @@ class TelegramPoller:
                 reply = respond(
                     db, identity.organization_id, message.text,
                     message.command if message.kind == "command" else "",
+                )
+                service.deliver(message, [reply])
+                report.answered += 1
+                return
+        # The owner bot (Zuri) never runs the buyer sales flow. If the chatter
+        # is not a linked owner, she introduces herself and asks for the link.
+        if getattr(self, "_is_owner_bot", False):
+            if identity and identity.owner_user_id is not None:
+                pass  # handled above
+            else:
+                reply = (
+                    "hi, i'm zuri — nera's business manager. i only speak to "
+                    "linked owners. open your nera workspace, go to settings, "
+                    "connect telegram, and send me the /start link code it gives you."
                 )
                 service.deliver(message, [reply])
                 report.answered += 1
