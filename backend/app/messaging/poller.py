@@ -427,17 +427,48 @@ class TelegramPoller:
             report.answered += 1
             return
 
-        # A callback query is acknowledged immediately, before the reply starts
-        # composing: it stops the button's loading spinner on the buyer's
-        # screen at once, and the actual answer follows as the edited message
-        # or a new one. The selection itself is already recorded — the
-        # acknowledgement is purely cosmetic, so its failure is harmless.
+        # A callback query is acknowledged immediately before composing the reply.
         if message.callback_message_id is not None:
             query_id = message.delivery_id.removeprefix("tgcb:")
             self._answer_callback(query_id)
 
-        linked_org = db.execute(select(ChannelIdentity.organization_id).where(ChannelIdentity.channel == CHANNEL_TELEGRAM, ChannelIdentity.external_id == message.external_id)).scalar_one_or_none()
+        identity = None
+        try:
+            identity = db.execute(select(ChannelIdentity).where(
+                ChannelIdentity.channel == CHANNEL_TELEGRAM,
+                ChannelIdentity.external_id == message.external_id,
+            )).scalar_one_or_none()
+        except (AttributeError, NotImplementedError):
+            # Lightweight service stubs used by the poller loop tests have no identity store.
+            pass
+        linked_org = identity.organization_id if identity else None
+        if identity and identity.owner_user_id is not None:
+            from app.models.user import User
+            owner = db.get(User, identity.owner_user_id)
+            if owner and owner.is_active and owner.organization_id == identity.organization_id:
+                from app.mira.coordinator import respond
+                reply = respond(
+                    db, identity.organization_id, message.text,
+                    message.command if message.kind == "command" else "",
+                )
+                service.deliver(message, [reply])
+                report.answered += 1
+                return
         message_org_id = linked_org or organization_id
+        if message.kind == "command" and message.command in {"mira", "help"}:
+            if identity and identity.owner_user_id is not None:
+                from app.models.user import User
+                owner = db.get(User, identity.owner_user_id)
+                if owner and owner.is_active and owner.organization_id == identity.organization_id:
+                    from app.mira.coordinator import respond
+                    reply = respond(db, identity.organization_id, message.text, message.command)
+                else:
+                    reply = "link your owner account in Nera settings to use Mira."
+            else:
+                reply = "link your owner account in Nera settings to use Mira."
+            service.deliver(message, [reply])
+            report.answered += 1
+            return
         try:
             handled = service.handle(message_org_id, message)
         except Exception as exc:  # noqa: BLE001 - one bad update must not end the run
@@ -482,9 +513,10 @@ class TelegramPoller:
 
             if "webhook" in description.lower():
                 raise PollerError(
-                    "Telegram returned 409: getUpdates refused because a webhook is configured. "
-                    "Polling startup removes stale webhooks without dropping pending updates."
-                )
+                "Telegram returned 409: getUpdates refused because a webhook is configured. "
+                "Polling startup removes stale webhooks without dropping pending updates. "
+                "If necessary, explicitly take-over polling from the webhook first."
+)
 
             logger.warning("getUpdates was refused: %s", description or body)
             self._failures += 1

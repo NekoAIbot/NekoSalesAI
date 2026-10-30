@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     TESTING: bool = False
 
     TELEGRAM_BOT_TOKEN: str = ""
+    # Optional second bot for owner-facing Mira. Owner access is still authorized
+    # by the linked Telegram identity, not by possession of either bot token.
+    MIRA_BOT_TOKEN: str = ""
     TELEGRAM_BASE_URL: str = "https://api.telegram.org"
     TELEGRAM_WEBHOOK_SECRET: str = ""
     TELEGRAM_MODE: str = "polling"  # polling mode owns delivery and clears any stale webhook.

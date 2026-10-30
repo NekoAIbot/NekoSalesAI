@@ -67,6 +67,7 @@ def exchange_link_token(db: Session, token: str, chat_id: str, display_name: str
     )).scalars().first()
     if existing:
         existing.organization_id = record.organization_id
+        existing.owner_user_id = record.user_id
         existing.display_name = display_name or existing.display_name
         conversation = db.get(Conversation, existing.conversation_id)
         if conversation:
@@ -80,6 +81,7 @@ def exchange_link_token(db: Session, token: str, chat_id: str, display_name: str
             external_id=chat_id,
             conversation_id=conversation.id,
             display_name=display_name,
+            owner_user_id=record.user_id,
         ))
     record.consumed_at = now
     try:
