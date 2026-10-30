@@ -280,9 +280,18 @@ app.mount(
 )
 
 if FRONTEND_DIR.is_dir():
+    # Mobile browsers pin JS modules aggressively; a stale main.js against a
+    # new backend renders literal "undefined" pages and looks like a outage.
+    # Code is small and static files are cheap: revalidate every time.
+    class _NoCacheStatic(StaticFiles):
+        def file_response(self, *args, **kwargs):
+            response = super().file_response(*args, **kwargs)
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+            return response
+
     app.mount(
         "/frontend",
-        StaticFiles(directory=str(FRONTEND_DIR)),
+        _NoCacheStatic(directory=str(FRONTEND_DIR)),
         name="frontend",
     )
 
