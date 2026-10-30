@@ -68,6 +68,11 @@ class ChannelIdentity(BaseModel):
         index=True,
     )
 
+    # Dashboard-linked user authority for owner-only Mira access.
+    owner_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
     # Whatever the platform volunteered — a Telegram display name, a WhatsApp
     # profile name. Not trusted for anything; it is a courtesy so a human
     # reading the desk sees a name rather than a number.
