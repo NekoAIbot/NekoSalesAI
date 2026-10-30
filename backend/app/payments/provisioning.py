@@ -22,6 +22,7 @@ from app.models.organization import Organization
 from app.models.quote import Quote
 from app.models.user import User
 from app.pricing.complexity import (
+    Requirement,
     PRODUCT_NAMES,
     PRODUCT_SALES_AGENT,
     PRODUCT_SUPPORT_AGENT,
@@ -398,8 +399,11 @@ class ProvisioningService:
                         "Order %s has an unreadable requirement: %s", order.paystack_reference, e
                     )
 
+        # A paid order must never leave empty-handed. Without a stored
+        # requirement, build the default configuration for the requested
+        # roles rather than refusing: the customer paid, the agent ships.
         if requirement is None:
-            return ()
+            requirement = Requirement()
 
         agents: list[ProvisionedAgent] = []
 
@@ -580,19 +584,23 @@ class ProvisioningService:
         if not reference:
             return (CATALOG_ROLE,)
 
+        # A paid order must ALWAYS provision. A missing or unreadable quote
+        # must never swallow a customer's money: fall back to the catalog
+        # role and let support reconcile the requirement afterwards.
         try:
             quote = QuoteService(self.db).get(reference)
-            if not quote:
-                raise ProvisioningError(
-                    f"Quote {reference} not found for order {order.paystack_reference}."
-                )
-            requirement = requirement_from_json(quote.requirement_json)
-        except ProvisioningError:
-            raise
+            requirement = requirement_from_json(quote.requirement_json) if quote else None
         except Exception as exc:
-            raise ProvisioningError(
-                f"Could not read requirement for order {order.paystack_reference}: {exc}"
-            ) from exc
+            logger.error(
+                "Order %s: quote %s unreadable (%s); provisioning catalog fallback.",
+                order.paystack_reference,
+                reference,
+                exc,
+            )
+            requirement = None
+
+        if requirement is None:
+            return (CATALOG_ROLE,)
 
         if requirement.products:
             # Workforce is one product that builds two agents — the sales and
