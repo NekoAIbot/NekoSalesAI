@@ -3020,6 +3020,20 @@ def compose_reply(
             captured_email=captured_email,
         )
 
+    # The full introduction fires ONLY on first contact (stage == greeting).
+    # A returning visitor saying "hi" matched the same patterns and got the
+    # whole pitch again on every message — a buyer who says hi twice reads
+    # that as a bot with amnesia. Later greetings get one short line that
+    # keeps the conversation moving.
+    if stage != STAGE_GREETING and _matches(_greeting_patterns(config), text):
+        reasoning = Reasoning(rule=RULE_GREETING, signals=["returning greeting"])
+        return AgentReply(
+            body=f"hey again 👋 {config.opening_question}",
+            reasoning=reasoning,
+            next_stage=None,
+            captured_email=captured_email,
+        )
+
     if _matches(_greeting_patterns(config), text) or stage == STAGE_GREETING:
         reasoning = Reasoning(
             rule=RULE_GREETING,
