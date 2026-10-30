@@ -31,7 +31,7 @@
 }
 
 .builder-module:hover {
-  border-color: rgba(200, 146, 74, 0.22);
+  border-color: rgba(16, 185, 129, 0.22);
   box-shadow: var(--shadow-lg);
 }
 
@@ -91,7 +91,7 @@
 
 .builder-product:hover {
   background: var(--void-4);
-  border-color: rgba(200, 146, 74, 0.18);
+  border-color: rgba(16, 185, 129, 0.18);
 }
 
 .builder-product.is-selected {
@@ -200,7 +200,7 @@
 
 .builder-channel-box:hover {
   background: var(--void-4);
-  border-color: rgba(200, 146, 74, 0.18);
+  border-color: rgba(16, 185, 129, 0.18);
 }
 
 .builder-channel.is-selected .builder-channel-box,
@@ -248,7 +248,7 @@
 
 .builder-volume-preset:hover {
   background: var(--void-4);
-  border-color: rgba(200, 146, 74, 0.18);
+  border-color: rgba(16, 185, 129, 0.18);
 }
 
 .builder-volume-preset.is-selected {

@@ -95,11 +95,45 @@ class Settings(BaseSettings):
         return self.DATABASE_URL.startswith("sqlite")
 
     @property
+    def sync_database_url(self) -> str:
+        """Resolve relative SQLite URLs to absolute paths anchored at backend root."""
+        url = self.DATABASE_URL.strip()
+        if url.startswith("sqlite:///./") or url == "sqlite:///nekosales.db":
+            filename = url.replace("sqlite:///./", "").replace("sqlite:///", "")
+            resolved_path = (_backend_root / filename).resolve()
+            return f"sqlite:///{resolved_path}"
+        return url
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.strip().lower() == "production"
+
+    def validate_paystack_environment(self) -> None:
+        """Validate configured Paystack credentials against the active environment."""
+        from app.payments.paystack import validate_paystack_credentials
+
+        validate_paystack_credentials(
+            secret_key=self.PAYSTACK_SECRET_KEY,
+            public_key=self.PAYSTACK_PUBLIC_KEY,
+            environment=self.ENVIRONMENT,
+        )
+
+    @property
     def payments_enabled(self) -> bool:
-        return bool(self.PAYSTACK_SECRET_KEY.strip())
+        if not self.PAYSTACK_SECRET_KEY.strip():
+            return False
+        try:
+            self.validate_paystack_environment()
+            return True
+        except Exception:
+            return False
 
     @property
     def paystack_is_live(self) -> bool:
+        # Production credentials cannot be selected merely because a key exists.
+        # Production mode requires explicit, intentional configuration (ENVIRONMENT == "production").
+        if not self.is_production:
+            return False
         return self.PAYSTACK_SECRET_KEY.strip().startswith("sk_live_")
 
     @property

@@ -80,7 +80,11 @@ def test_an_unreachable_telegram_is_waited_out_rather_than_hammered(monkeypatch)
 
         return UNREACHABLE
 
-    poller = TelegramPoller(bot_token="test-token", fetch=fetch)
+    poller = TelegramPoller(
+        bot_token="test-token",
+        fetch=fetch,
+        session_factory=lambda: _NullSession(),
+    )
     poller.run()
 
     assert sleeps.delays, (
@@ -211,7 +215,11 @@ def test_once_drains_what_is_waiting_and_returns(monkeypatch):
         calls["n"] += 1
         return _ok()
 
-    poller = TelegramPoller(bot_token="test-token", fetch=fetch)
+    poller = TelegramPoller(
+        bot_token="test-token",
+        fetch=fetch,
+        session_factory=lambda: _NullSession(),
+    )
     report = poller.run(once=True)
 
     assert calls["n"] == 1
@@ -320,8 +328,45 @@ def test_a_reconcile_that_explodes_does_not_stop_the_bot(monkeypatch):
     assert report.updates == 0
 
 
+def test_failed_update_does_not_advance_offset_past_its_batch(monkeypatch):
+    """A failure in a batch must not acknowledge that update or later ones."""
+    monkeypatch.setattr("app.messaging.poller.storefront_organization_id", lambda _db: 1)
+    poller = TelegramPoller(
+        bot_token="test-token",
+        fetch=lambda _payload: _ok(_update(10), _update(11)),
+        session_factory=lambda: _NullSession(),
+    )
+    service = _BrokenMessageService()
+    poller._service_factory = lambda _db: service
+
+    # First update is intentionally failed; the second must not be handled or
+    # acknowledged until the first update can be replayed successfully.
+    result = poller.drain()
+
+    assert result.failed == 1
+    assert service.handled == 1, "updates after a failure must not be processed"
+    assert poller.offset is None
+
+
+class _BrokenMessageService:
+    def __init__(self):
+        self.handled = 0
+
+    def handle(self, *_args):
+        self.handled += 1
+        if self.handled == 1:
+            raise RuntimeError("temporary processing failure")
+        return type("Handled", (), {"duplicate": False, "replies": [], "channel_messages": []})()
+
+    def deliver(self, *_args):
+        pass
+
+
 class _NullSession:
     """A session that is only ever opened and closed."""
+
+    def rollback(self) -> None:
+        pass
 
     def close(self) -> None:
         pass

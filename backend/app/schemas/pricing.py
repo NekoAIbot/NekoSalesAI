@@ -40,6 +40,7 @@ class RequirementIn(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     product_type: str = Field(default=PRODUCT_SALES_AGENT, max_length=40)
+    product_code: str | None = Field(default=None, max_length=40)
     products: tuple[str, ...] = Field(default=(), max_length=MAX_LIST_ITEMS)
     channels: tuple[str, ...] = Field(default=(CHANNEL_WEB,), max_length=MAX_LIST_ITEMS)
     integrations: tuple[str, ...] = Field(default=(), max_length=MAX_LIST_ITEMS)
@@ -52,13 +53,15 @@ class RequirementIn(BaseModel):
         ``products`` takes precedence when provided, so the frontend can send
         an explicit list for bundle selections without inventing a fake
         ``product_type`` string.
+        ``product_code`` is supported as an alias for ``product_type``.
         """
+        effective_product = self.product_code or self.product_type
         products = tuple(
             code.strip() for code in self.products if code.strip()
-        ) or (self.product_type,)
+        ) or (effective_product,)
 
         return Requirement(
-            product_type=self.product_type,
+            product_type=effective_product,
             products=products,
             channels=tuple(c.lower() for c in self.channels),
             integrations=self.integrations,

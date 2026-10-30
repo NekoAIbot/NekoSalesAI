@@ -39,7 +39,7 @@
     },
     {
       from: "nera",
-      text: "Yes — that's the Nera Workforce. A sales representative plus a support agent working together. That bundle is <strong>₦299,000/month</strong>.",
+      text: "Yes — that's the Nera Workforce. A sales representative plus a support agent working together. That bundle is <strong>₦348,000/month</strong>.",
       typing: 1200
     },
     {

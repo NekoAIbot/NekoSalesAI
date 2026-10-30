@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-label="Nera — Concept D">
+  <rect width="64" height="64" rx="12" fill="#101a15"/>
+  <circle cx="32" cy="32" r="12.5" stroke="#e8efe9" stroke-width="2.6" fill="none" opacity="0.9"/>
+  <circle cx="32" cy="32" r="5.3" fill="#1c5d43"/>
+  <circle cx="32" cy="17.5" r="2.8" fill="#e8efe9"/>
+  <path d="M32 25V17.5M26 32H19M32 39.5V43.5M38 32H43" stroke="#e8efe9" stroke-width="1.8" opacity="0.5"/>
+</svg>

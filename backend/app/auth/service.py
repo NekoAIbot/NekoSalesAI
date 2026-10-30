@@ -21,7 +21,7 @@ from app.auth.security import (
     verify_password,
 )
 from app.config.settings import settings
-from app.mail.transport import Message, send
+from app.mail.transport import Message, send, send_in_background
 from app.models.email_verification_code import EmailVerificationCode
 from app.models.organization import Organization
 from app.models.password_reset_token import PasswordResetToken
@@ -97,7 +97,7 @@ def _send_verification_email(email: str, code: str) -> None:
         subject=f"Your verification code: {code}",
         body=body,
     )
-    send(message)
+    send_in_background(message)
 
 
 def _send_password_reset_email(email: str, reset_url: str) -> None:
@@ -115,13 +115,32 @@ def _send_password_reset_email(email: str, reset_url: str) -> None:
         subject="Reset your NekoSalesAI password",
         body=body,
     )
-    send(message)
+    send_in_background(message)
 
 
 class AuthService:
     def __init__(self, repository: UserRepository, db: Session):
         self.repository = repository
         self.db = db
+
+    def update_profile(self, user, full_name: str | None, company_name: str | None):
+        """Update a user's displayed name and their organization name."""
+        if full_name is not None:
+            user.full_name = full_name.strip()
+        if company_name is not None and company_name.strip() and user.organization:
+            user.organization.name = company_name.strip()
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def change_password(self, user, current_password: str, new_password: str) -> None:
+        """Verify the current password and save a policy-compliant replacement."""
+        if not verify_password(current_password, user.password_hash):
+            raise ValueError("Current password is incorrect.")
+
+        validate_password_policy(new_password)
+        user.password_hash = hash_password(new_password)
+        self.db.commit()
 
     def register(self, data: RegisterRequest):
         if self.repository.email_exists(data.email):
@@ -299,10 +318,14 @@ class AuthService:
             .first()
         )
 
-        if latest_code:
-            cooldown_end = latest_code.created_at + timedelta(seconds=EMAIL_CODE_RESEND_COOLDOWN_SECONDS)
-            if datetime.now(UTC) < cooldown_end:
-                remaining = int((cooldown_end - datetime.now(UTC)).total_seconds())
+        if latest_code and latest_code.created_at:
+            created_at = latest_code.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=UTC)
+            cooldown_end = created_at + timedelta(seconds=EMAIL_CODE_RESEND_COOLDOWN_SECONDS)
+            now = datetime.now(UTC)
+            if now < cooldown_end:
+                remaining = int((cooldown_end - now).total_seconds())
                 raise ValueError(f"Please wait {remaining} seconds before requesting a new code.")
 
         self._send_email_verification(user.id, user.email)
@@ -316,19 +339,23 @@ class AuthService:
         if user.email_verified:
             raise ValueError("Email already verified.")
 
-        # Find the most recent valid code
+        # Find the most recent code
         verification = (
             self.db.query(EmailVerificationCode)
-            .filter(
-                EmailVerificationCode.user_id == user.id,
-                EmailVerificationCode.expires_at > datetime.now(UTC),
-            )
+            .filter(EmailVerificationCode.user_id == user.id)
             .order_by(EmailVerificationCode.created_at.desc())
             .first()
         )
 
         if not verification:
             raise ValueError("No valid verification code found. Please request a new one.")
+
+        # Check expiry with timezone normalization
+        expires_at = verification.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if datetime.now(UTC) >= expires_at:
+            raise ValueError("Verification code has expired. Please request a new one.")
 
         # Check max attempts
         if verification.attempts >= EMAIL_CODE_MAX_ATTEMPTS:

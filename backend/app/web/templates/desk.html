@@ -1,18 +1,17 @@
 {% extends "base.html" %}
 
-{% block title %}Sales desk — {{ company.name }}{% endblock %}
+{% block title %}Sales Desk — Nera{% endblock %}
 {% block body_class %}desk-body{% endblock %}
 
 {% block content %}
-<header class="site-header">
-  <div class="wrap">
-    <a class="brand" href="/">
-      <span class="brand-mark">◆</span>
-      {{ company.name }}
+<header class="site-header" style="background:var(--void-2);border-bottom:1px solid var(--void-line);padding:14px 0;">
+  <div class="wrap" style="max-width:1180px;margin:0 auto;padding:0 var(--gutter);display:flex;align-items:center;justify-content:space-between;">
+    <a class="nav-logo" href="/" style="text-decoration:none;">
+      <img src="/static/brand/nera-logo.svg" alt="Nera" height="24" style="height:24px;width:auto;">
     </a>
-    <nav class="nav">
-      <span class="faint" id="desk-user"></span>
-      <button class="btn btn--ghost btn--sm hidden" id="sign-out">Sign out</button>
+    <nav class="nav" style="border:none;background:none;position:static;padding:0;">
+      <span class="faint" id="desk-user" style="font-family:var(--font-mono);font-size:0.8rem;color:var(--emerald);"></span>
+      <button class="btn btn-ghost btn-sm hidden" id="sign-out">Sign out</button>
     </nav>
   </div>
 </header>

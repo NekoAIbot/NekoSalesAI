@@ -98,7 +98,7 @@ def test_the_page_publishes_no_fixed_tiers(client):
 
     body = client.get("/").text
 
-    for retired in ("Founding User", "Growth", "Starter"):
+    for retired in ("Founding User", "Growth tier", "Starter"):
         assert retired not in body
 
     # Old prices from before the launch pricing change must not appear.

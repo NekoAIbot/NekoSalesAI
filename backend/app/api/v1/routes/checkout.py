@@ -13,10 +13,11 @@ string, so reading someone else's order status requires guessing it.
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+import urllib.parse
 
 from app.config.logging import get_logger
 from app.config.settings import settings
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, get_current_user_optional
 from app.dependencies.database import get_db
 from app.models.user import User
 from app.followups.service import FollowUpService
@@ -163,8 +164,39 @@ def checkout_config():
     return {
         "enabled": settings.payments_enabled,
         "live_mode": settings.paystack_is_live,
-        "public_key": settings.PAYSTACK_PUBLIC_KEY,
+        "public_key": settings.PAYSTACK_PUBLIC_KEY if settings.payments_enabled else "",
     }
+
+
+def _is_trusted_callback_host(url_str: str) -> bool:
+    if not url_str:
+        return False
+    try:
+        parsed = urllib.parse.urlparse(url_str)
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return False
+        # Local & test environments
+        if host in ("127.0.0.1", "localhost", "testserver"):
+            return True
+        # Configured public base URL host
+        base_host = (urllib.parse.urlparse(settings.PUBLIC_BASE_URL).hostname or "").lower()
+        if host == base_host:
+            return True
+        # Authorized tunnel & staging domains
+        if (
+            host.endswith(".ngrok-free.app")
+            or host.endswith(".ngrok-free.dev")
+            or host.endswith(".ngrok.io")
+            or host.endswith(".ngrok.app")
+            or host.endswith(".ngrok.dev")
+        ):
+            return True
+        if host.endswith(".nera.ai") or host.endswith(".nekosales.ai"):
+            return True
+        return False
+    except Exception:
+        return False
 
 
 @router.post(
@@ -172,12 +204,44 @@ def checkout_config():
     response_model=OrderOut,
     status_code=status.HTTP_201_CREATED,
 )
-def create_order(payload: CheckoutRequest, db: Session = Depends(get_db)) -> OrderOut:
+def create_order(
+    request: Request,
+    payload: CheckoutRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> OrderOut:
     service = CheckoutService(db)
+
+    # Validate and determine trusted callback_url
+    callback_url = payload.callback_url
+    if callback_url and not _is_trusted_callback_host(callback_url):
+        logger.warning(
+            "Rejecting untrusted callback_url host: %s; falling back to authoritative base.",
+            callback_url,
+        )
+        callback_url = None
+
+    if not callback_url:
+        forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+        if (
+            forwarded_host
+            and ("127.0.0.1" in settings.PUBLIC_BASE_URL or "localhost" in settings.PUBLIC_BASE_URL)
+            and _is_trusted_callback_host(f"{proto}://{forwarded_host}")
+        ):
+            callback_url = f"{proto}://{forwarded_host}/v2/checkout/return"
+        else:
+            callback_url = f"{settings.PUBLIC_BASE_URL}/v2/checkout/return"
+
+    target_org_id = (
+        current_user.organization_id
+        if current_user and current_user.organization_id
+        else _storefront_org_id(db)
+    )
 
     try:
         order = service.create_order(
-            organization_id=_storefront_org_id(db),
+            organization_id=target_org_id,
             plan_code=payload.plan_code,
             quote_reference=payload.quote_reference,
             buyer_email=str(payload.email),
@@ -189,6 +253,7 @@ def create_order(payload: CheckoutRequest, db: Session = Depends(get_db)) -> Ord
             integrations=payload.integrations,
             languages=payload.languages,
             monthly_conversations=payload.monthly_conversations,
+            callback_url=callback_url,
         )
     except PaymentsNotConfigured as exc:
         raise HTTPException(
@@ -239,27 +304,136 @@ def list_orders(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List orders for the current user's organization."""
-    from sqlalchemy import desc
+    """List orders for the current user's organization and customer email."""
+    from sqlalchemy import desc, or_
+    conditions = []
+    if current_user.organization_id:
+        conditions.append(Order.organization_id == current_user.organization_id)
+    if current_user.email:
+        conditions.append(Order.buyer_email.ilike(current_user.email))
+
+    if not conditions:
+        return []
+
     orders = (
         db.execute(
             select(Order).where(
-                Order.organization_id == current_user.organization_id
+                or_(*conditions)
             ).order_by(desc(Order.created_at))
         ).scalars().all()
     )
     return [
         {
+            "id": o.id,
             "reference": o.paystack_reference,
             "plan_name": o.plan_name,
             "status": o.status,
             "amount_minor": o.amount_minor,
+            "currency": o.currency,
             "display_amount": f"₦{o.amount_minor / 100:,.0f}" if o.amount_minor else None,
             "created_at": o.created_at.isoformat() if o.created_at else None,
+            "paid_at": o.paid_at.isoformat() if o.paid_at else None,
             "checkout_url": o.checkout_url,
         }
         for o in orders
     ]
+
+
+@router.post("/orders/{reference}/verify")
+def verify_order_payment(
+    reference: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Authoritative payment recovery action for customers and administrators.
+
+    Performs authoritative server-to-server verification with Paystack, verifies
+    amount, currency, status, and idempotently provisions the workspace.
+    """
+    order = _load_order(reference, db)
+
+    # Ownership check: must belong to user's org or match buyer email (or admin)
+    is_owner = (
+        (current_user.organization_id and order.organization_id == current_user.organization_id)
+        or (order.buyer_email.lower() == current_user.email.lower())
+        or current_user.is_admin
+    )
+    if not is_owner:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to verify this order.",
+        )
+
+    # If already paid, return immediately (idempotent, does not re-provision)
+    if order.is_paid:
+        profiles = ProvisioningService(db)._existing_profiles(order)
+        return {
+            "status": "paid",
+            "paid": True,
+            "message": "Payment verified and workspace provisioned.",
+            "order": OrderOut.from_model(order),
+            "workspace_ready": len(profiles) > 0,
+        }
+
+    if not settings.payments_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payments are not configured on this environment.",
+        )
+
+    # Authoritative server-to-server check with Paystack
+    service = CheckoutService(db)
+    try:
+        charge = service.client.verify(reference)
+    except Exception as exc:
+        logger.warning("Recovery verification API error for %s: %s", reference, exc)
+        return {
+            "status": "unverified",
+            "paid": False,
+            "message": "Could not contact Paystack verification API. Please retry shortly or contact support.",
+            "order": OrderOut.from_model(order),
+        }
+
+    if not charge.paid:
+        logger.info("Order %s verification status: %s", reference, charge.status)
+        return {
+            "status": charge.status or "pending",
+            "paid": False,
+            "message": f"Payment is unconfirmed (status: {charge.status or 'pending'}). If your account was debited, please allow a moment for settlement or contact support with reference {reference}.",
+            "order": OrderOut.from_model(order),
+        }
+
+    # Verify amount & currency
+    if not service._amount_matches(order, charge):
+        logger.error(
+            "Recovery amount mismatch on %s: charged %s %s, expected %s %s",
+            reference,
+            charge.amount_minor,
+            charge.currency,
+            order.amount_minor,
+            order.currency,
+        )
+        return {
+            "status": "amount_mismatch",
+            "paid": False,
+            "message": f"Payment amount mismatch. Please contact support with reference {reference}.",
+            "order": OrderOut.from_model(order),
+        }
+
+    # Valid payment: Confirm & Provision
+    confirmed = service.confirm(charge)
+    prov_result = None
+    if confirmed and confirmed.is_paid:
+        prov_result = ProvisioningService(db).provision(confirmed)
+        _tell_the_buyer(confirmed, db)
+
+    return {
+        "status": "paid",
+        "paid": True,
+        "message": "Payment verified successfully! Your business automation engine is provisioned.",
+        "order": OrderOut.from_model(order),
+        "workspace_ready": prov_result is not None,
+    }
 
 
 @router.get("/orders/{reference}", response_model=CheckoutStatusOut)
@@ -322,7 +496,14 @@ async def paystack_webhook(request: Request, db: Session = Depends(get_db)):
     other status, and retrying will not fix an event we have no order for.
     """
     raw = await request.body()
-    client = PaystackClient()
+    try:
+        client = PaystackClient()
+    except PaymentsNotConfigured as exc:
+        logger.warning("Paystack webhook received but payments not configured or invalid environment: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payments not configured.",
+        ) from exc
 
     if not client.verify_signature(raw, request.headers.get("x-paystack-signature")):
         logger.warning("Rejected a webhook with an invalid signature.")

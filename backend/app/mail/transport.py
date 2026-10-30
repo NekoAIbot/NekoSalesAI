@@ -43,6 +43,7 @@ logger = get_logger(__name__)
 BACKEND_CONSOLE = "console"
 BACKEND_SMTP = "smtp"
 BACKEND_MEMORY = "memory"
+BACKEND_BREVO = "brevo"
 
 
 @dataclass(frozen=True)
@@ -73,12 +74,73 @@ class SendResult:
     error: str | None = None
 
 
+import time
+import uuid
+from typing import Literal
+
+DeliveryState = Literal["queued", "accepted", "delivered", "failed"]
+
+@dataclass
+class DeliveryRecord:
+    """Observability record distinguishing queued, accepted, delivered, and failed states."""
+    delivery_id: str
+    to: str
+    subject: str
+    state: DeliveryState
+    created_at: float
+    completed_at: float | None = None
+    backend: str = ""
+    error: str | None = None
+
+_delivery_history: list[DeliveryRecord] = []
+_delivery_history_lock = threading.Lock()
+MAX_DELIVERY_HISTORY = 100
+
+def get_delivery_history(limit: int = 50) -> list[DeliveryRecord]:
+    with _delivery_history_lock:
+        return list(_delivery_history[-limit:])
+
+def record_delivery_event(
+    delivery_id: str,
+    to: str,
+    subject: str,
+    state: DeliveryState,
+    backend: str = "",
+    error: str | None = None,
+) -> DeliveryRecord:
+    with _delivery_history_lock:
+        for rec in _delivery_history:
+            if rec.delivery_id == delivery_id:
+                rec.state = state
+                if backend:
+                    rec.backend = backend
+                if error:
+                    rec.error = error
+                if state in ("delivered", "failed"):
+                    rec.completed_at = time.time()
+                return rec
+        rec = DeliveryRecord(
+            delivery_id=delivery_id,
+            to=to,
+            subject=subject,
+            state=state,
+            created_at=time.time(),
+            backend=backend,
+            error=error,
+        )
+        _delivery_history.append(rec)
+        if len(_delivery_history) > MAX_DELIVERY_HISTORY:
+            del _delivery_history[: len(_delivery_history) - MAX_DELIVERY_HISTORY]
+        return rec
+
 class MailTransport:
     """Base class. Subclasses implement ``_deliver``."""
 
     name = "base"
 
-    def send(self, message: Message) -> SendResult:
+    def send(self, message: Message, delivery_id: str | None = None) -> SendResult:
+        if delivery_id:
+            record_delivery_event(delivery_id, message.to, message.subject, "accepted", backend=self.name)
         try:
             self._deliver(message)
         except Exception as exc:  # noqa: BLE001 - reported, not propagated
@@ -92,8 +154,12 @@ class MailTransport:
                 type(exc).__name__,
                 exc,
             )
+            if delivery_id:
+                record_delivery_event(delivery_id, message.to, message.subject, "failed", backend=self.name, error=str(exc))
             return SendResult(sent=False, backend=self.name, error=str(exc))
 
+        if delivery_id:
+            record_delivery_event(delivery_id, message.to, message.subject, "delivered", backend=self.name)
         return SendResult(sent=True, backend=self.name)
 
     def _deliver(self, message: Message) -> None:
@@ -137,24 +203,72 @@ class MemoryMailTransport(MailTransport):
             self.outbox.clear()
 
 
+class BrevoApiMailTransport(MailTransport):
+    """Sends via Brevo v3 Transactional Email REST API."""
+
+    name = BACKEND_BREVO
+
+    def _deliver(self, message: Message) -> None:
+        if not settings.BREVO_API_KEY:
+            raise RuntimeError("MAIL_BACKEND is brevo but BREVO_API_KEY is not set.")
+
+        import httpx
+        url = "https://api.brevo.com/v3/smtp/email"
+        headers = {
+            "api-key": settings.BREVO_API_KEY,
+            "accept": "application/json",
+            "content-type": "application/json",
+        }
+        payload = {
+            "sender": {
+                "name": settings.MAIL_FROM_NAME,
+                "email": settings.MAIL_FROM,
+            },
+            "to": [{"email": message.to}],
+            "subject": message.subject,
+            "textContent": message.body,
+        }
+        res = httpx.post(url, headers=headers, json=payload, timeout=settings.SMTP_TIMEOUT)
+        if res.status_code >= 400:
+            try:
+                data = res.json()
+                error_msg = data.get("message", res.text)
+            except Exception:
+                error_msg = f"HTTP {res.status_code}"
+            # Never leak api keys in logs or errors
+            if settings.BREVO_API_KEY and settings.BREVO_API_KEY in error_msg:
+                error_msg = error_msg.replace(settings.BREVO_API_KEY, "[REDACTED]")
+            raise RuntimeError(f"Brevo API returned error ({res.status_code}): {error_msg}")
+
+
 class SmtpMailTransport(MailTransport):
-    """Sends over SMTP.
+    """Sends over SMTP with automatic port fallback (587 -> 2525).
 
     Works with any SMTP provider: Brevo, Mailjet, SendGrid, Amazon SES,
     Gmail, etc. Configuration is entirely environment-based so the same
     binary runs in development (console) and production (smtp) without
     code changes.
-
-    For Brevo (recommended free tier: 300 emails/day):
-        MAIL_BACKEND=smtp
-        SMTP_HOST=smtp-relay.brevo.com
-        SMTP_PORT=587
-        SMTP_USERNAME=your-brevo-login@example.com
-        SMTP_PASSWORD=your-brevo-smtp-key
-        SMTP_USE_TLS=true
     """
 
     name = BACKEND_SMTP
+
+    def _connect(self, port: int) -> smtplib.SMTP | smtplib.SMTP_SSL:
+        if settings.SMTP_USE_SSL:
+            server = smtplib.SMTP_SSL(
+                settings.SMTP_HOST, port, timeout=settings.SMTP_TIMEOUT
+            )
+        else:
+            server = smtplib.SMTP(
+                settings.SMTP_HOST, port, timeout=settings.SMTP_TIMEOUT
+            )
+
+        if settings.SMTP_USE_TLS and not settings.SMTP_USE_SSL:
+            server.starttls()
+
+        if settings.SMTP_USERNAME:
+            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+
+        return server
 
     def _deliver(self, message: Message) -> None:
         if not settings.SMTP_HOST:
@@ -166,23 +280,33 @@ class SmtpMailTransport(MailTransport):
         email["Subject"] = message.subject
         email.set_content(message.body)
 
-        if settings.SMTP_USE_SSL:
-            server = smtplib.SMTP_SSL(
-                settings.SMTP_HOST, settings.SMTP_PORT, timeout=settings.SMTP_TIMEOUT
-            )
-        else:
-            server = smtplib.SMTP(
-                settings.SMTP_HOST, settings.SMTP_PORT, timeout=settings.SMTP_TIMEOUT
-            )
+        primary_port = settings.SMTP_PORT or 2525
+        fallback_port = 587 if primary_port == 2525 else 2525
 
-        with server:
-            if settings.SMTP_USE_TLS and not settings.SMTP_USE_SSL:
-                server.starttls()
-
-            if settings.SMTP_USERNAME:
-                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-
+        server = None
+        try:
+            server = self._connect(primary_port)
             server.send_message(email)
+        except (TimeoutError, smtplib.SMTPConnectError, OSError) as exc:
+            logger.warning(
+                "Primary SMTP port %d failed (%s); trying fallback port %d.",
+                primary_port,
+                exc,
+                fallback_port,
+            )
+            try:
+                server = self._connect(fallback_port)
+                server.send_message(email)
+            except Exception as fallback_exc:
+                raise RuntimeError(
+                    f"SMTP delivery failed on both ports {primary_port} and {fallback_port}: {fallback_exc}"
+                ) from fallback_exc
+        finally:
+            if server is not None:
+                try:
+                    server.quit()
+                except Exception:
+                    pass
 
 
 # One transport per process. Built on first use rather than at import, so tests
@@ -196,12 +320,11 @@ def build_transport(backend: str | None = None) -> MailTransport:
 
     if chosen == BACKEND_SMTP:
         return SmtpMailTransport()
+    if chosen in (BACKEND_BREVO, "brevo_api"):
+        return BrevoApiMailTransport()
     if chosen == BACKEND_MEMORY:
         return MemoryMailTransport()
     if chosen != BACKEND_CONSOLE:
-        # An unrecognised backend logs and falls back rather than failing to
-        # start: a typo in an env var should not take the whole app down, and
-        # console loses nothing but the delivery.
         logger.warning(
             "Unknown MAIL_BACKEND %r, falling back to %s.", chosen, BACKEND_CONSOLE
         )
@@ -227,5 +350,23 @@ def set_transport(transport: MailTransport | None) -> None:
         _transport = transport
 
 
-def send(message: Message) -> SendResult:
-    return get_transport().send(message)
+def send(message: Message, delivery_id: str | None = None) -> SendResult:
+    return get_transport().send(message, delivery_id=delivery_id)
+
+
+def send_in_background(message: Message) -> threading.Thread:
+    """Dispatch sending to a background daemon thread so HTTP requests never block.
+    
+    Surfaces delivery state (queued -> accepted -> delivered / failed) in the
+    in-memory delivery tracker so errors are never silently swallowed.
+    """
+    delivery_id = f"dlv_{uuid.uuid4().hex[:12]}"
+    record_delivery_event(delivery_id, message.to, message.subject, "queued")
+
+    def _runner():
+        send(message, delivery_id=delivery_id)
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.delivery_id = delivery_id  # type: ignore[attr-defined]
+    thread.start()
+    return thread

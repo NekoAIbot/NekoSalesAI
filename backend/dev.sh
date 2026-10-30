@@ -25,7 +25,8 @@
 
 set -uo pipefail
 
-cd "$(dirname "$0")"
+SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+cd "$(dirname "$SCRIPT")"
 
 PORT="${PORT:-8000}"
 HOST="${HOST:-127.0.0.1}"
@@ -136,7 +137,7 @@ case "${1:-}" in
 
     --restart)
         stop_web || exit 1
-        exec "$0" --daemon
+        exec "$SCRIPT" --daemon
         ;;
 
     --daemon)
@@ -155,7 +156,7 @@ case "${1:-}" in
         prepare
         rm -f var/web.stop
 
-        setsid "$0" --supervise >> "$LOG_FILE" 2>&1 &
+        setsid "$SCRIPT" --supervise >> "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
 
         # Long enough for migrations, seeding and startup on a phone.

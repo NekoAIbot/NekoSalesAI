@@ -37,10 +37,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base_model import BaseModel
 
 STATUS_SCHEDULED = "scheduled"
+STATUS_SENDING = "sending"
 STATUS_SENT = "sent"
 STATUS_CANCELLED = "cancelled"
 
-FOLLOW_UP_STATUSES = (STATUS_SCHEDULED, STATUS_SENT, STATUS_CANCELLED)
+FOLLOW_UP_STATUSES = (STATUS_SCHEDULED, STATUS_SENDING, STATUS_SENT, STATUS_CANCELLED)
 
 
 class FollowUp(BaseModel):
@@ -129,4 +130,4 @@ class FollowUp(BaseModel):
 
     @property
     def is_open(self) -> bool:
-        return self.status == STATUS_SCHEDULED
+        return self.status in (STATUS_SCHEDULED, STATUS_SENDING)

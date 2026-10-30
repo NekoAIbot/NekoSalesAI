@@ -465,6 +465,183 @@ _PARSERS = {
 }
 
 
+_VOLUME_CONTEXT_RE = re.compile(
+    r"(?:around|about|roughly|approx(?:imately)?|handle|get|receive|have)?\s*"
+    r"(\d[\d,]*\s*(?:k\b|thousand\b)?)\s*"
+    r"(?:conversations?|chats?|messages?|inquiries|enquiries|visitors?|leads?|a month|monthly|per month)",
+    re.IGNORECASE,
+)
+
+_INTEGRATION_CONTEXT_RE = re.compile(
+    r"\b(\d+)\s*(?:systems?|integrations?|apps?|tools?|software)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_natural_scope(
+    scope: Scope,
+    text: str,
+    pending: str | None = None,
+) -> tuple[Scope, list[str]]:
+    """Extract any scope dimensions explicitly provided in a natural message.
+
+    Extracts dimensions that are present without overwriting already-configured
+    values. When extracting out of turn, requires explicit context (e.g. volume
+    keywords like 'chats/conversations/a month') so unrelated numbers are not
+    mistaken for volume.
+    """
+    extracted: list[str] = []
+    lowered = (text or "").lower().strip()
+    if not lowered:
+        return scope, extracted
+
+    # 1. Product
+    if scope.products is None:
+        if pending == STEP_PRODUCT:
+            prods = parse_products(lowered)
+            if prods:
+                scope = replace(scope, products=prods)
+                extracted.append("product")
+        else:
+            prods = parse_products(lowered)
+            if prods:
+                from app.sales.advisor import names_a_need
+
+                if names_a_need(lowered):
+                    scope = replace(scope, products=prods)
+                    extracted.append("product")
+
+    # 2. Channels
+    if scope.channels is None:
+        has_channel = _ALL_CHANNELS.search(lowered) or any(
+            re.search(pat, lowered) for pat, _ in _CHANNEL_WORDS
+        )
+        if has_channel:
+            chans = parse_channels(lowered)
+            if chans:
+                scope = replace(scope, channels=chans)
+                extracted.append("channels")
+
+    # 3. Volume
+    if scope.monthly_conversations is None:
+        if pending == STEP_VOLUME:
+            vol = parse_volume(lowered)
+            if vol:
+                scope = replace(scope, monthly_conversations=vol)
+                extracted.append("volume")
+        else:
+            m = _VOLUME_CONTEXT_RE.search(lowered)
+            if m:
+                vol = parse_volume(m.group(0))
+                if vol:
+                    scope = replace(scope, monthly_conversations=vol)
+                    extracted.append("volume")
+
+    # 4. Integrations
+    if scope.integrations is None:
+        if pending == STEP_INTEGRATIONS:
+            ints = parse_integrations(lowered)
+            if ints is not None:
+                scope = replace(scope, integrations=ints)
+                extracted.append("integrations")
+        else:
+            if re.search(r"\bno\s+(?:integrations?|systems?|tools?|apps?)\b", lowered) or re.search(r"\b0\s+(?:integrations?|systems?)\b", lowered):
+                scope = replace(scope, integrations=0)
+                extracted.append("integrations")
+            else:
+                m = _INTEGRATION_CONTEXT_RE.search(lowered)
+                if m:
+                    ints = parse_integrations(m.group(0))
+                    if ints is not None:
+                        scope = replace(scope, integrations=ints)
+                        extracted.append("integrations")
+
+    # 5. Languages
+    if scope.languages is None:
+        if pending == STEP_LANGUAGES:
+            langs = parse_languages(lowered)
+            if langs:
+                scope = replace(scope, languages=langs)
+                extracted.append("languages")
+        else:
+            has_lang = any(re.search(pat, lowered) for pat, _ in _LANGUAGE_WORDS)
+            if has_lang:
+                langs = parse_languages(lowered)
+                if langs:
+                    scope = replace(scope, languages=langs)
+                    extracted.append("languages")
+
+    return scope, extracted
+
+
+def retain_scope_from_memory(scope: Scope, memory: Any) -> tuple[Scope, list[str]]:
+    """Populate missing scope dimensions from facts retained across turns in memory."""
+    retained: list[str] = []
+    if memory is None:
+        return scope, retained
+
+    # Retain channels
+    if scope.channels is None:
+        ch_fact = memory.fact("business", "where_customers_reach_us")
+        if ch_fact:
+            chans = parse_channels(ch_fact)
+            if chans:
+                scope = replace(scope, channels=chans)
+                retained.append("channels")
+
+    # Retain volume
+    if scope.monthly_conversations is None:
+        vol_fact = memory.fact("business", "monthly_volume")
+        if vol_fact:
+            try:
+                vol = int(vol_fact)
+                if 0 < vol <= MAX_QUOTABLE_CONVERSATIONS:
+                    scope = replace(scope, monthly_conversations=vol)
+                    retained.append("volume")
+            except (ValueError, TypeError):
+                pass
+
+    # Retain languages
+    if scope.languages is None:
+        lang_fact = memory.fact("requirements", "languages")
+        if lang_fact:
+            langs = parse_languages(lang_fact)
+            if langs:
+                scope = replace(scope, languages=langs)
+                retained.append("languages")
+
+    return scope, retained
+
+
+def describe_extracted_lead_in(extracted: list[str], scope: Scope) -> str:
+    """Create a conversational acknowledgment of what was extracted from the buyer's words."""
+    if not extracted:
+        return "Noted."
+
+    parts = []
+    if "product" in extracted and scope.products:
+        p_names = [PRODUCT_NAMES.get(p, p) for p in scope.products]
+        parts.append(f"the {' and '.join(p_names)}")
+    if "channels" in extracted and scope.channels:
+        c_names = channel_names(scope.channels)
+        parts.append(f"for {c_names}")
+    if "volume" in extracted and scope.monthly_conversations:
+        parts.append(f"handling about {scope.monthly_conversations:,} conversations a month")
+    if "integrations" in extracted and scope.integrations is not None:
+        if scope.integrations == 0:
+            parts.append("with no extra system integrations")
+        else:
+            parts.append(f"connected to {scope.integrations} system{'s' if scope.integrations != 1 else ''}")
+    if "languages" in extracted and scope.languages:
+        l_names = [LANGUAGES.get(l, l) for l in scope.languages]
+        parts.append(f"supporting {', '.join(l_names)}")
+
+    if not parts:
+        return "Noted."
+
+    return "Got it — " + ", ".join(parts) + "."
+
+
 def answer(scope: Scope, step: str, text: str) -> Scope | None:
     parser = _PARSERS.get(step)
     if parser is None:

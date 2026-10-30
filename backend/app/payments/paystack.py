@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import threading
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -42,6 +43,74 @@ PAYSTACK_SUCCESS = "success"
 
 class PaymentsNotConfigured(RuntimeError):
     """No Paystack secret key is set, so checkout cannot be offered."""
+
+
+class PaymentEnvironmentError(PaymentsNotConfigured):
+    """Paystack credentials violate environment safety rules or are mismatched."""
+
+
+def validate_paystack_credentials(
+    secret_key: str,
+    public_key: str = "",
+    environment: str = "development",
+) -> None:
+    """Validate Paystack credentials against the active runtime environment.
+
+    Safety constraints enforced:
+    - Non-production environments (development, testing, staging) reject any
+      secret key that does not use the test prefix 'sk_test_'.
+    - Non-production environments reject live public keys ('pk_live_') and require
+      'pk_test_' when a public key is supplied.
+    - Production mode requires explicit production environment configuration
+      and 'sk_live_' secret key / 'pk_live_' public key.
+    - Public and secret key environments must not be mismatched.
+    - Never prints, logs, or interpolates secret key values into error messages.
+    """
+    sk = (secret_key or "").strip()
+    pk = (public_key or "").strip()
+    env = (environment or "development").strip().lower()
+
+    if not sk:
+        raise PaymentsNotConfigured("Paystack secret key is missing.")
+
+    # Cross-key mismatch checks
+    if sk.startswith("sk_test_") and pk.startswith("pk_live_"):
+        raise PaymentEnvironmentError(
+            "Mismatched Paystack keys: secret key is test ('sk_test_') but public key is live ('pk_live_')."
+        )
+    if sk.startswith("sk_live_") and pk.startswith("pk_test_"):
+        raise PaymentEnvironmentError(
+            "Mismatched Paystack keys: secret key is live ('sk_live_') but public key is test ('pk_test_')."
+        )
+
+    is_prod = env == "production"
+
+    if not is_prod:
+        if sk.startswith("sk_live_"):
+            raise PaymentEnvironmentError(
+                "Live Paystack secret key ('sk_live_') is forbidden in non-production environments."
+            )
+        if not sk.startswith("sk_test_"):
+            raise PaymentEnvironmentError(
+                "Paystack secret key must use the test prefix 'sk_test_' in non-production environments."
+            )
+        if pk.startswith("pk_live_"):
+            raise PaymentEnvironmentError(
+                "Live Paystack public key ('pk_live_') is forbidden in non-production environments."
+            )
+        if pk and not pk.startswith("pk_test_"):
+            raise PaymentEnvironmentError(
+                "Paystack public key must use the test prefix 'pk_test_' in non-production environments."
+            )
+    else:
+        if not sk.startswith("sk_live_"):
+            raise PaymentEnvironmentError(
+                "Production environment requires a live Paystack secret key ('sk_live_')."
+            )
+        if pk and not pk.startswith("pk_live_"):
+            raise PaymentEnvironmentError(
+                "Production environment requires a live Paystack public key ('pk_live_')."
+            )
 
 
 class PaystackError(RuntimeError):
@@ -115,10 +184,34 @@ class Transport(Protocol):
 
 
 class HttpxTransport:
-    """The real one."""
+    """The real one with persistent connection pooling, keep-alive, and edge resilience."""
+
+    _shared_client: httpx.Client | None = None
+    _shared_lock = threading.Lock()
 
     def __init__(self, timeout: float = 20.0) -> None:
         self._timeout = timeout
+
+    @classmethod
+    def get_client(cls, timeout: float = 20.0) -> httpx.Client:
+        if cls._shared_client is None or cls._shared_client.is_closed:
+            with cls._shared_lock:
+                if cls._shared_client is None or cls._shared_client.is_closed:
+                    cls._shared_client = httpx.Client(
+                        timeout=timeout,
+                        limits=httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=10.0),
+                    )
+        return cls._shared_client
+
+    @classmethod
+    def reset_client(cls) -> None:
+        with cls._shared_lock:
+            if cls._shared_client and not cls._shared_client.is_closed:
+                try:
+                    cls._shared_client.close()
+                except Exception:
+                    pass
+            cls._shared_client = None
 
     def request(
         self,
@@ -128,13 +221,29 @@ class HttpxTransport:
         headers: dict[str, str],
         json_body: dict[str, Any] | None = None,
     ) -> tuple[int, dict[str, Any]]:
-        response = httpx.request(
-            method,
-            url,
-            headers=headers,
-            json=json_body,
-            timeout=self._timeout,
-        )
+        import time
+
+        client = self.get_client(self._timeout)
+        try:
+            response = client.request(
+                method,
+                url,
+                headers=headers,
+                json=json_body,
+                timeout=self._timeout,
+            )
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout, httpx.RemoteProtocolError):
+            # Stale connection in pool or edge reset; close shared client and retry once with a clean client
+            self.reset_client()
+            time.sleep(0.3)
+            with httpx.Client(timeout=self._timeout) as fresh_client:
+                response = fresh_client.request(
+                    method,
+                    url,
+                    headers=headers,
+                    json=json_body,
+                    timeout=self._timeout,
+                )
 
         try:
             payload = response.json()
@@ -154,12 +263,27 @@ class PaystackClient:
         secret_key: str | None = None,
         base_url: str | None = None,
         transport: Transport | None = None,
+        environment: str | None = None,
+        public_key: str | None = None,
     ) -> None:
         self._secret_key = (
             secret_key if secret_key is not None else settings.PAYSTACK_SECRET_KEY
         ).strip()
         self._base_url = (base_url or settings.PAYSTACK_BASE_URL).rstrip("/")
         self._transport = transport or HttpxTransport()
+        self._environment = (
+            environment if environment is not None else settings.ENVIRONMENT
+        ).strip().lower()
+        self._public_key = (
+            public_key if public_key is not None else settings.PAYSTACK_PUBLIC_KEY
+        ).strip()
+
+        if self._secret_key:
+            validate_paystack_credentials(
+                secret_key=self._secret_key,
+                public_key=self._public_key,
+                environment=self._environment,
+            )
 
     @property
     def is_configured(self) -> bool:
@@ -174,6 +298,7 @@ class PaystackClient:
         return {
             "Authorization": f"Bearer {self._secret_key}",
             "Content-Type": "application/json",
+            "User-Agent": "Nera-Platform/2.0",
         }
 
     def _call(
