@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_BASE_URL: str = "https://api.telegram.org"
     TELEGRAM_WEBHOOK_SECRET: str = ""
+    TELEGRAM_MODE: str = "polling"  # polling mode owns delivery and clears any stale webhook.
 
     WHATSAPP_ACCESS_TOKEN: str = ""
     WHATSAPP_PHONE_NUMBER_ID: str = ""

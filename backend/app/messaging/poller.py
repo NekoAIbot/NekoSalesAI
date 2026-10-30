@@ -12,11 +12,7 @@ certificate, no tunnel, and it works from behind any NAT.
     python -m app.messaging.poller            # answer messages until stopped
     python -m app.messaging.poller --once     # drain what is waiting, then exit
 
-**Telegram allows one delivery method at a time.** While a webhook is set,
-``getUpdates`` returns 409 and this refuses to start. Removing the webhook is
-therefore a decision about the *other* thing using that bot, not a detail — so it
-is never done implicitly. ``scripts/telegram_setup.py --take-over`` does it, after
-printing the URL it is about to displace.
+**Telegram allows one delivery method at a time.** The app uses polling mode: on startup it removes any registered webhook without dropping pending updates, then starts ``getUpdates``. Set ``TELEGRAM_MODE=webhook`` only when the webhook route has been configured and the poller should stay disabled.
 
 The offset is what makes this exactly-once from Telegram's side: acknowledging
 update N+1 is what stops N being redelivered. It is advanced only after handling,
@@ -348,6 +344,8 @@ class TelegramPoller:
         """One getUpdates call, and every message in what came back."""
         report = PollReport()
         updates = self._get_updates()
+        if updates:
+            logger.info("Telegram getUpdates poll succeeded; received %d update(s)", len(updates))
         report.updates = len(updates)
 
         if not updates:
@@ -411,15 +409,10 @@ class TelegramPoller:
             linked = False
             try:
                 linked = bool(token) and exchange_link_token(db, token, message.external_id, message.sender_name)
-            except Exception:  # noqa: BLE001 - one invalid link must not crash polling
+            except Exception:  # noqa: BLE001 - invalid link must not crash polling
                 db.rollback()
                 logger.exception("Telegram account-link exchange failed")
             response = "linked. your website and Telegram now use the same workspace." if linked else "that link is invalid or expired. create a new one in your website settings."
-            if linked:
-                identity = db.execute(select(ChannelIdentity).where(
-                    ChannelIdentity.channel == CHANNEL_TELEGRAM,
-                    ChannelIdentity.external_id == message.external_id,
-                )).scalars().first()
             service.deliver(message, [response])
             report.answered += 1
             return
@@ -429,15 +422,13 @@ class TelegramPoller:
                 ChannelIdentity.channel == CHANNEL_TELEGRAM,
                 ChannelIdentity.external_id == message.external_id,
             )).scalar_one_or_none()
-            if linked_org is None:
-                service.deliver(message, ["to connect your website account, create a link in your Nera website settings, then tap it here."])
-            else:
-                service.deliver(message, ["your Telegram is connected to your website workspace."])
+            reply = "your Telegram is connected to your website workspace." if linked_org is not None else "to connect your website account, create a link in your Nera website settings, then tap it here."
+            service.deliver(message, [reply])
             report.answered += 1
             return
 
-        # A callback query is acknowledged immediately, before the reply is
-        # composed: it stops the button's loading spinner on the buyer's
+        # A callback query is acknowledged immediately, before the reply starts
+        # composing: it stops the button's loading spinner on the buyer's
         # screen at once, and the actual answer follows as the edited message
         # or a new one. The selection itself is already recorded — the
         # acknowledgement is purely cosmetic, so its failure is harmless.
@@ -491,10 +482,8 @@ class TelegramPoller:
 
             if "webhook" in description.lower():
                 raise PollerError(
-                    "Telegram is delivering to a webhook, so getUpdates is "
-                    "refused. Remove it first — "
-                    "python scripts/telegram_setup.py --take-over — which will "
-                    "show you the URL it displaces before doing it."
+                    "Telegram returned 409: getUpdates refused because a webhook is configured. "
+                    "Polling startup removes stale webhooks without dropping pending updates."
                 )
 
             logger.warning("getUpdates was refused: %s", description or body)
@@ -523,10 +512,9 @@ class TelegramPoller:
 
         if response.status_code == CONFLICT:
             raise PollerError(
-                "Telegram returned 409: this bot has a webhook set, and a bot "
-                "can have a webhook or be polled, not both. Run "
-                "python scripts/telegram_setup.py --take-over to see the URL in "
-                "place and remove it."
+                f"Telegram returned 409: getUpdates refused because a webhook is "
+                f"configured. Polling startup removes stale webhooks without "
+                f"dropping pending updates."
             )
 
         try:

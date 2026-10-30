@@ -130,6 +130,20 @@ class TelegramClient:
     def configured(self) -> bool:
         return bool(self._token)
 
+    def delete_webhook(self, *, drop_pending_updates: bool = False) -> dict:
+        """Remove the bot webhook so long polling can own update delivery."""
+        if not self._token:
+            raise MessagingNotConfigured("TELEGRAM_BOT_TOKEN is not set.")
+        response = self._transport.post(
+            f"{self._base}/bot{self._token}/deleteWebhook",
+            json={"drop_pending_updates": drop_pending_updates},
+        )
+        self._raise_for_response(response, "webhook")
+        body = response.json()
+        if not body.get("ok"):
+            raise MessagingDeliveryError(str(body.get("description") or "Telegram webhook removal failed"))
+        return body
+
     def send_message(self, chat_id: str, text: str) -> None:
         if not self._token:
             raise MessagingNotConfigured("TELEGRAM_BOT_TOKEN is not set.")

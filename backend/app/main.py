@@ -69,11 +69,20 @@ async def lifespan(app: FastAPI):
             "Set SECRET_KEY in .env before deploying."
         )
 
-    if settings.TELEGRAM_BOT_TOKEN and _poller_task is None:
+    telegram_mode = settings.TELEGRAM_MODE.strip().lower()
+    if telegram_mode not in {"polling", "webhook"}:
+        raise RuntimeError("TELEGRAM_MODE must be 'polling' or 'webhook'.")
+
+    if telegram_mode == "polling" and settings.TELEGRAM_BOT_TOKEN and _poller_task is None:
         import asyncio
 
+        from app.messaging.clients import TelegramClient
+        webhook_reset = TelegramClient().delete_webhook(drop_pending_updates=False)
+        logger.info("Telegram polling mode selected; deleteWebhook result=%s", webhook_reset.get("result"))
         _poller_stop = asyncio.Event()
         _poller_task = asyncio.create_task(_run_poller(_poller_stop), name="telegram-poller")
+    elif telegram_mode == "webhook":
+        logger.info("Telegram polling disabled: TELEGRAM_MODE=webhook")
     elif not settings.TELEGRAM_BOT_TOKEN:
         logger.warning("Telegram poller is disabled: TELEGRAM_BOT_TOKEN is not configured")
 
