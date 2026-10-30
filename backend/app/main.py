@@ -26,22 +26,48 @@ async def _run_poller(stop_event):
 
     from app.messaging.poller import PollerError, TelegramPoller
 
+    from app.messaging.clients import TelegramClient
+
     poller = TelegramPoller()
     logger.info("Starting embedded Telegram poller")
-    run_task = asyncio.create_task(asyncio.to_thread(poller.run), name="telegram-poller-loop")
-    try:
-        await stop_event.wait()
-    finally:
-        poller.stop()
+    # A webhook set by anything else (a previous webhook-mode deploy, a setup
+    # script) makes Telegram refuse getUpdates with a 409. Clear it and retry
+    # with backoff instead of giving up: the poller is the buyer's front door.
+    for attempt in range(5):
+        run_task = asyncio.create_task(
+            asyncio.to_thread(poller.run), name="telegram-poller-loop"
+        )
+        stop_or_fail = asyncio.wait(
+            [run_task, stop_event.wait()], return_when=asyncio.FIRST_COMPLETED
+        )
+        await stop_or_fail
+        if stop_event.is_set():
+            poller.stop()
+            try:
+                await asyncio.wait_for(run_task, timeout=40)
+            except asyncio.TimeoutError:
+                logger.warning("Telegram poller did not stop within the long-poll timeout")
+            except Exception:
+                logger.exception("Telegram poller exited with an error during shutdown")
+            logger.info("Embedded Telegram poller stopped")
+            return
+        # The poller exited on its own: an error, since it loops until stopped.
         try:
-            await asyncio.wait_for(run_task, timeout=40)
-        except asyncio.TimeoutError:
-            logger.warning("Telegram poller did not stop within the long-poll timeout")
+            await run_task
         except PollerError as exc:
-            logger.error("Telegram poller cannot start: %s", exc)
+            logger.error(
+                "Telegram poller failed (attempt %s/5): %s", attempt + 1, exc
+            )
         except Exception:
-            logger.exception("Telegram poller exited with an error")
-        logger.info("Embedded Telegram poller stopped")
+            logger.exception("Telegram poller exited with an error (attempt %s/5)", attempt + 1)
+        TelegramClient().delete_webhook(drop_pending_updates=False)
+        logger.info("Telegram webhook cleared; retrying poller in 15s")
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=15)
+            break  # shutting down
+        except asyncio.TimeoutError:
+            pass
+    logger.info("Embedded Telegram poller stopped")
 
 
 @asynccontextmanager
