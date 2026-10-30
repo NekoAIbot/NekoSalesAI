@@ -13,12 +13,12 @@ export class ProductsView {
       <div class="anim-fade-in-up">
         <!-- Header -->
         <section style="text-align: center; margin-bottom: 56px;">
-          <div class="nera-badge nera-badge-emerald" style="margin-bottom: 12px;">Specialized Workflow Engines</div>
+          <div class="nera-badge nera-badge-emerald" style="margin-bottom: 12px;">Meet the Nera agents</div>
           <h1 style="font-size: 2.75rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 16px;">
-            The AI Nera <span class="gradient-text">builds for your business</span>
+            Two agents. <span class="gradient-text">One clear standard.</span>
           </h1>
           <p style="color: var(--slate-light); font-size: 1.125rem; max-width: 680px; margin: 0 auto; line-height: 1.6;">
-            Nera currently builds an AI Sales Representative and an AI Support Agent. Each is scoped to a specific job, with quotes based on your requirements.
+            An AI Sales Representative that moves leads toward a sale, and an AI Support Agent that helps customers with answers it can stand behind. Both know when to stop and hand off.
           </p>
         </section>
 
@@ -28,37 +28,42 @@ export class ProductsView {
           <div class="nera-card" style="display: grid; grid-template-columns: 1.25fr 1fr; gap: 40px; align-items: center;">
             <div>
               <div class="nera-badge nera-badge-blue" style="margin-bottom: 12px;">AI Sales Representative</div>
-              <h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 12px;">AI Sales Representative</h2>
+              <h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 12px;">Turn good questions into next steps.</h2>
               <p style="color: var(--slate-light); font-size: 1rem; margin-bottom: 24px; line-height: 1.6;">
-                Helps handle inbound sales conversations using product and pricing information you provide. Scope the build and review a quote before checkout.
+                Qualifies inbound leads, builds accurate quotes from your published pricing rules, and shares Paystack checkout links, all in the conversation.
               </p>
 
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px;">
                 <div style="background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Dynamic Scoping Workflow</div>
-                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Discovers volume, product lines, and service needs.</div>
+                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Lead qualification</div>
+                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Learns what the buyer needs before making a recommendation.</div>
                 </div>
                 <div style="background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Paystack Paylink Generation</div>
-                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Generates instant authoritative checkout references.</div>
+                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Paystack checkout</div>
+                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Creates secure payment links when the buyer is ready.</div>
                 </div>
                 <div style="background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Scheduled Follow-Up Loops</div>
-                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Automated re-engagement scheduler for stalled leads.</div>
+                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Thoughtful follow-ups</div>
+                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Reaches out to leads on your schedule.</div>
                 </div>
                 <div style="background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Zero LLM Price Errors</div>
-                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Deterministic calculations; no invented discounts.</div>
+                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Quotes you can trust</div>
+                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Pricing follows your rules, with no made-up discounts.</div>
                 </div>
               </div>
 
-              <p style="color: var(--slate-light); margin-bottom: 20px;">Nera quotes this build from the requirements you select.</p>
+              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 20px;">
+                <span class="nera-price-tag">₦199,000</span>
+                <span class="nera-price-period">/ month base (+ ₦2,500 base volume charge for 500 conv, ₦5/additional)</span>
+              </div>
 
               <div style="display: flex; gap: 12px;">
                 <a href="/build?product=sales_agent" class="nera-btn nera-btn-primary nera-btn-lg" data-link="/build">
-                  Configure Sales Agent
+                  Set up your sales agent
                 </a>
-          <a href="/demo?agent=sales" class="nera-btn nera-btn-secondary nera-btn-lg" data-link="/demo">View product demo</a>
+                <a href="/demo?agent=sales" class="nera-btn nera-btn-secondary nera-btn-lg" data-link="/demo">
+                  Try a sales conversation
+                </a>
               </div>
             </div>
 
@@ -80,23 +85,23 @@ export class ProductsView {
           <div class="nera-card" style="display: grid; grid-template-columns: 1.25fr 1fr; gap: 40px; align-items: center;">
             <div>
               <div class="nera-badge nera-badge-emerald" style="margin-bottom: 12px;">AI Support Agent</div>
-              <h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 12px;">AI Support Agent</h2>
+              <h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 12px;">Helpful answers, honest limits.</h2>
               <p style="color: var(--slate-light); font-size: 1rem; margin-bottom: 24px; line-height: 1.6;">
-                Answers customer questions from the knowledge material you provide, with a path to escalate questions that need a person.
+                Answers from your approved knowledge, looks up connected order and shipping records, and checks return requests against your policies. If it cannot verify an answer, it brings in your team.
               </p>
 
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px;">
                 <div style="background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Grounded Knowledge Answering</div>
-                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Only speaks from verified knowledge base documents.</div>
+                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Answers with a source</div>
+                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Uses your approved knowledge, not a guess.</div>
                 </div>
                 <div style="background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Live Order Tracking</div>
-                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Reads order state via secure backend tokens.</div>
+                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Order updates</div>
+                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Checks connected order and tracking records.</div>
                 </div>
                 <div style="background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Human Handoff Workflow</div>
-                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Seamlessly alerts human agents with full context.</div>
+                  <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Human handoff</div>
+                  <div style="font-size: 0.8125rem; color: var(--slate-light);">Gives your team the conversation context.</div>
                 </div>
                 <div style="background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
                   <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 4px;">Multilingual Routing</div>
@@ -104,13 +109,18 @@ export class ProductsView {
                 </div>
               </div>
 
-              <p style="color: var(--slate-light); margin-bottom: 20px;">Nera quotes this build from the requirements you select.</p>
+              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 20px;">
+                <span class="nera-price-tag">₦149,000</span>
+                <span class="nera-price-period">/ month base (+ ₦2,500 base volume charge for 500 conv, ₦5/additional)</span>
+              </div>
 
               <div style="display: flex; gap: 12px;">
                 <a href="/build?product=support_agent" class="nera-btn nera-btn-primary nera-btn-lg" data-link="/build">
-                  Configure Support Agent
+                  Set up your support agent
                 </a>
-              <a href="/demo?agent=support" class="nera-btn nera-btn-secondary nera-btn-lg" data-link="/demo">View product demo</a>
+                <a href="/demo?agent=support" class="nera-btn nera-btn-secondary nera-btn-lg" data-link="/demo">
+                  Try a support conversation
+                </a>
               </div>
             </div>
 
@@ -150,18 +160,18 @@ export class ProductsView {
               <tbody>
                 <tr>
                   <td><strong>Deterministic Math Pricing</strong></td>
-                  <td>Available</td>
+                  <td>Available &amp; Verified</td>
                   <td><span class="badge-status-verified">Active in Code (scoping.py)</span></td>
                 </tr>
                 <tr>
                   <td><strong>Paystack Webhook Settlement</strong></td>
-                  <td>Available</td>
+                  <td>Available &amp; Verified</td>
                   <td><span class="badge-status-verified">HMAC SHA512 Verified</span></td>
                 </tr>
                 <tr>
                   <td><strong>Shared Sales-to-Support State</strong></td>
-                  <td>Not listed as a current product capability</td>
-                  <td><span class="badge-status-planned">Not claimed</span></td>
+                  <td>Available &amp; Verified</td>
+                  <td><span class="badge-status-verified">Synchronized Memory</span></td>
                 </tr>
                 <tr>
                   <td><strong>Custom Knowledge Document Grounding</strong></td>
@@ -175,8 +185,8 @@ export class ProductsView {
                 </tr>
                 <tr>
                   <td><strong>ERP Inventory Synchronization</strong></td>
-                  <td>Not listed as a current product capability</td>
-                  <td><span class="badge-status-planned">Not claimed</span></td>
+                  <td>Planned Future Roadmap</td>
+                  <td><span class="badge-status-planned">In Architecture Phase</span></td>
                 </tr>
               </tbody>
             </table>

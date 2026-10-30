@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Nera</title>
+  <defs>
+    <linearGradient id="neraGreen" x1="27" y1="21" x2="49" y2="105" gradientUnits="userSpaceOnUse"><stop stop-color="#54D6A0"/><stop offset="1" stop-color="#079B78"/></linearGradient>
+    <linearGradient id="neraBlue" x1="72" y1="32" x2="91" y2="104" gradientUnits="userSpaceOnUse"><stop stop-color="#55B8F3"/><stop offset="1" stop-color="#3568E8"/></linearGradient>
+    <linearGradient id="neraRibbon" x1="34" y1="32" x2="98" y2="83" gradientUnits="userSpaceOnUse"><stop stop-color="#22C99A"/><stop offset=".5" stop-color="#1AB7C2"/><stop offset="1" stop-color="#58B7F3"/></linearGradient>
+    <linearGradient id="neraSpark" x1="92" y1="13" x2="106" y2="29" gradientUnits="userSpaceOnUse"><stop stop-color="#5BE0B3"/><stop offset="1" stop-color="#69C6F5"/></linearGradient>
+  </defs>
+  <path d="M23 99V43a14 14 0 0 1 28 0v56a14 14 0 0 1-28 0Z" fill="url(#neraGreen)"/>
+  <path d="M61 99V51a14 14 0 0 1 28 0v48a14 14 0 0 1-28 0Z" fill="url(#neraBlue)"/>
+  <path d="M34 37 73 82c5 6 12 8 18 5 5-3 8-8 8-15V48" fill="none" stroke="url(#neraRibbon)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M101 11c1.2 6.5 3.5 8.8 10 10-6.5 1.2-8.8 3.5-10 10-1.2-6.5-3.5-8.8-10-10 6.5-1.2 8.8-3.5 10-10Z" fill="url(#neraSpark)"/>
+  <circle cx="101" cy="21" r="1.6" fill="#E9FFF7"/>
+</svg>
