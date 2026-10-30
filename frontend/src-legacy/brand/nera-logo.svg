@@ -1,60 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 310 100" fill="none" aria-label="Nera Logo">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 112" role="img" aria-labelledby="title desc">
+  <title id="title">Nera</title>
+  <desc id="desc">Nera's green and blue ribbon N with a teal sparkle and Pacifico NERA wordmark.</desc>
   <defs>
-    <linearGradient id="neraGradLeft" x1="0%" y1="100%" x2="40%" y2="0%">
-      <stop offset="0%" stop-color="#064E3B"/>
-      <stop offset="40%" stop-color="#059669"/>
-      <stop offset="100%" stop-color="#10B981"/>
-    </linearGradient>
-    <linearGradient id="neraGradDiag" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#10B981"/>
-      <stop offset="45%" stop-color="#06B6D4"/>
-      <stop offset="100%" stop-color="#3B82F6"/>
-    </linearGradient>
-    <linearGradient id="neraGradRight" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#2563EB"/>
-      <stop offset="60%" stop-color="#3B82F6"/>
-      <stop offset="100%" stop-color="#60A5FA"/>
-    </linearGradient>
-    <linearGradient id="neraGradSpark" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="40%" stop-color="#A7F3D0"/>
-      <stop offset="100%" stop-color="#93C5FD"/>
-    </linearGradient>
-    <filter id="neraGlow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="3.5" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
-    <filter id="shadowOver" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="-2" dy="4" stdDeviation="4" flood-color="#03161F" flood-opacity="0.45"/>
-    </filter>
-</defs>
-  <g transform="translate(0, -10)">
-    
-  <!-- Left Ribbon Stem -->
-  <path d="M 22 92 C 16 92 12 87 12 80 L 12 36 C 12 25 21 16 32 16 C 41 16 48 22 50 30 L 50 76 C 50 85 43 92 34 92 Z" fill="url(#neraGradLeft)"/>
-  
-  <!-- Right Ribbon Stem -->
-  <path d="M 70 92 C 61 92 54 85 54 76 L 54 44 C 54 35 61 28 70 28 C 79 28 86 35 86 44 L 86 80 C 86 87 81 92 75 92 Z" fill="url(#neraGradRight)"/>
-  
-  <!-- Diagonal Sweeping Ribbon Fold (with depth shadow over left stem) -->
-  <path d="M 32 16 C 40 16 48 21 52 28 L 84 76 C 88 82 92 85 96 85 C 102 85 106 80 106 74 L 106 48 C 106 43 102 40 98 40 C 94 40 90 43 90 48 L 90 64 L 62 22 C 55 12 44 8 32 16 Z" 
-        fill="url(#neraGradDiag)" filter="url(#shadowOver)"/>
-
-  <!-- Radiant Spark Accent (Intelligence symbol) -->
-  <path d="M 104 10 Q 104 20 114 20 Q 104 20 104 30 Q 104 20 94 20 Q 104 20 104 10 Z" fill="url(#neraGradSpark)" filter="url(#neraGlow)"/>
-  <circle cx="104" cy="20" r="1.5" fill="#FFFFFF"/>
-
+    <linearGradient id="neraGreen" x1="26" y1="20" x2="45" y2="100" gradientUnits="userSpaceOnUse"><stop stop-color="#34D399"/><stop offset="1" stop-color="#059669"/></linearGradient>
+    <linearGradient id="neraBlue" x1="74" y1="30" x2="88" y2="100" gradientUnits="userSpaceOnUse"><stop stop-color="#06B6D4"/><stop offset="1" stop-color="#3B82F6"/></linearGradient>
+    <linearGradient id="neraRibbon" x1="31" y1="28" x2="99" y2="81" gradientUnits="userSpaceOnUse"><stop stop-color="#10B981"/><stop offset=".5" stop-color="#06B6D4"/><stop offset="1" stop-color="#3B82F6"/></linearGradient>
+    <linearGradient id="neraSpark" x1="91" y1="12" x2="105" y2="28" gradientUnits="userSpaceOnUse"><stop stop-color="#34D399"/><stop offset="1" stop-color="#06B6D4"/></linearGradient>
+  </defs>
+  <g aria-hidden="true">
+    <path d="M28 96V40a14 14 0 0 1 28 0v56a14 14 0 0 1-28 0Z" fill="url(#neraGreen)"/>
+    <path d="M66 96V48a14 14 0 0 1 28 0v48a14 14 0 0 1-28 0Z" fill="url(#neraBlue)"/>
+    <path d="M39 34 78 79c5 6 12 8 18 5 5-3 8-8 8-15V45" fill="none" stroke="url(#neraRibbon)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M101 10c1.2 6.5 3.5 8.8 10 10-6.5 1.2-8.8 3.5-10 10-1.2-6.5-3.5-8.8-10-10 6.5-1.2 8.8-3.5 10-10Z" fill="url(#neraSpark)"/>
+    <circle cx="101" cy="20" r="1.6" fill="#E9FFF7"/>
   </g>
-  <g fill="#F8FAF7">
-    
-  <!-- N -->
-  <path d="M 130 72 V 28 H 140 L 160 58 V 28 H 170 V 72 H 160 L 140 42 V 72 H 130 Z" fill="currentColor"/>
-  <!-- e -->
-  <path d="M 194 54 C 194 43 203 35 214 35 C 225 35 233 43 233 54 V 56 H 184 C 185 64 191 69 199 69 C 205 69 209 66 211 63 L 219 67 C 215 73 208 77 199 77 C 186 77 175 67 175 54 C 175 41 186 31 199 31 C 213 31 223 41 223 54 V 54 H 194 Z M 214 48 C 214 43 210 39 204 39 C 198 39 194 43 194 48 H 214 Z" fill="currentColor"/>
-  <!-- r -->
-  <path d="M 235 37 H 244 V 44 C 247 38 253 35 260 35 V 45 C 253 45 245 48 245 56 V 72 H 235 V 37 Z" fill="currentColor"/>
-  <!-- a -->
-  <path d="M 292 72 H 283 V 66 C 280 71 273 74 266 74 C 255 74 247 67 247 57 C 247 47 256 41 268 41 C 274 41 279 43 283 45 V 44 C 283 38 278 35 271 35 C 265 35 260 38 258 42 L 251 37 C 255 31 263 27 272 27 C 285 27 292 34 292 46 V 72 Z M 283 55 C 279 52 275 50 269 50 C 261 50 256 53 256 58 C 256 63 261 66 267 66 C 275 66 283 61 283 55 Z" fill="currentColor"/>
-
+  <g fill="#161E3F" aria-label="NERA">
+    <path d="M163 74Q163 105 169.0 149.0Q175 193 190 282Q192 294 206.0 379.5Q220 465 231 559Q241 639 241 679Q241 724 208 724Q183 724 145.5 697.5Q108 671 65 613Q51 594 34 594Q20 594 9.5 607.5Q-1 621 -1 638Q-1 655 5.0 670.5Q11 686 27 708Q76 775 136.0 811.5Q196 848 262 848Q317 848 344.5 814.0Q372 780 372 715Q372 657 356 547Q406 695 483.0 771.5Q560 848 664 848Q746 848 787.5 801.5Q829 755 829 677Q829 633 816 570L755 284Q745 234 745 198Q745 156 764.5 135.0Q784 114 819 114Q852 114 883.5 136.0Q915 158 958 209Q970 223 985 223Q998 223 1005.5 211.0Q1013 199 1013 178Q1013 139 994 116Q942 53 891.0 24.0Q840 -5 784 -5Q699 -5 651.0 45.5Q603 96 603 181Q603 214 608.5 253.0Q614 292 627 352L667 535Q669 544 674.0 567.0Q679 590 682.0 610.5Q685 631 685 651Q685 683 667.0 702.0Q649 721 616 721Q556 721 496.0 657.0Q436 593 385.0 450.5Q334 308 305 86Q298 35 284.5 15.0Q271 -5 232 -5Q195 -5 179.0 11.5Q163 28 163 74Z" transform="translate(130.000 87.389) scale(0.046 -0.046)"/>
+    <path d="M780 188Q796 188 804.0 176.0Q812 164 812 145Q812 115 797.5 94.0Q783 73 748 56Q689 28 595.0 11.5Q501 -5 410 -5Q284 -5 199.0 23.5Q114 52 72.5 102.0Q31 152 31 215Q31 301 86.5 361.5Q142 422 250 449Q191 466 159.5 509.0Q128 552 128 605Q128 677 173.5 732.5Q219 788 296.0 818.0Q373 848 465 848Q589 848 651.0 794.5Q713 741 713 656Q713 597 691.5 560.5Q670 524 630 524Q602 524 586.0 536.5Q570 549 570 574Q570 591 575 611Q580 644 580 656Q580 692 553.0 714.5Q526 737 463 737Q378 737 327.0 701.0Q276 665 276 604Q276 557 314.5 526.5Q353 496 440 493Q462 492 471.0 483.0Q480 474 480 453Q480 387 420 386Q337 384 282.5 363.0Q228 342 203.5 309.5Q179 277 179 240Q179 178 237.0 146.5Q295 115 421 115Q504 115 596.5 134.5Q689 154 755 182Q770 188 780 188Z" transform="translate(170.664 87.389) scale(0.046 -0.046)"/>
+    <path d="M1009 178Q1009 139 990 116Q942 58 893.0 26.5Q844 -5 777 -5Q712 -5 666.5 30.0Q621 65 580 150Q547 218 528.0 250.5Q509 283 490.5 297.0Q472 311 445 314Q441 293 422 182Q414 132 412 121Q402 60 372.0 27.5Q342 -5 281 -5Q214 -5 162.5 34.5Q111 74 83.0 144.5Q55 215 55 305Q55 473 113.5 595.0Q172 717 277.5 781.5Q383 846 521 846Q617 846 682.0 817.0Q747 788 778.5 737.0Q810 686 810 622Q810 566 783.5 512.5Q757 459 704.0 418.0Q651 377 575 357Q623 344 649.0 315.0Q675 286 701 230Q729 170 756.5 142.0Q784 114 820 114Q852 114 881.0 135.5Q910 157 954 209Q966 223 981 223Q994 223 1001.5 211.0Q1009 199 1009 178ZM307 315Q273 315 260.5 331.0Q248 347 248 367Q248 391 263.5 405.0Q279 419 299 419H324Q340 517 354 588Q367 653 438 653Q495 653 495 602Q495 591 494 585L464 419Q518 422 562.5 445.0Q607 468 633.5 509.0Q660 550 660 602Q660 665 617.0 701.0Q574 737 491 737Q393 737 319.5 688.5Q246 640 205.0 544.5Q164 449 164 312Q164 248 177.0 202.0Q190 156 209.0 133.0Q228 110 245 110Q258 110 266.5 123.0Q275 136 280 165Z" transform="translate(202.220 87.389) scale(0.046 -0.046)"/>
+    <path d="M56 280Q56 432 121.0 561.5Q186 691 313.0 769.5Q440 848 618 848Q664 848 716.5 841.0Q769 834 812 820Q840 812 840 780Q840 754 820.5 731.0Q801 708 775 708Q767 708 763 709Q711 721 674.0 726.5Q637 732 596 732Q469 732 380.0 670.5Q291 609 247.0 508.0Q203 407 203 290Q203 205 236.5 158.5Q270 112 324 112Q385 112 431.0 162.0Q477 212 515.0 324.0Q553 436 590 628Q596 656 614.0 666.0Q632 676 662 676Q733 676 733 630Q733 622 730 610Q704 513 682.5 395.5Q661 278 661 217Q661 163 677.0 138.5Q693 114 726 114Q758 114 787.0 135.5Q816 157 860 209Q872 223 887 223Q900 223 907.5 211.0Q915 199 915 178Q915 139 896 116Q847 57 800.0 26.0Q753 -5 685 -5Q615 -5 572.0 35.5Q529 76 518 150Q444 -5 300 -5Q231 -5 175.5 29.0Q120 63 88.0 127.5Q56 192 56 280Z" transform="translate(242.700 87.389) scale(0.046 -0.046)"/>
   </g>
 </svg>
