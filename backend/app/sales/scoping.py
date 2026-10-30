@@ -26,6 +26,7 @@ from app.pricing.complexity import (
     CHANNEL_TELEGRAM,
     CHANNEL_WEB,
     CHANNEL_WHATSAPP,
+    INTEGRATION_LABELS,
     MAX_INTEGRATIONS,
     MAX_QUOTABLE_CONVERSATIONS,
     PRODUCT_NAMES,
@@ -427,9 +428,21 @@ def parse_volume(text: str) -> int | None:
     return value
 
 
+_ALL_WORDS = re.compile(
+    r"^\s*(all(\s+of\s+(them|it|these|those))?|everything|every system|"
+    r"the\s+(full\s+)?(lot|works))(\s+please)?\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
+
+
 def parse_integrations(text: str) -> int | None:
     if _NONE_WORDS.match(text):
         return 0
+
+    if _ALL_WORDS.match(text.strip()):
+        # "All of them" means every system in the catalog, priced as the full
+        # set rather than left unanswered.
+        return len(INTEGRATION_LABELS)
 
     match = _NUMBER.search(text)
     if not match:

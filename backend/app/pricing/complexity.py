@@ -121,9 +121,9 @@ def _integration_label(integration: str, idx: int) -> str:
     if re.match(r"^(integration|system)_\d+$", key):
         return f"Integration {idx}"
     # Count-derived slots: the buyer gave a number, not a system list, so the
-    # quote names the slot rather than inventing a system to fill it.
+    # quote names the count plainly instead of inventing a system to fill it.
     if re.match(r"^integration_slot_\d+$", key):
-        return f"Integration slot {idx}"
+        return f"System integration {idx}"
     display = key.replace("_", " ")
     if display and display != key:
         return f"{display.title()}"
@@ -345,13 +345,26 @@ def price(requirement: Requirement) -> Quote:
             )
         )
 
-    for idx, integration in enumerate(dict.fromkeys(requirement.integrations), start=1):
+    # Named systems get one line each. Count-derived slots (the buyer said a
+    # number, not which systems) collapse into a single line naming the count:
+    # "Integration slot 1..8" told the buyer nothing about the purchase.
+    named_integrations = list(dict.fromkeys(requirement.integrations))
+    counted = [i for i in named_integrations if re.match(r"^integration_slot_\d+$", (i or "").strip().lower())]
+    for idx, integration in enumerate([i for i in named_integrations if i not in counted], start=1):
         label = _integration_label(integration, idx)
         items.append(
             LineItem(
                 dimension=DIMENSION_INTEGRATION,
                 label=label,
                 amount_minor=INTEGRATION_ADD_MINOR,
+            )
+        )
+    if counted:
+        items.append(
+            LineItem(
+                dimension=DIMENSION_INTEGRATION,
+                label=f"{len(counted)} system integrations",
+                amount_minor=INTEGRATION_ADD_MINOR * len(counted),
             )
         )
 
