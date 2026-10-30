@@ -600,6 +600,12 @@ class ProvisioningService:
             requirement = None
 
         if requirement is None:
+            # No stored requirement (e.g. the quote was never persisted).
+            # Derive the role set from the plan the buyer actually paid for:
+            # Workforce is both agents, anything else is the catalog role.
+            plan_name = (order.plan_name or "").lower()
+            if "workforce" in plan_name:
+                return (ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT)
             return (CATALOG_ROLE,)
 
         if requirement.products:
