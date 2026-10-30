@@ -19,8 +19,8 @@ export class SettingsView {
             <button class="nera-btn nera-btn-primary" type="submit">Save profile</button><p class="settings-status" id="profile-status" role="status"></p>
           </form>
           <form class="nera-card" id="password-form"><h2>Password</h2><p class="account-card-copy">Change your account password securely.</p>
-            <div class="nera-form-group"><label class="nera-label" for="current-password">Current password</label><input class="nera-input" id="current-password" type="password" autocomplete="current-password" required /></div>
-            <div class="nera-form-group"><label class="nera-label" for="new-password">New password</label><input class="nera-input" id="new-password" type="password" autocomplete="new-password" minlength="8" required /></div>
+            <div class="nera-form-group pw-wrap"><label class="nera-label" for="current-password">Current password</label><input class="nera-input" id="current-password" type="password" autocomplete="current-password" required /><button type="button" class="pw-toggle" data-pw-target="current-password" aria-label="Show password"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+            <div class="nera-form-group pw-wrap"><label class="nera-label" for="new-password">New password</label><input class="nera-input" id="new-password" type="password" autocomplete="new-password" minlength="8" required /><button type="button" class="pw-toggle" data-pw-target="new-password" aria-label="Show password"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
             <button class="nera-btn nera-btn-secondary" type="submit">Update password</button><p class="settings-status" id="password-status" role="status"></p>
           </form>
           <section class="nera-card notification-card"><h2>Notifications</h2><p class="account-card-copy">Choose whether this browser should show Nera account updates.</p>
@@ -55,6 +55,16 @@ export class SettingsView {
       event.preventDefault(); this.setStatus('password-status', 'Updating…');
       try { await api.changePassword(document.getElementById('current-password').value, document.getElementById('new-password').value); event.currentTarget.reset(); this.setStatus('password-status', 'Password updated.'); }
       catch (error) { this.setStatus('password-status', error.message || 'Could not update password.'); }
+    });
+    document.querySelectorAll('.pw-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.getAttribute('data-pw-target'));
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        btn.style.color = show ? '#34d399' : '';
+      });
     });
     document.getElementById('settings-logout').addEventListener('click', () => this.logout());
   }

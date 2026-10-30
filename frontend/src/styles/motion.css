@@ -1,0 +1,125 @@
+/* ============================================================
+   Nera Motion System - per-view character, door transitions,
+   floating panels. CSS-only, cheap, respects reduced motion.
+   ============================================================ */
+
+/* ---------- Door-open transition into auth ---------- */
+body.is-auth-view::before,
+body.is-auth-view::after {
+  content: "";
+  position: fixed;
+  top: 0; bottom: 0;
+  width: 50.5%;
+  background: linear-gradient(180deg, var(--ink-deep, #070d14) 0%, #0b1320 100%);
+  z-index: 60;
+  pointer-events: none;
+  animation: doorPart 0.85s cubic-bezier(0.77, 0, 0.18, 1) forwards;
+}
+body.is-auth-view::before { left: 0; box-shadow: 8px 0 60px rgba(0,0,0,0.55); }
+body.is-auth-view::after  { right: 0; box-shadow: -8px 0 60px rgba(0,0,0,0.55); }
+
+@keyframes doorPart {
+  0%   { transform: scaleX(1); opacity: 1; }
+  55%  { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(0); opacity: 0; visibility: hidden; }
+}
+
+/* aurora reveal unique to auth */
+body.is-auth-view #main-content {
+  position: relative;
+  animation: authReveal 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.35s;
+}
+@keyframes authReveal {
+  from { opacity: 0; transform: perspective(1200px) rotateX(6deg) translateY(30px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---------- Floating panels (dashboard and account pages) ---------- */
+.route-enter .nera-card {
+  animation: floatIn 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease;
+  box-shadow: 0 1px 2px rgba(7, 13, 20, 0.28), 0 12px 32px -12px rgba(7, 13, 20, 0.45);
+}
+.route-enter .nera-card:nth-child(1) { animation-delay: 0.05s; }
+.route-enter .nera-card:nth-child(2) { animation-delay: 0.14s; }
+.route-enter .nera-card:nth-child(3) { animation-delay: 0.23s; }
+.route-enter .nera-card:nth-child(4) { animation-delay: 0.32s; }
+.route-enter .nera-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 2px 4px rgba(7, 13, 20, 0.3), 0 24px 48px -16px rgba(7, 13, 20, 0.5);
+}
+@keyframes floatIn {
+  from { opacity: 0; transform: translateY(26px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* metric HUD stagger */
+.route-enter .canvas-metrics .metric-box {
+  animation: metricPop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.route-enter .canvas-metrics .metric-box:nth-child(1) { animation-delay: 0.1s; }
+.route-enter .canvas-metrics .metric-box:nth-child(2) { animation-delay: 0.2s; }
+.route-enter .canvas-metrics .metric-box:nth-child(3) { animation-delay: 0.3s; }
+.route-enter .canvas-metrics .metric-box:nth-child(4) { animation-delay: 0.4s; }
+@keyframes metricPop {
+  from { opacity: 0; transform: translateY(14px) scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* account tabs slide */
+.route-enter .account-tabs a { animation: tabSlide 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.route-enter .account-tabs a:nth-child(1) { animation-delay: 0.05s; }
+.route-enter .account-tabs a:nth-child(2) { animation-delay: 0.12s; }
+.route-enter .account-tabs a:nth-child(3) { animation-delay: 0.19s; }
+@keyframes tabSlide { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Unique form character ---------- */
+.nera-input { transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease; }
+.nera-input:focus {
+  transform: scale(1.012);
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18), 0 8px 24px -8px rgba(16, 185, 129, 0.35);
+}
+.nera-form-group { position: relative; }
+.nera-form-group:focus-within .nera-label { color: var(--emerald-light, #34d399); transition: color 0.25s ease; }
+
+/* password reveal */
+.pw-toggle {
+  position: absolute; right: 10px; top: 50%;
+  transform: translateY(-50%);
+  background: none; border: none; cursor: pointer;
+  color: var(--slate-light, #94a3b8);
+  padding: 6px; line-height: 0; border-radius: 8px;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+.pw-toggle:hover { color: var(--emerald-light, #34d399); transform: translateY(-50%) scale(1.1); }
+.pw-wrap input { padding-right: 44px !important; }
+
+/* ---------- Sign-in success sequence ---------- */
+.auth-success-card { animation: authDepart 0.7s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+@keyframes authDepart {
+  0%   { transform: none; opacity: 1; filter: blur(0); }
+  30%  { transform: scale(1.03); box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.35), 0 30px 80px -20px rgba(16, 185, 129, 0.5); }
+  100% { transform: perspective(1000px) rotateX(10deg) scale(0.9) translateY(-60px); opacity: 0; filter: blur(6px); }
+}
+.auth-welcome-overlay {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 40%, rgba(16,185,129,0.14), transparent 60%), rgba(7,13,20,0.92);
+  animation: overlayIn 0.3s ease both;
+}
+.auth-welcome-overlay .welcome-mark {
+  font-size: 2rem; font-weight: 800; letter-spacing: -0.02em;
+  animation: welcomePop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes welcomePop { from { transform: scale(0.7); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+  }
+}

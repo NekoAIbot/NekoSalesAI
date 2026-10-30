@@ -17,7 +17,7 @@ export class AuthView {
     const isSignup = this.mode === 'signup';
     return `
       <div class="anim-fade-in-up" style="max-width: 440px; margin: 40px auto;">
-        <div class="nera-card" style="padding: 36px;">
+        <div class="nera-card" id="auth-card" style="padding: 36px;">
           <!-- Header -->
           <div style="text-align: center; margin-bottom: 28px;">
             <div class="nera-badge nera-badge-emerald" style="margin-bottom: 12px;">Automation Workspace</div>
@@ -48,11 +48,14 @@ export class AuthView {
               <input type="email" id="auth-email" class="nera-input" placeholder="name@company.com" required />
             </div>
 
-            <div class="nera-form-group">
+            <div class="nera-form-group pw-wrap">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <label class="nera-label">Password</label>
+                <label class="nera-label" for="auth-password">Password</label>
               </div>
-              <input type="password" id="auth-password" class="nera-input" placeholder="••••••••••••" required />
+              <input type="password" id="auth-password" class="nera-input" placeholder="••••••••••••" autocomplete="current-password" required />
+              <button type="button" class="pw-toggle" data-pw-target="auth-password" aria-label="Show password">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
             </div>
 
             <button type="submit" id="auth-submit-btn" class="nera-btn nera-btn-primary" style="width: 100%; margin-top: 12px;">
@@ -118,6 +121,16 @@ export class AuthView {
             }
             store.showToast('Signed in successfully', 'success');
           }
+          // unique sign-in moment: card departs, welcome mark, then enter the app
+          const card = document.getElementById('auth-card');
+          if (card) {
+            card.classList.add('auth-success-card');
+            const overlay = document.createElement('div');
+            overlay.className = 'auth-welcome-overlay';
+            overlay.innerHTML = '<div class="welcome-mark" style="color:#34d399;">Welcome to Nera</div>';
+            document.body.appendChild(overlay);
+            await new Promise(r => setTimeout(r, 1000));
+          }
           const returnTo = this.query.get('return_to') || this.query.get('next');
           if (returnTo) {
             const safeReturnTo = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/dashboard';
@@ -136,6 +149,17 @@ export class AuthView {
         }
       });
     }
+
+    document.querySelectorAll('.pw-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.getAttribute('data-pw-target'));
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        btn.style.color = show ? '#34d399' : '';
+      });
+    });
 
     document.querySelectorAll('[data-link]').forEach(anchor => {
       anchor.addEventListener('click', (e) => {

@@ -79,6 +79,12 @@ export class Router {
       }
 
       this.mountPoint.innerHTML = '';
+
+      // route-transition choreography: door-open into auth, staggered floats elsewhere
+      const isAuthRoute = path === '/login' || path === '/signup';
+      document.body.classList.toggle('is-auth-view', isAuthRoute);
+      this.mountPoint.classList.remove('route-enter');
+      void this.mountPoint.offsetWidth;
       const viewInstance = typeof handler === 'function' ? new handler({ router: this, query }) : handler;
       this.currentView = viewInstance;
       window.__activeView = viewInstance;
@@ -98,6 +104,7 @@ export class Router {
         }
       }
 
+      this.mountPoint.classList.add('route-enter');
       bindMotion(this.mountPoint);
 
       // Smooth scroll to top on navigation

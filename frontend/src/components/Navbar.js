@@ -24,14 +24,18 @@ export class Navbar {
         </a>
 
         <nav class="nera-nav-links">
+          ${isAuth ? `
+          <a href="/workspace" class="nera-nav-link" data-link="/workspace">Agents</a>
+          <a href="/dashboard" class="nera-nav-link" data-link="/dashboard">Overview</a>
+          <a href="/settings" class="nera-nav-link" data-link="/settings">Settings</a>
+          ` : `
           <a href="/" class="nera-nav-link" data-link="/">Home</a>
           <a href="/products" class="nera-nav-link" data-link="/products">Products</a>
           <a href="/pricing" class="nera-nav-link" data-link="/pricing">Pricing</a>
-          <a href="/build" class="nera-nav-link" data-link="/build">Build</a>
-          ${isAuth ? `<a href="/dashboard" class="nera-nav-link" data-link="/dashboard">Dashboard</a>` : ''}
           <a href="/workforce" class="nera-nav-link" data-link="/workforce">Workforce</a>
           <a href="/demo" class="nera-nav-link" data-link="/demo">Live Demo</a>
           <a href="/trust" class="nera-nav-link" data-link="/trust">Trust &amp; Safety</a>
+          `}
         </nav>
 
         <div class="nera-nav-actions">
@@ -43,6 +47,7 @@ export class Navbar {
             <button class="nera-btn nera-btn-ghost nera-btn-sm" id="nav-logout-btn">Log out</button>
           ` : `
             <a href="/login" class="nera-btn nera-btn-ghost nera-btn-sm nav-login-link" data-link="/login">Sign In</a>
+            <a href="/signup" class="nera-btn nera-btn-ghost nera-btn-sm nav-signup-link" data-link="/signup">Sign Up</a>
             <a href="/build" class="nera-btn nera-btn-primary nera-btn-sm nav-cta-btn" data-link="/build">
               Set up your agents
             </a>
@@ -63,11 +68,13 @@ export class Navbar {
         <a href="/demo" class="nera-mobile-nav-link" data-link="/demo">Live Demo</a>
         <a href="/trust" class="nera-mobile-nav-link" data-link="/trust">Trust &amp; Safety</a>
         ${isAuth ? `
-          <a href="/dashboard" class="nera-mobile-nav-link" data-link="/dashboard">Dashboard</a>
+          <a href="/workspace" class="nera-mobile-nav-link" data-link="/workspace">Agents</a>
+          <a href="/dashboard" class="nera-mobile-nav-link" data-link="/dashboard">Overview</a>
           <a href="/settings" class="nera-mobile-nav-link" data-link="/settings">Settings</a>
           <button class="nera-btn nera-btn-ghost" id="nav-mobile-logout-btn" type="button">Log out</button>
         ` : `
           <a href="/login" class="nera-mobile-nav-link" data-link="/login">Sign In</a>
+          <a href="/signup" class="nera-mobile-nav-link" data-link="/signup">Sign Up</a>
           <a href="/build" class="nera-btn nera-btn-primary" style="margin-top: 8px; text-align: center; min-height: 44px; display: flex; align-items: center; justify-content: center;" data-link="/build">Set up your agents</a>
         `}
       </div>
