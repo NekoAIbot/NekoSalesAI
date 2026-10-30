@@ -36,11 +36,16 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
     from app.messaging.clients import TelegramClient
 
     poller = TelegramPoller(bot_token=bot_token) if bot_token else TelegramPoller()
-    logger.info("Starting embedded Telegram poller")
+    logger.info("Starting embedded Telegram poller (%s)", label)
     # A webhook set by anything else (a previous webhook-mode deploy, a setup
     # script) makes Telegram refuse getUpdates with a 409. Clear it and retry
     # with backoff instead of giving up: the poller is the buyer's front door.
-    for attempt in range(5):
+    #
+    # The retry never exhausts. The earlier 5-attempt cap made one bad boot
+    # window (overlapping deploys both polling, a slow database) kill a bot
+    # for the rest of the day while the app looked perfectly healthy.
+    attempt = 0
+    while True:
         run_task = asyncio.create_task(
             asyncio.to_thread(poller.run), name=f"{label}-poller-loop"
         )
@@ -63,14 +68,16 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
             await run_task
         except PollerError as exc:
             logger.error(
-                "Telegram poller failed (attempt %s/5): %s", attempt + 1, exc
+                "Telegram poller failed (attempt %s): %s", attempt, exc
             )
         except Exception:
-            logger.exception("Telegram poller exited with an error (attempt %s/5)", attempt + 1)
-        TelegramClient().delete_webhook(drop_pending_updates=False)
-        logger.info("Telegram webhook cleared; retrying poller in 15s")
+            logger.exception("Telegram poller exited with an error (attempt %s)", attempt)
+        attempt += 1
+        TelegramClient(bot_token=bot_token).delete_webhook(drop_pending_updates=False)
+        backoff = min(60, 15 * attempt)
+        logger.info("Telegram webhook cleared; retrying poller in %ss", backoff)
         try:
-            await asyncio.wait_for(stop_event.wait(), timeout=15)
+            await asyncio.wait_for(stop_event.wait(), timeout=backoff)
             break  # shutting down
         except asyncio.TimeoutError:
             pass
