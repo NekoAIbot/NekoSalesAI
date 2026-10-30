@@ -232,11 +232,14 @@ def advice_text(recommendation: Recommendation) -> str:
             "build fits it."
         )
 
+    # The full menu, pick highlighted. The buyer chooses; the recommendation
+    # points, it doesn't decide — an honest path beats a pushy one.
     lines = ["Here's what I'd build for that:"]
-    for code in recommendation.recommended:
+    for code in FITS:
+        marker = "→" if code in recommendation.recommended else "•"
         fit = FITS[code]
-        lines.append(f"• {PRODUCT_NAMES[code]} — {fit.does}")
-    lines.append("\nShall I price one of these for you?")
+        lines.append(f"{marker} {PRODUCT_NAMES[code]} — {fit.does}")
+    lines.append("\nPick whichever fits — I'll price it. Or tell me more about your business and I'll point again.")
     return "\n".join(lines)
 
 

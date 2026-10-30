@@ -2025,11 +2025,20 @@ def _recommendation_reply(
             remember=notes,
         )
 
+    # Show the whole menu, not just the pick. An honest path lets the buyer
+    # choose; the recommendation is a view, not a decision made for them.
+    menu_lines = []
+    for product, cap in PRODUCT_CAPABILITIES.items():
+        marker = "→" if product == recommended else "•"
+        menu_lines.append(f"{marker} {cap['name']} — {cap['does']}")
+    menu = "\n".join(menu_lines)
+
     body = (
-        f"Based on what you've told me: {why}\n\n"
-        f"{name} — {does}.\n\n"
-        "Say the word and I'll configure it, or tell me what's different about "
-        "your situation and I'll reconsider."
+        f"Based on what you've told me, my pick is {name} — {does}.\n\n"
+        f"Your options:\n{menu}\n\n"
+        "Choose whichever fits — say its name and I'll configure it. If my "
+        "read is wrong, tell me what's different about your situation and "
+        "I'll reconsider."
     )
 
     # The buyer hasn't chosen a product yet: this recommendation can stand in
