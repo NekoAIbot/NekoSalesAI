@@ -17,6 +17,10 @@ from app.models.base_model import BaseModel
 from app.models.user import User
 from app.models.order import Order, ORDER_PAID
 
+from app.config.logging import get_logger
+
+logger = get_logger(__name__)
+
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
 LINK_TTL = timedelta(minutes=10)
 
@@ -42,6 +46,10 @@ def create_link_token(current_user: User = Depends(get_current_user), db: Sessio
             Order.status == ORDER_PAID,
         ).limit(1)
     ).scalar() is not None
+    logger.info(
+        "telegram link-token attempt: user=%s org=%s paid_orders=%s",
+        current_user.id, current_user.organization_id, "yes" if has_purchase else "no",
+    )
     if not has_purchase:
         raise HTTPException(
             status_code=403,
