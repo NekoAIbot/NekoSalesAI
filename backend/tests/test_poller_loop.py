@@ -338,6 +338,9 @@ def test_failed_update_does_not_advance_offset_past_its_batch(monkeypatch):
     )
     service = _BrokenMessageService()
     poller._service_factory = lambda _db: service
+    # A custom token denotes the owner bot in production. This test exercises
+    # the storefront buyer flow, so opt out of owner-bot routing explicitly.
+    poller._is_owner_bot = False
 
     # First update is intentionally failed; the second must not be handled or
     # acknowledged until the first update can be replayed successfully.

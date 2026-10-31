@@ -120,10 +120,10 @@ def _integration_label(integration: str, idx: int) -> str:
         return INTEGRATION_LABELS[key]
     if re.match(r"^(integration|system)_\d+$", key):
         return f"Integration {idx}"
-    # Count-derived slots: the buyer gave a number, not a system list, so the
-    # quote names the count plainly instead of inventing a system to fill it.
+    # Count-derived slots (the buyer gave a number, not a system list) are
+    # rendered with a truthful aggregate count, never synthetic slot labels.
     if re.match(r"^integration_slot_\d+$", key):
-        return f"System integration {idx}"
+        return f"{idx} system integration{'s' if idx != 1 else ''}"
     display = key.replace("_", " ")
     if display and display != key:
         return f"{display.title()}"
@@ -346,11 +346,15 @@ def price(requirement: Requirement) -> Quote:
         )
 
     # Named systems get one line each. Count-derived slots (the buyer said a
-    # number, not which systems) collapse into a single line naming the count:
-    # "Integration slot 1..8" told the buyer nothing about the purchase.
+    # number, not which systems) are represented as a single aggregate line.
     named_integrations = list(dict.fromkeys(requirement.integrations))
-    counted = [i for i in named_integrations if re.match(r"^integration_slot_\d+$", (i or "").strip().lower())]
-    for idx, integration in enumerate([i for i in named_integrations if i not in counted], start=1):
+    counted = [
+        i for i in named_integrations
+        if re.match(r"^integration_slot_\d+$", (i or "").strip().lower())
+    ]
+    for idx, integration in enumerate(
+        [i for i in named_integrations if i not in counted], start=1
+    ):
         label = _integration_label(integration, idx)
         items.append(
             LineItem(
@@ -360,11 +364,12 @@ def price(requirement: Requirement) -> Quote:
             )
         )
     if counted:
+        count = len(counted)
         items.append(
             LineItem(
                 dimension=DIMENSION_INTEGRATION,
-                label=f"{len(counted)} system integrations",
-                amount_minor=INTEGRATION_ADD_MINOR * len(counted),
+                label=f"{count} system integration{'s' if count != 1 else ''}",
+                amount_minor=INTEGRATION_ADD_MINOR * count,
             )
         )
 

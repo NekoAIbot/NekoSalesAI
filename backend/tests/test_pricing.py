@@ -238,10 +238,9 @@ def test_a_large_integration_count_is_served_by_the_same_flow():
     integration_lines = [
         item for item in quote.line_items if item.dimension == "integration"
     ]
-    assert len(integration_lines) == 15
-    # No invented system names on the quote.
-    for item in integration_lines:
-        assert "slot" in item.label
+    assert len(integration_lines) == 1
+    assert integration_lines[0].label == "15 system integrations"
+    assert integration_lines[0].amount_minor == 15 * 200_000
 
 
 def test_a_support_agent_has_its_own_base():
