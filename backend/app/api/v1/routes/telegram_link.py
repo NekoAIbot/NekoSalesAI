@@ -64,7 +64,11 @@ def create_link_token(current_user: User = Depends(get_current_user), db: Sessio
         expires_at=now + LINK_TTL,
     ))
     db.commit()
-    return {"url": f"https://t.me/zurinerabot?start=link_{token}", "expires_in_seconds": int(LINK_TTL.total_seconds())}
+    return {
+        "link_token": token,
+        "url": f"https://t.me/zurinerabot?start=link_{token}",
+        "expires_in_seconds": int(LINK_TTL.total_seconds()),
+    }
 
 
 def exchange_link_token(db: Session, token: str, chat_id: str, display_name: str | None = None) -> bool:
