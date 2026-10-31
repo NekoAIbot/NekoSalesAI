@@ -142,6 +142,15 @@ class AuthService:
         user.password_hash = hash_password(new_password)
         self.db.commit()
 
+    def force_change_password(self, user, new_password: str) -> None:
+        """Replace a temporary password. Only valid while the temp flag is set."""
+        if not user.password_is_temp:
+            raise ValueError("No temporary password is active for this account.")
+        validate_password_policy(new_password)
+        user.password_hash = hash_password(new_password)
+        user.password_is_temp = False
+        self.db.commit()
+
     def register(self, data: RegisterRequest):
         if self.repository.email_exists(data.email):
             raise ValueError("Email already exists.")
@@ -586,11 +595,33 @@ class AuthService:
             raise ValueError("User not found.")
 
         user.password_hash = hash_password(new_password)
+        user.password_is_temp = False
         reset_token.used = True
         self.db.commit()
 
         return True
 
+
+
+    # ===========================
+    # Temporary Passwords (telegram /connect)
+    # ===========================
+
+    def issue_temp_password(self, email: str) -> str | None:
+        """Set a random temporary password for the account and return it.
+
+        Returns None when the email is unknown so the caller can stay neutral.
+        The flag forces a password change on the next web sign-in.
+        """
+        user = self.repository.get_by_email(email)
+        if not user:
+            return None
+        temp = _generate_recovery_code()  # long random string, policy-safe
+        validate_password_policy(temp)
+        user.password_hash = hash_password(temp)
+        user.password_is_temp = True
+        self.db.commit()
+        return temp
 
 def _slugify(name: str) -> str:
     """Lowercase, keep letters and digits, collapse runs into single dashes."""

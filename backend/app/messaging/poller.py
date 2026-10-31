@@ -480,6 +480,23 @@ class TelegramPoller:
             if identity and identity.owner_user_id is not None:
                 pass  # handled above
             else:
+                # /connect handshake: email -> mailed code -> temp password.
+                from app.messaging.connect_flow import (
+                    PENDING_CONNECT,
+                    handle_connect_step,
+                    _WELCOME as _CONNECT_WELCOME,
+                )
+
+                if message.text.strip().lower() in {"/connect", "/start connect"}:
+                    reply = handle_connect_step(db, message.external_id, "/connect", service, message)
+                    service.deliver(message, [reply or _CONNECT_WELCOME])
+                    report.answered += 1
+                    return
+                connect_reply = handle_connect_step(db, message.external_id, message.text, service, message)
+                if connect_reply is not None:
+                    service.deliver(message, [connect_reply])
+                    report.answered += 1
+                    return
                 reply = (
                     "hi, i'm zuri — nera's business manager. i only speak to "
                     "linked owners. open your nera workspace, go to settings, "

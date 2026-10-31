@@ -39,6 +39,13 @@ class User(BaseModel):
         default=False,
     )
 
+    # A password issued out-of-band (telegram /connect). The owner signs in
+    # once with it and is forced to replace it immediately.
+    password_is_temp: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
+
     totp_secret: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,

@@ -25,6 +25,7 @@ class UserResponse(BaseModel):
     is_admin: bool
     email_verified: bool
     totp_enabled: bool
+    password_is_temp: bool = False
     organization_id: int | None = None
     organization_name: str | None = None
 
@@ -131,6 +132,10 @@ class ProfileUpdateRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ForceChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 

@@ -189,6 +189,13 @@ class ApiClient {
     return this.request("/api/v1/telegram/link-token", { method: "POST" });
   }
 
+  async forceChangePassword(newPassword) {
+    return this.request('/api/v1/auth/force-change-password', {
+      method: 'POST',
+      body: JSON.stringify({ new_password: newPassword })
+    });
+  }
+
   async getMe() {
     return this.request('/api/v1/auth/me');
   }
