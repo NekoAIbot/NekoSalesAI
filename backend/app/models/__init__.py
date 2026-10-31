@@ -20,6 +20,7 @@ from app.models.channel_identity import ChannelIdentity
 from app.models.configuration import WorkspaceConfiguration
 from app.models.password_reset_token import PasswordResetToken
 from app.models.email_verification_code import EmailVerificationCode
+from app.models.phone_verification_code import PhoneVerificationCode
 from app.models.mira_memory import MiraMemory
 
 __all__ = [
@@ -39,5 +40,6 @@ __all__ = [
     "ChannelIdentity",
     "PasswordResetToken",
     "EmailVerificationCode",
+    "PhoneVerificationCode",
     "MiraMemory",
 ]

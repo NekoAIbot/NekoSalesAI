@@ -9,6 +9,8 @@ from app.auth.schemas import (
     EmailVerificationVerify,
     ForgotPasswordRequest,
     LoginRequest,
+    PhoneVerificationSendRequest,
+    PhoneVerificationVerifyRequest,
     ProfileUpdateRequest,
     RegisterRequest,
     ResetPasswordRequest,
@@ -68,7 +70,9 @@ def login(
         }
 
     except ValueError as e:
-        raise HTTPException(401, str(e)) from e
+        code = status.HTTP_403_FORBIDDEN if str(e) == "EMAIL_UNVERIFIED" else status.HTTP_401_UNAUTHORIZED
+        message = "Email verification required." if code == status.HTTP_403_FORBIDDEN else str(e)
+        raise HTTPException(status_code=code, detail=message) from e
 
 
 @router.post(
@@ -95,7 +99,9 @@ def login_with_totp(
         }
 
     except ValueError as e:
-        raise HTTPException(401, str(e)) from e
+        code = status.HTTP_403_FORBIDDEN if str(e) == "EMAIL_UNVERIFIED" else status.HTTP_401_UNAUTHORIZED
+        message = "Email verification required." if code == status.HTTP_403_FORBIDDEN else str(e)
+        raise HTTPException(code, message) from e
 
 
 @router.post(
@@ -258,6 +264,36 @@ def verify_email(
         return {"message": "Email verified successfully."}
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+
+
+@router.post("/phone/send", status_code=status.HTTP_200_OK)
+def send_phone_verification(
+    payload: PhoneVerificationSendRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = AuthService(UserRepository(db), db)
+    try:
+        service.send_phone_verification(current_user, payload.phone_number)
+        return {"message": "Verification code sent."}
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE if "unavailable" in detail.lower() else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+
+@router.post("/phone/verify", status_code=status.HTTP_200_OK)
+def verify_phone(
+    payload: PhoneVerificationVerifyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = AuthService(UserRepository(db), db)
+    try:
+        service.verify_phone(current_user, payload.code)
+        return {"message": "Phone verified successfully."}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 # ===========================

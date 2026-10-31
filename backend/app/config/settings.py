@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     SECRET_KEY: str = "dev-only-insecure-key-change-me"
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     CORS_ORIGINS: str = "http://localhost:8000,http://127.0.0.1:8000"
 

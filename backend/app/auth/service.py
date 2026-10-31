@@ -24,6 +24,7 @@ from app.auth.security import (
 from app.config.settings import settings
 from app.mail.transport import Message, send, send_in_background
 from app.models.email_verification_code import EmailVerificationCode
+from app.models.phone_verification_code import PhoneVerificationCode
 from app.models.organization import Organization
 from app.models.password_reset_token import PasswordResetToken
 from app.repositories.user_repository import UserRepository
@@ -38,6 +39,9 @@ TOTP_INTERVAL = 30
 EMAIL_CODE_LENGTH = 6
 EMAIL_CODE_EXPIRY_MINUTES = 15
 EMAIL_CODE_MAX_ATTEMPTS = 3
+PHONE_CODE_MAX_ATTEMPTS = 3
+PHONE_CODE_EXPIRY_MINUTES = 10
+PHONE_CODE_RESEND_COOLDOWN_SECONDS = 60
 EMAIL_CODE_RESEND_COOLDOWN_SECONDS = 60
 PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = 10
 PASSWORD_RESET_TOKEN_EXPIRY_SECONDS = PASSWORD_RESET_TOKEN_EXPIRY_MINUTES * 60
@@ -221,6 +225,10 @@ class AuthService:
         ):
             raise ValueError("Invalid email or password.")
 
+        # Password-valid users cannot receive a session until email is verified.
+        if not user.email_verified:
+            raise ValueError("EMAIL_UNVERIFIED")
+
         # If TOTP is enabled, require TOTP code
         if user.totp_enabled:
             raise ValueError("TOTP code required. Use /auth/login/totp")
@@ -244,6 +252,9 @@ class AuthService:
 
         if not verify_password(password, user.password_hash):
             raise ValueError("Invalid email or password.")
+
+        if not user.email_verified:
+            raise ValueError("EMAIL_UNVERIFIED")
 
         if not user.totp_enabled or not user.totp_secret:
             raise ValueError("TOTP not enabled for this account.")
@@ -350,41 +361,93 @@ class AuthService:
         if user.email_verified:
             raise ValueError("Email already verified.")
 
-        # Find the most recent code
         verification = (
             self.db.query(EmailVerificationCode)
             .filter(EmailVerificationCode.user_id == user.id)
             .order_by(EmailVerificationCode.created_at.desc())
             .first()
         )
-
         if not verification:
             raise ValueError("No valid verification code found. Please request a new one.")
 
-        # Check expiry with timezone normalization
         expires_at = verification.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
         if datetime.now(UTC) >= expires_at:
             raise ValueError("Verification code has expired. Please request a new one.")
-
-        # Check max attempts
         if verification.attempts >= EMAIL_CODE_MAX_ATTEMPTS:
             raise ValueError("Too many attempts. Please request a new code.")
 
-        # Increment attempts
         verification.attempts += 1
         self.db.commit()
-
-        # Verify code
         if not _verify_secret(code, verification.code_hash):
             raise ValueError("Invalid code.")
-
-        # Mark email as verified
         user.email_verified = True
         self.db.delete(verification)
         self.db.commit()
+        return True
 
+    def send_phone_verification(self, user, phone_number: str) -> None:
+        """Send a short-lived phone code through Brevo without logging its value."""
+        import httpx
+
+        phone = phone_number.strip()
+        if not settings.BREVO_API_KEY:
+            raise ValueError("Phone verification unavailable, contact support.")
+        latest = (self.db.query(PhoneVerificationCode)
+                  .filter(PhoneVerificationCode.user_id == user.id)
+                  .order_by(PhoneVerificationCode.created_at.desc()).first())
+        if latest and latest.created_at:
+            created_at = latest.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=UTC)
+            remaining = int((created_at + timedelta(seconds=60) - datetime.now(UTC)).total_seconds())
+            if remaining > 0:
+                raise ValueError(f"Please wait {remaining} seconds before requesting a new code.")
+        code = _generate_numeric_code()
+        verification = PhoneVerificationCode(
+            code_hash=_hash_secret(code), user_id=user.id,
+            expires_at=datetime.now(UTC) + timedelta(minutes=10), attempts=0,
+        )
+        try:
+            response = httpx.post(
+                "https://api.brevo.com/v3/transactionalSMS/send",
+                headers={"api-key": settings.BREVO_API_KEY, "accept": "application/json",
+                         "content-type": "application/json"},
+                json={"sender": "Nera", "recipient": phone,
+                      "content": f"Your Nera code: {code}"}, timeout=10.0,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            self.db.rollback()
+            from app.config.logging import get_logger
+            get_logger(__name__).warning("Phone verification SMS provider request failed (%s)", type(exc).__name__)
+            raise ValueError("phone verification unavailable, contact support") from exc
+        self.db.add(verification)
+        user.phone_number = phone
+        user.phone_verified = False
+        self.db.commit()
+
+    def verify_phone(self, user, code: str) -> bool:
+        verification = (self.db.query(PhoneVerificationCode)
+                       .filter(PhoneVerificationCode.user_id == user.id)
+                       .order_by(PhoneVerificationCode.created_at.desc()).first())
+        if not verification:
+            raise ValueError("No valid verification code found. Please request a new one.")
+        expires_at = verification.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if datetime.now(UTC) >= expires_at:
+            raise ValueError("Verification code has expired. Please request a new one.")
+        if verification.attempts >= 3:
+            raise ValueError("Too many attempts. Please request a new code.")
+        verification.attempts += 1
+        self.db.commit()
+        if not _verify_secret(code, verification.code_hash):
+            raise ValueError("Invalid code.")
+        user.phone_verified = True
+        self.db.delete(verification)
+        self.db.commit()
         return True
 
     # ===========================

@@ -162,6 +162,23 @@ class ApiClient {
     return data;
   }
 
+  async loginWithTotp(email, password, totp_code) {
+    const data = await this.request('/api/v1/auth/login/totp', {
+      method: 'POST', body: JSON.stringify({ email, password, totp_code })
+    });
+    if (data && data.access_token) this.setToken(data.access_token);
+    return data;
+  }
+
+  async sendEmailVerification(email) {
+    return this.request('/api/v1/auth/email-verification/send', {method:'POST', body:JSON.stringify({email})});
+  }
+  async verifyEmail(email, code) {
+    return this.request('/api/v1/auth/email-verification/verify', {method:'POST', body:JSON.stringify({email,code})});
+  }
+  async setupTotp() { return this.request('/api/v1/auth/totp/setup', {method:'POST'}); }
+  async enableTotp(code) { return this.request('/api/v1/auth/totp/enable', {method:'POST',body:JSON.stringify({code})}); }
+
   async register(emailOrPayload, password, fullName, orgName) {
     let payload;
     if (typeof emailOrPayload === 'object' && emailOrPayload !== null) {

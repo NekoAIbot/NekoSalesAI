@@ -108,6 +108,14 @@ class TOTPLoginRequest(BaseModel):
     totp_code: str = Field(min_length=6, max_length=6)
 
 
+class PhoneVerificationSendRequest(BaseModel):
+    phone_number: str = Field(min_length=7, max_length=32)
+
+
+class PhoneVerificationVerifyRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6)
+
+
 # ===========================
 # Forgot Password Schemas
 # ===========================
