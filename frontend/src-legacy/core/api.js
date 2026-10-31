@@ -185,6 +185,14 @@ class ApiClient {
     });
   }
 
+  async forgotPassword(email) {
+    return this.request('/api/v1/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
+  }
+
+  async resetPassword(token, new_password) {
+    return this.request('/api/v1/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, new_password }) });
+  }
+
   async createTelegramLinkToken() {
     return this.request("/api/v1/telegram/link-token", { method: "POST" });
   }

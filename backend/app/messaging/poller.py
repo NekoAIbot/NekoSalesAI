@@ -40,7 +40,7 @@ from app.config.settings import settings
 from app.database.session import SessionLocal
 from app.followups.runner import RunReport, run_due
 from app.messaging.clients import TelegramClient, WhatsAppClient
-from app.messaging.inbound import parse_telegram_update, COMMAND_START, COMMAND_LINK
+from app.messaging.inbound import parse_telegram_update, COMMAND_START, COMMAND_LINK, EMAIL_HINT
 from app.models.channel_identity import ChannelIdentity, CHANNEL_TELEGRAM
 from sqlalchemy import select
 from app.messaging.service import InboundMessagingService, storefront_organization_id
@@ -474,35 +474,32 @@ class TelegramPoller:
                 service.deliver(message, [reply])
                 report.answered += 1
                 return
+        # NERA is the connection point for the website. Unlinked chats run
+        # the /connect handshake here: email -> mailed code -> verified.
+        _t = message.text.strip()
+        _lower = _t.lower()
+        if _lower in {"/connect", "/start connect"} or (_lower not in {"/start"} and EMAIL_HINT.match(_t)):
+            from app.messaging.connect_flow import handle_connect_step, _WELCOME as _CONNECT_WELCOME
+            if _lower in {"/connect", "/start connect"}:
+                reply = handle_connect_step(db, message.external_id, "/connect", service, message)
+                service.deliver(message, [reply or _CONNECT_WELCOME])
+                report.answered += 1
+                return
+            reply = handle_connect_step(db, message.external_id, _t, service, message)
+            if reply is not None:
+                service.deliver(message, [reply])
+                report.answered += 1
+                return
+
         # The owner bot (Zuri) never runs the buyer sales flow. If the chatter
         # is not a linked owner, she introduces herself and asks for the link.
         if getattr(self, "_is_owner_bot", False):
             if identity and identity.owner_user_id is not None:
                 pass  # handled above
             else:
-                # /connect handshake: email -> mailed code -> temp password.
-                from app.messaging.connect_flow import (
-                    PENDING_CONNECT,
-                    handle_connect_step,
-                    _WELCOME as _CONNECT_WELCOME,
-                )
-
-                if message.text.strip().lower() in {"/connect", "/start connect"}:
-                    reply = handle_connect_step(db, message.external_id, "/connect", service, message)
-                    service.deliver(message, [reply or _CONNECT_WELCOME])
-                    report.answered += 1
-                    return
-                connect_reply = handle_connect_step(db, message.external_id, message.text, service, message)
-                if connect_reply is not None:
-                    service.deliver(message, [connect_reply])
-                    report.answered += 1
-                    return
-                reply = (
-                    "hi, i'm zuri — nera's business manager. i only speak to "
-                    "linked owners. open your nera workspace, go to settings, "
-                    "connect telegram, and send me the /start link code it gives you."
-                )
-                service.deliver(message, [reply])
+                # Zuri stays hidden until the org's first purchase awakens
+                # her. No introduction, no handshake on this bot.
+                service.deliver(message, ["..."])
                 report.answered += 1
                 return
         message_org_id = linked_org or organization_id

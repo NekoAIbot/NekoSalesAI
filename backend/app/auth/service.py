@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import io
 import re
 import secrets
@@ -38,7 +39,8 @@ EMAIL_CODE_LENGTH = 6
 EMAIL_CODE_EXPIRY_MINUTES = 15
 EMAIL_CODE_MAX_ATTEMPTS = 3
 EMAIL_CODE_RESEND_COOLDOWN_SECONDS = 60
-PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 1
+PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = 10
+PASSWORD_RESET_TOKEN_EXPIRY_SECONDS = PASSWORD_RESET_TOKEN_EXPIRY_MINUTES * 60
 RECOVERY_CODES_COUNT = 8
 RECOVERY_CODE_LENGTH = 10
 
@@ -106,7 +108,7 @@ def _send_password_reset_email(email: str, reset_url: str) -> None:
         f"You requested a password reset for your NekoSalesAI account.\n\n"
         f"Click the link below to set a new password:\n\n"
         f"  {reset_url}\n\n"
-        f"This link expires in {PASSWORD_RESET_TOKEN_EXPIRY_HOURS} hour(s) and can only be used once.\n"
+        f"This link expires in {PASSWORD_RESET_TOKEN_EXPIRY_MINUTES} minutes and can only be used once.\n"
         f"If you did not request this, you can safely ignore this email.\n\n"
         f"— {settings.MAIL_FROM_NAME}\n{settings.MAIL_FROM}\n"
     )
@@ -546,13 +548,13 @@ class AuthService:
             self.db.delete(t)
 
         # Generate signed token
-        token = _generate_signed_token(str(user.id))
-        token_hash = _hash_secret(token)
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
 
         reset_token = PasswordResetToken(
             token_hash=token_hash,
             user_id=user.id,
-            expires_at=datetime.now(UTC) + timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRY_HOURS),
+            expires_at=datetime.now(UTC) + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRY_MINUTES),
             used=False,
         )
         self.db.add(reset_token)
@@ -565,18 +567,11 @@ class AuthService:
     def reset_password(self, token: str, new_password: str) -> bool:
         """Reset password using a signed token."""
         # Verify the signed token
-        user_id_str = _verify_signed_token(token, PASSWORD_RESET_TOKEN_EXPIRY_HOURS * 3600)
-        if not user_id_str:
-            raise ValueError("Invalid or expired reset token.")
-
-        user_id = int(user_id_str)
-
-        # Find the token in database
-        token_hash = _hash_secret(token)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
         reset_token = (
             self.db.query(PasswordResetToken)
             .filter(
-                PasswordResetToken.user_id == user_id,
+                PasswordResetToken.token_hash == token_hash,
                 PasswordResetToken.used == False,
                 PasswordResetToken.expires_at > datetime.now(UTC),
             )
@@ -585,6 +580,8 @@ class AuthService:
 
         if not reset_token:
             raise ValueError("Invalid or expired reset token.")
+
+        user_id = reset_token.user_id
 
         # Validate new password
         validate_password_policy(new_password)

@@ -66,7 +66,7 @@ def create_link_token(current_user: User = Depends(get_current_user), db: Sessio
     db.commit()
     return {
         "link_token": token,
-        "url": f"https://t.me/zurinerabot?start=link_{token}",
+        "url": f"https://t.me/nekoflowaibot?start=link_{token}",
         "expires_in_seconds": int(LINK_TTL.total_seconds()),
     }
 

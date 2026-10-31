@@ -427,3 +427,7 @@ def _items(value: Any) -> list[dict]:
         return []
 
     return [item for item in value if isinstance(item, dict)]
+
+
+import re as _re
+EMAIL_HINT = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
