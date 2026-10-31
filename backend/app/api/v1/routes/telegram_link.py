@@ -15,6 +15,7 @@ from app.sales.service import ConversationService
 from app.models.conversation import Conversation
 from app.models.base_model import BaseModel
 from app.models.user import User
+from app.models.order import Order, ORDER_PAID
 
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
 LINK_TTL = timedelta(minutes=10)
@@ -35,6 +36,17 @@ class TelegramLinkToken(BaseModel):
 def create_link_token(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not current_user.organization_id:
         raise HTTPException(status_code=400, detail="This account has no organization.")
+    has_purchase = db.execute(
+        select(Order.id).where(
+            Order.organization_id == current_user.organization_id,
+            Order.status == ORDER_PAID,
+        ).limit(1)
+    ).scalar() is not None
+    if not has_purchase:
+        raise HTTPException(
+            status_code=403,
+            detail="Connect Telegram unlocks with your first Nera purchase. Once your plan is active, link your account here.",
+        )
     token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
     db.add(TelegramLinkToken(
@@ -44,7 +56,7 @@ def create_link_token(current_user: User = Depends(get_current_user), db: Sessio
         expires_at=now + LINK_TTL,
     ))
     db.commit()
-    return {"url": f"https://t.me/nekoflowaibot?start=link_{token}", "expires_in_seconds": int(LINK_TTL.total_seconds())}
+    return {"url": f"https://t.me/zurinerabot?start=link_{token}", "expires_in_seconds": int(LINK_TTL.total_seconds())}
 
 
 def exchange_link_token(db: Session, token: str, chat_id: str, display_name: str | None = None) -> bool:
