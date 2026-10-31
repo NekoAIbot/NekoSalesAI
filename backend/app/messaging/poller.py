@@ -138,6 +138,7 @@ class TelegramPoller:
     ) -> None:
         self._token = bot_token if bot_token is not None else settings.TELEGRAM_BOT_TOKEN
         self._poller_label = poller_label
+        self._bot_username: str | None = None
         # The owner bot never runs the buyer sales flow; see the routing below.
         self._is_owner_bot = bool(
             bot_token
@@ -176,7 +177,18 @@ class TelegramPoller:
 
     # ---------- the loop ----------
 
+    def _log_identity(self) -> None:
+        """Log which bot this loop actually polls. Once per run start."""
+        try:
+            from app.messaging.clients import TelegramClient
+            me = TelegramClient(bot_token=self._token).get_me()
+            self._bot_username = (me or {}).get("username")
+            logger.warning("[%s] polling as @%s", self._poller_label, self._bot_username)
+        except Exception:
+            logger.exception("[%s] could not resolve bot identity", self._poller_label)
+
     def run(self, *, once: bool = False) -> PollReport:
+        self._log_identity()
         if not self._token:
             raise PollerError(
                 "TELEGRAM_BOT_TOKEN is not set, so there is no bot to poll for."

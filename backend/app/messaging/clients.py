@@ -130,6 +130,15 @@ class TelegramClient:
     def configured(self) -> bool:
         return bool(self._token)
 
+    def get_me(self) -> dict | None:
+        """The bot's own identity. Diagnostics and routing use it, never trust a label."""
+        response = self._transport.post(
+            f"{self._base}/bot{self._token}/getMe",
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("result") if isinstance(payload, dict) else None
+
     def delete_webhook(self, *, drop_pending_updates: bool = False) -> dict:
         """Remove the bot webhook so long polling can own update delivery."""
         if not self._token:
