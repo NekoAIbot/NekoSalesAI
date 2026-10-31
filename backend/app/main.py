@@ -35,7 +35,7 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
 
     from app.messaging.clients import TelegramClient
 
-    poller = TelegramPoller(bot_token=bot_token) if bot_token else TelegramPoller()
+    poller = (TelegramPoller(bot_token=bot_token, poller_label=label) if bot_token else TelegramPoller(poller_label=label))
     logger.info("Starting embedded Telegram poller (%s)", label)
     # A webhook set by anything else (a previous webhook-mode deploy, a setup
     # script) makes Telegram refuse getUpdates with a 409. Clear it and retry
@@ -49,8 +49,9 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
         run_task = asyncio.create_task(
             asyncio.to_thread(poller.run), name=f"{label}-poller-loop"
         )
+        stop_task = asyncio.create_task(stop_event.wait(), name=f"{label}-stop")
         stop_or_fail = asyncio.wait(
-            [run_task, stop_event.wait()], return_when=asyncio.FIRST_COMPLETED
+            [run_task, stop_task], return_when=asyncio.FIRST_COMPLETED
         )
         await stop_or_fail
         if stop_event.is_set():

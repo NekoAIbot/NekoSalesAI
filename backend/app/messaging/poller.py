@@ -134,8 +134,10 @@ class TelegramPoller:
         push_clients=None,
         followup_runner=None,
         followup_interval_seconds: float = FOLLOWUP_CHECK_INTERVAL_SECONDS,
+        poller_label: str = "telegram",
     ) -> None:
         self._token = bot_token if bot_token is not None else settings.TELEGRAM_BOT_TOKEN
+        self._poller_label = poller_label
         # The owner bot never runs the buyer sales flow; see the routing below.
         self._is_owner_bot = bool(
             bot_token
@@ -351,7 +353,7 @@ class TelegramPoller:
         report = PollReport()
         updates = self._get_updates()
         if updates:
-            logger.info("Telegram getUpdates poll succeeded; received %d update(s)", len(updates))
+            logger.info("[%s] getUpdates poll succeeded; received %d update(s)", self._poller_label, len(updates))
         report.updates = len(updates)
 
         if not updates:
@@ -391,7 +393,7 @@ class TelegramPoller:
         finally:
             db.close()
 
-        logger.info("Telegram poll: %s", report.summary())
+        logger.info("[%s] poll: %s", self._poller_label, report.summary())
 
         return report
 
