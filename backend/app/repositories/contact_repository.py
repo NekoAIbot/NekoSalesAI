@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.models.contact import Contact
+from app.models.customer import Customer
 
 
 class ContactRepository:
@@ -14,16 +15,19 @@ class ContactRepository:
         self.db.refresh(contact)
         return contact
 
-    def get(self, contact_id: int):
+    def get(self, organization_id: int, contact_id: int):
         return (
             self.db.query(Contact)
-            .filter(Contact.id == contact_id)
+            .join(Customer, Contact.customer_id == Customer.id)
+            .filter(Contact.id == contact_id, Customer.organization_id == organization_id)
             .first()
         )
 
-    def get_all(self):
+    def get_all(self, organization_id: int):
         return (
             self.db.query(Contact)
+            .join(Customer, Contact.customer_id == Customer.id)
+            .filter(Customer.organization_id == organization_id)
             .order_by(Contact.first_name)
             .all()
         )

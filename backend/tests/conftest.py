@@ -21,7 +21,7 @@ from app.config.settings import settings
 from app.database.base import Base
 from app.database.session import get_db
 from app.main import app
-from app.models import Organization
+from app.models import Organization, User
 
 # The suite runs the deterministic engine only. A live GROQ_API_KEY in the
 # developer's .env would otherwise rephrase every reply and call the provider
@@ -86,7 +86,7 @@ def organization(db) -> Organization:
 
 
 @pytest.fixture
-def auth_headers(client) -> dict[str, str]:
+def auth_headers(client, db) -> dict[str, str]:
     credentials = {
         "full_name": "Test Founder",
         "email": "founder@nekosales.ai",
@@ -94,6 +94,11 @@ def auth_headers(client) -> dict[str, str]:
     }
 
     client.post("/api/v1/auth/register", json=credentials)
+
+    user = db.query(User).filter_by(email=credentials["email"]).first()
+    if user:
+        user.email_verified = True
+        db.commit()
 
     response = client.post(
         "/api/v1/auth/login",

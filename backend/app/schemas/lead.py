@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class LeadBase(BaseModel):
-    organization_id: int
+    organization_id: int | None = None
     first_name: str
     last_name: str
     email: EmailStr | None = None

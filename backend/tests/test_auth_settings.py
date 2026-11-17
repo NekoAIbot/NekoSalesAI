@@ -6,7 +6,7 @@ CHANGE_PASSWORD_URL = "/api/v1/auth/change-password"
 CURRENT_PASSWORD = "SettingsPass123"
 
 
-def _register_and_authenticate(client, email="settings@example.com"):
+def _register_and_authenticate(client, db, email="settings@example.com"):
     credentials = {
         "full_name": "Settings User",
         "email": email,
@@ -14,6 +14,10 @@ def _register_and_authenticate(client, email="settings@example.com"):
     }
     registration = client.post("/api/v1/auth/register", json=credentials)
     assert registration.status_code == 201
+    user = db.query(User).filter_by(email=email).first()
+    if user:
+        user.email_verified = True
+        db.commit()
     login = client.post(
         "/api/v1/auth/login",
         json={"email": email, "password": CURRENT_PASSWORD},
@@ -23,7 +27,7 @@ def _register_and_authenticate(client, email="settings@example.com"):
 
 
 def test_update_profile_updates_name_and_organization(client, db):
-    auth_headers = _register_and_authenticate(client)
+    auth_headers = _register_and_authenticate(client, db)
     response = client.put(
         PROFILE_URL,
         json={"full_name": "Updated Founder", "company_name": "Updated Workspace"},
@@ -52,7 +56,7 @@ def test_update_profile_requires_authentication(client):
 
 
 def test_change_password_verifies_and_stores_new_password(client, db):
-    auth_headers = _register_and_authenticate(client)
+    auth_headers = _register_and_authenticate(client, db)
     response = client.post(
         CHANGE_PASSWORD_URL,
         json={"current_password": CURRENT_PASSWORD, "new_password": "NewPassword456"},
@@ -68,7 +72,7 @@ def test_change_password_verifies_and_stores_new_password(client, db):
 
 
 def test_change_password_rejects_wrong_current_password(client, db):
-    auth_headers = _register_and_authenticate(client)
+    auth_headers = _register_and_authenticate(client, db)
     user = db.query(User).filter_by(email="settings@example.com").one()
     original_hash = user.password_hash
 

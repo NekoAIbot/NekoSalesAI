@@ -14,15 +14,15 @@ class LeadRepository:
         self.db.refresh(lead)
         return lead
 
-    def get(self, lead_id: int):
+    def get(self, organization_id: int, lead_id: int):
         return (
             self.db.query(Lead)
-            .filter(Lead.id == lead_id)
+            .filter(Lead.id == lead_id, Lead.organization_id == organization_id)
             .first()
         )
 
-    def get_all(self, status: str | None = None):
-        query = self.db.query(Lead)
+    def get_all(self, organization_id: int, status: str | None = None):
+        query = self.db.query(Lead).filter(Lead.organization_id == organization_id)
 
         if status:
             query = query.filter(Lead.status == status)

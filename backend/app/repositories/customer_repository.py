@@ -14,16 +14,17 @@ class CustomerRepository:
         self.db.refresh(customer)
         return customer
 
-    def get(self, customer_id: int):
+    def get(self, organization_id: int, customer_id: int):
         return (
             self.db.query(Customer)
-            .filter(Customer.id == customer_id)
+            .filter(Customer.id == customer_id, Customer.organization_id == organization_id)
             .first()
         )
 
-    def get_all(self):
+    def get_all(self, organization_id: int):
         return (
             self.db.query(Customer)
+            .filter(Customer.organization_id == organization_id)
             .order_by(Customer.first_name)
             .all()
         )

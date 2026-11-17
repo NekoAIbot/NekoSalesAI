@@ -10,29 +10,32 @@ class LeadService:
     def __init__(self, db: Session):
         self.repository = LeadRepository(db)
 
-    def create(self, data: LeadCreate):
-        lead = Lead(**data.model_dump())
+    def create(self, organization_id: int, data: LeadCreate):
+        dump = data.model_dump()
+        dump["organization_id"] = organization_id
+        lead = Lead(**dump)
         return self.repository.create(lead)
 
-    def list(self, status: str | None = None):
-        return self.repository.get_all(status=status)
+    def list(self, organization_id: int, status: str | None = None):
+        return self.repository.get_all(organization_id, status=status)
 
-    def get(self, lead_id: int):
-        return self.repository.get(lead_id)
+    def get(self, organization_id: int, lead_id: int):
+        return self.repository.get(organization_id, lead_id)
 
-    def update(self, lead_id: int, data: LeadUpdate):
-        lead = self.repository.get(lead_id)
+    def update(self, organization_id: int, lead_id: int, data: LeadUpdate):
+        lead = self.repository.get(organization_id, lead_id)
 
         if lead is None:
             return None
 
         for key, value in data.model_dump(exclude_unset=True).items():
-            setattr(lead, key, value)
+            if key != "organization_id":
+                setattr(lead, key, value)
 
         return self.repository.update(lead)
 
-    def delete(self, lead_id: int):
-        lead = self.repository.get(lead_id)
+    def delete(self, organization_id: int, lead_id: int):
+        lead = self.repository.get(organization_id, lead_id)
 
         if lead is None:
             return False
