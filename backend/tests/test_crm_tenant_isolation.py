@@ -59,7 +59,10 @@ def _create_user_and_token(client, db, email: str, company: str | None = None) -
 )
 def test_crm_endpoints_require_authentication(client, method, endpoint):
     handler = getattr(client, method)
-    response = handler(endpoint, json={"first_name": "Test"})
+    if method in ("post", "put"):
+        response = handler(endpoint, json={"first_name": "Test"})
+    else:
+        response = handler(endpoint)
     # HTTPBearer returns 401 when no token is supplied or 403 when forbidden
     assert response.status_code in (401, 403)
 
