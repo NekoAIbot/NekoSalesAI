@@ -1,0 +1,74 @@
+name: Paystack Financial Integrity CI
+
+on:
+  push:
+    branches:
+      - 'remediation/paystack-financial-integrity'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-financial-integrity:
+    name: Financial Integrity & Concurrency Tests (PostgreSQL)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: neko_user
+          POSTGRES_PASSWORD: neko_password
+          POSTGRES_DB: neko_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TESTING: "true"
+      ENVIRONMENT: "test"
+      MAIL_BACKEND: "memory"
+      SECRET_KEY: "ci-ephemeral-test-key-minimum-32-characters"
+      DATABASE_URL: "postgresql+psycopg://neko_user:neko_password@localhost:5432/neko_test"
+      PAYSTACK_SECRET_KEY: "sk_test_fake_ci_key_12345678901234567890"
+      PAYSTACK_PUBLIC_KEY: "pk_test_fake_ci_key_12345678901234567890"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.11"
+          cache: "pip"
+          cache-dependency-path: "backend/requirements.txt"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run Alembic Migrations
+        working-directory: backend
+        run: |
+          alembic upgrade head
+
+      - name: Run Preflight Check
+        working-directory: backend
+        run: |
+          python -m app.payments.preflight
+
+      - name: Run Financial Integrity & Settlement Concurrency Tests
+        working-directory: backend
+        run: |
+          pytest tests/test_financial_integrity_remediation.py tests/test_checkout.py tests/test_delivery.py -v --tb=short
