@@ -22,11 +22,14 @@ from app.auth.schemas import (
     TOTPVerifyRequest,
     UserResponse,
     RecoveryCodeVerifyRequest,
+    ClaimWorkspaceRequest,
+    CompleteSetupRequest,
 )
 from app.auth.service import AuthService
 from app.database.session import get_db
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from datetime import UTC
 
 router = APIRouter(
     prefix="/auth",
@@ -426,3 +429,95 @@ def reset_password(
         return {"message": "Password reset successfully."}
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+
+
+# ===========================
+# Workspace Setup Claim Routes
+# ===========================
+
+@router.post(
+    "/claim-workspace",
+    status_code=status.HTTP_200_OK,
+)
+def claim_workspace(
+    payload: ClaimWorkspaceRequest,
+    db: Session = Depends(get_db),
+):
+    """Validate a 24-hour single-use workspace claim token with buyer email ownership check."""
+    import hashlib
+    from app.models.credential_claim import CredentialClaim
+
+    token_hash = hashlib.sha256(payload.claim_token.strip().encode("utf-8")).hexdigest()
+    claim = db.query(CredentialClaim).filter(CredentialClaim.token_hash == token_hash).first()
+
+    if not claim:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or unknown setup token.")
+
+    if claim.claimed_at is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This setup link has already been used.")
+
+    if claim.is_expired:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Setup link has expired.")
+
+    if claim.user.email.strip().lower() != payload.email.strip().lower():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email address does not match the purchase record.")
+
+    return {
+        "valid": True,
+        "email": claim.user.email,
+        "company_name": claim.order.buyer_company or (claim.user.organization.name if claim.user.organization else ""),
+        "expires_at": claim.expires_at.isoformat(),
+    }
+
+
+@router.post(
+    "/complete-setup",
+    status_code=status.HTTP_200_OK,
+)
+def complete_setup(
+    payload: CompleteSetupRequest,
+    db: Session = Depends(get_db),
+):
+    """Complete workspace onboarding: verify token & email, set password, and return API key."""
+    import hashlib
+    from datetime import datetime
+    from app.core.security import hash_password
+    from app.models.credential_claim import CredentialClaim
+    from app.models.workspace_profile import WorkspaceProfile
+    from app.payments.provisioning import ProvisioningService
+
+    token_hash = hashlib.sha256(payload.claim_token.strip().encode("utf-8")).hexdigest()
+    claim = db.query(CredentialClaim).filter(CredentialClaim.token_hash == token_hash).first()
+
+    if not claim:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or unknown setup token.")
+
+    if claim.claimed_at is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This setup link has already been used.")
+
+    if claim.is_expired:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Setup link has expired.")
+
+    if claim.user.email.strip().lower() != payload.email.strip().lower():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email address does not match the purchase record.")
+
+    user = claim.user
+    user.password_hash = hash_password(payload.password)
+    user.is_active = True
+    claim.claimed_at = datetime.now(UTC)
+
+    # Retrieve workspace profile and rotate/fetch the API key once
+    profile = db.query(WorkspaceProfile).filter(WorkspaceProfile.order_id == claim.order_id).first()
+    new_api_key = None
+    if profile:
+        new_api_key = ProvisioningService(db).rotate_api_key(profile)
+
+    db.commit()
+
+    return {
+        "message": "Workspace setup completed successfully.",
+        "email": user.email,
+        "api_key": new_api_key,
+        "api_key_prefix": profile.api_key_prefix if profile else None,
+    }
+

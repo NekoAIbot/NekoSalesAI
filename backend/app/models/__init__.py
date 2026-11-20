@@ -22,6 +22,8 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.email_verification_code import EmailVerificationCode
 from app.models.phone_verification_code import PhoneVerificationCode
 from app.models.mira_memory import MiraMemory
+from app.models.credential_claim import CredentialClaim
+from app.models.system_lease import SystemLease
 
 __all__ = [
     "Organization",
@@ -42,4 +44,6 @@ __all__ = [
     "EmailVerificationCode",
     "PhoneVerificationCode",
     "MiraMemory",
+    "CredentialClaim",
+    "SystemLease",
 ]

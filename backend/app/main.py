@@ -18,34 +18,86 @@ _poller_task = None
 _poller_stop = None
 _zuri_poller_task = None
 _zuri_poller_stop = None
+_reconciler_task = None
+_reconciler_stop = None
 
 logger = get_logger(__name__)
+
+
+async def _run_reconciler(stop_event, interval_seconds: int = 60):
+    """Run independent payment reconciliation loop in background.
+
+    Runs every 60 seconds across all deployment configurations, decoupled
+    from Telegram poller loops. Multi-worker collision is guarded by the
+    distributed lease `payment_reconciler`.
+    """
+    import asyncio
+    from app.database.session import SessionLocal
+    from app.payments.delivery import DeliveryService
+    from app.payments.lease import LeaseService
+
+    logger.info("Starting independent background payment reconciler")
+
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                lease_service = LeaseService(db)
+                if lease_service.acquire_lease("payment_reconciler", ttl_seconds=interval_seconds + 30):
+                    try:
+                        delivery_service = DeliveryService(db)
+                        report = delivery_service.reconcile(verify_pending=True)
+                        if not report.quiet:
+                            logger.info("Payment reconciler cycle: %s", report.summary())
+                    finally:
+                        lease_service.release_lease("payment_reconciler")
+                else:
+                    logger.debug("Payment reconciler lease held by another worker; waiting next cycle")
+        except Exception:
+            logger.exception("Error in background payment reconciler cycle")
+
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+            break
+        except TimeoutError:
+            pass
+
+    logger.info("Background payment reconciler stopped")
 
 
 async def _run_poller(stop_event, bot_token: str | None = None, label: str = "telegram"):
     """Run a poller loop off the event loop until application shutdown.
 
-    ``bot_token`` selects which shared bot this loop polls: the buyer bot
-    (default) or the owner-facing Zuri bot. Each bot gets its own loop; both
-    route by the same account-link logic.
+    Multi-worker setups are protected via the distributed lease `{label}_poller`
+    to prevent HTTP 409 conflict errors with Telegram.
     """
     import asyncio
 
     from app.messaging.poller import PollerError, TelegramPoller
-
     from app.messaging.clients import TelegramClient
+    from app.database.session import SessionLocal
+    from app.payments.lease import LeaseService
 
     poller = (TelegramPoller(bot_token=bot_token, poller_label=label) if bot_token else TelegramPoller(poller_label=label))
     logger.info("Starting embedded Telegram poller (%s)", label)
-    # A webhook set by anything else (a previous webhook-mode deploy, a setup
-    # script) makes Telegram refuse getUpdates with a 409. Clear it and retry
-    # with backoff instead of giving up: the poller is the buyer's front door.
-    #
-    # The retry never exhausts. The earlier 5-attempt cap made one bad boot
-    # window (overlapping deploys both polling, a slow database) kill a bot
-    # for the rest of the day while the app looked perfectly healthy.
+
     attempt = 0
-    while True:
+    while not stop_event.is_set():
+        # Check distributed lease before polling
+        try:
+            with SessionLocal() as db:
+                lease_service = LeaseService(db)
+                has_lease = lease_service.acquire_lease(f"{label}_poller", ttl_seconds=60)
+        except Exception:
+            has_lease = True  # Fallback if lease check fails
+
+        if not has_lease:
+            logger.debug("Telegram poller (%s) lease held by another worker; waiting", label)
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=15)
+                break
+            except TimeoutError:
+                continue
+
         run_task = asyncio.create_task(
             asyncio.to_thread(poller.run), name=f"{label}-poller-loop"
         )
@@ -58,7 +110,7 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
             poller.stop()
             try:
                 await asyncio.wait_for(run_task, timeout=40)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Telegram poller did not stop within the long-poll timeout")
             except Exception:
                 logger.exception("Telegram poller exited with an error during shutdown")
@@ -80,7 +132,7 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=backoff)
             break  # shutting down
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
     logger.info("Embedded Telegram poller stopped")
 
@@ -88,6 +140,7 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _poller_task, _poller_stop
+    global _reconciler_task, _reconciler_stop
 
     configure_logging()
     logger.info(
@@ -108,6 +161,15 @@ async def lifespan(app: FastAPI):
         logger.warning(
             "SECRET_KEY is the insecure development default. "
             "Set SECRET_KEY in .env before deploying."
+        )
+
+    # Start independent background payment reconciler
+    if _reconciler_task is None:
+        import asyncio
+        _reconciler_stop = asyncio.Event()
+        _reconciler_task = asyncio.create_task(
+            _run_reconciler(_reconciler_stop),
+            name="payment-reconciler",
         )
 
     telegram_mode = settings.TELEGRAM_MODE.strip().lower()
@@ -160,6 +222,14 @@ async def lifespan(app: FastAPI):
         finally:
             _zuri_poller_task = None
             _zuri_poller_stop = None
+
+    if _reconciler_task is not None:
+        _reconciler_stop.set()
+        try:
+            await _reconciler_task
+        finally:
+            _reconciler_task = None
+            _reconciler_stop = None
 
     logger.info("%s shutting down", settings.APP_NAME)
 

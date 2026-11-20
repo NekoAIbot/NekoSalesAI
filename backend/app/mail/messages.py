@@ -86,6 +86,38 @@ def receipt(
     )
 
 
+def setup_claim(
+    *,
+    to: str,
+    company_name: str,
+    claim_token: str,
+    workspace_profile_id: int | None = None,
+) -> Message:
+    """The setup invitation that carries the single-use workspace claim token.
+
+    Rather than emailing plaintext passwords or permanent API keys, this email
+    provides a 24-hour setup link for the buyer to claim workspace ownership,
+    set their own password, and generate their initial API key.
+    """
+    setup_url = f"{settings.PUBLIC_BASE_URL.rstrip('/')}/claim-workspace?token={claim_token}"
+
+    body = (
+        f"Your workspace for {company_name} is ready.\n\n"
+        f"To complete your workspace setup and activate your account, click the link below:\n\n"
+        f"  {setup_url}\n\n"
+        f"This setup link is single-use and valid for 24 hours.\n"
+        f"You will choose your password and access your API keys upon setup.\n\n"
+        f"{_signoff()}\n"
+    )
+
+    return Message(
+        to=to,
+        subject=f"{company_name} — complete your workspace setup",
+        body=body,
+        workspace_profile_id=workspace_profile_id,
+    )
+
+
 def credentials(
     *,
     to: str,

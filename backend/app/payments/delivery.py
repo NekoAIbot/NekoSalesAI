@@ -35,7 +35,7 @@ than on a request. Two consequences worth keeping:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, UTC
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -43,7 +43,7 @@ from sqlalchemy.orm import Session
 from app.config.logging import get_logger
 from app.models.channel_identity import ChannelIdentity
 from app.models.conversation import ROLE_AGENT, Message
-from app.models.order import ORDER_PAID, ORDER_PENDING, Order
+from app.models.order import ORDER_ABANDONED, ORDER_PAID, ORDER_PENDING, Order
 from app.models.workspace_profile import WorkspaceProfile
 from app.payments.install import (
     CLOSING_LINE,
@@ -215,10 +215,10 @@ def _confirmation(order: Order, profiles: list[WorkspaceProfile]) -> str:
         lines.append("")
 
     lines.append(
-        f"Sign in at {sign_in_url()} with {order.buyer_email}. Your password and "
-        "API key have been emailed to that address — I deliberately do not put "
-        "them in chat, because a chat log gets forwarded and a key that has "
-        "been posted cannot be unposted."
+        f"Sign in at {sign_in_url()} with {order.buyer_email}. A setup link has been "
+        "emailed to that address to set your password and retrieve your API key — "
+        "I deliberately do not put credentials in chat, because a chat log gets "
+        "forwarded and a secret that has been posted cannot be unposted."
     )
 
     return "\n".join(lines)
@@ -252,6 +252,14 @@ class DeliveryService:
 
         if verify_pending:
             self._verify_pending(report)
+
+        # Retry any setup emails that failed to send during prior crashes
+        try:
+            from app.payments.provisioning import ProvisioningService
+            ProvisioningService(self.db).retry_undelivered_claim_emails()
+        except Exception:
+            self.db.rollback()
+            logger.exception("Retry of undelivered claim emails failed")
 
         # Half-finished checkouts get one nudge, after the paid-order work.
         # Failure here costs a nudge, never a payment, so it is best-effort.
@@ -349,7 +357,7 @@ class DeliveryService:
         # Stamped in the same transaction as the transcript rows. If the commit
         # fails, all of them are gone and the next pass tries again; if it
         # succeeds, no later pass can send a second copy.
-        order.delivered_at = datetime.now(timezone.utc)
+        order.delivered_at = datetime.now(UTC)
 
         self.db.commit()
 
@@ -415,10 +423,8 @@ class DeliveryService:
     def _pending_with_a_checkout(self) -> list[Order]:
         """Orders that were sent to Paystack and have not come back paid.
 
-        Bounded by having a checkout URL rather than by age: an order with no URL
-        was never payable, and an old one that was is still worth asking about —
-        Paystack will answer "abandoned" cheaply, and the alternative is deciding
-        on the buyer's behalf that they took too long.
+        Prioritizes orders with null last_reconciled_at first, then oldest
+        last_reconciled_at, preventing queue starvation.
         """
         return list(
             self.db.execute(
@@ -427,7 +433,7 @@ class DeliveryService:
                     Order.status == ORDER_PENDING,
                     Order.checkout_url.is_not(None),
                 )
-                .order_by(Order.id.desc())
+                .order_by(Order.last_reconciled_at.is_not(None), Order.last_reconciled_at.asc(), Order.id.asc())
                 .limit(10)
             ).scalars().all()
         )
@@ -439,10 +445,16 @@ class DeliveryService:
         from app.payments.provisioning import ProvisioningService
 
         checkout = self._checkout or CheckoutService(self.db)
+        now = datetime.now(UTC)
 
         for order in self._pending_with_a_checkout():
             reference = order.paystack_reference
             report.checked += 1
+
+            # Stamp last_reconciled_at and attempt count to ensure round-robin progression
+            order.last_reconciled_at = now
+            order.reconcile_attempts = (order.reconcile_attempts or 0) + 1
+            self.db.commit()
 
             try:
                 confirmed = checkout.confirm_by_reference(reference)
@@ -460,6 +472,17 @@ class DeliveryService:
                 continue
 
             if confirmed is None or not confirmed.is_paid:
+                # If the order is older than 2 hours and remains unpaid on Paystack,
+                # transition it to ORDER_ABANDONED to unblock the polling queue while
+                # still preserving late-payment recovery.
+                order_created = order.created_at
+                if order_created and order_created.tzinfo is None:
+                    order_created = order_created.replace(tzinfo=UTC)
+
+                if order_created and (now - order_created) > timedelta(hours=2):
+                    order.status = ORDER_ABANDONED
+                    self.db.commit()
+                    logger.info("Order %s transitioned to abandoned after 2 hours unpaid", reference)
                 continue
 
             report.newly_paid += 1

@@ -197,3 +197,49 @@ def list_workspace_profiles(
         }
         for p in profiles
     ]
+
+
+@router.post("/workspace/rotate-key")
+def rotate_workspace_api_key(
+    role: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Self-service API key rotation for the authenticated organization's workspace."""
+    if not current_user.organization_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No organization associated with this account.",
+        )
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Only organization admins can rotate workspace API keys.",
+        )
+
+    from app.models.workspace_profile import WorkspaceProfile
+    from app.payments.provisioning import ProvisioningService
+
+    stmt = select(WorkspaceProfile).where(
+        WorkspaceProfile.organization_id == current_user.organization_id
+    )
+    if role:
+        stmt = stmt.where(WorkspaceProfile.role == role)
+
+    profile = db.execute(stmt).scalars().first()
+    if not profile:
+        raise HTTPException(
+            status_code=404,
+            detail="No workspace profile found to rotate keys for.",
+        )
+
+    new_api_key = ProvisioningService(db).rotate_api_key(profile)
+
+    return {
+        "message": "API key successfully rotated.",
+        "profile_id": profile.id,
+        "role": profile.role,
+        "api_key": new_api_key,
+        "api_key_prefix": profile.api_key_prefix,
+    }
+

@@ -3,38 +3,29 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, UTC
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import mail
-from app.catalog import find_plan
 from app.config.logging import get_logger
 from app.core.security import hash_password
-from app.models.configuration import WorkspaceConfiguration
+from app.models.credential_claim import CredentialClaim
 from app.models.order import Order
 from app.models.organization import Organization
-from app.models.quote import Quote
 from app.models.user import User
 from app.pricing.complexity import (
     Requirement,
-    PRODUCT_NAMES,
     PRODUCT_SALES_AGENT,
     PRODUCT_SUPPORT_AGENT,
     PRODUCT_WORKFORCE_AGENT,
 )
 from app.pricing.quotes import QuoteService, reference_from_plan_code, requirement_from_json
 from app.models.workspace_profile import (
-    CHANNEL_EMAIL,
-    CHANNEL_TELEGRAM,
-    CHANNEL_WHATSAPP,
-    FOLLOW_UP_CHANNELS,
-    PROVISION_FAILED,
     PROVISION_READY,
     STEP_ADMIN,
     STEP_API_KEY,
@@ -47,7 +38,6 @@ from app.products.config import (
     ROLE_SUPPORT_AGENT,
     ProductConfig,
 )
-from app.products.serialization import config_to_json
 
 logger = get_logger(__name__)
 
@@ -159,6 +149,7 @@ class ProvisionedAgent:
     profile: WorkspaceProfile
     _api_key: str | None = None
     temporary_password: str | None = None
+    claim_token: str | None = None
 
     @property
     def plan_code(self):
@@ -258,6 +249,12 @@ class ProvisioningResult:
     def temporary_password(self):
         if self.profiles:
             return self.profiles[0].temporary_password
+        return None
+
+    @property
+    def claim_token(self):
+        if self.profiles and getattr(self.profiles[0], "claim_token", None):
+            return self.profiles[0].claim_token
         return None
 
 
@@ -438,31 +435,32 @@ class ProvisioningService:
             # counted from this, and FollowUpService refuses to schedule
             # without it — a workspace that is ready but undated would never
             # hear from us again.
-            profile.ready_at = datetime.now(timezone.utc)
+            profile.ready_at = datetime.now(UTC)
 
             import json as _json
-            from datetime import datetime as _dt, timezone as _tz
+            from datetime import datetime as _dt
             from app.models.user import User as _User
             steps = {}
-            steps[STEP_WORKSPACE] = _dt.now(_tz.utc).isoformat()
+            steps[STEP_WORKSPACE] = _dt.now(UTC).isoformat()
 
             self.db.add(profile)
             self.db.flush()
-            steps[STEP_API_KEY] = _dt.now(_tz.utc).isoformat()
+            steps[STEP_API_KEY] = _dt.now(UTC).isoformat()
 
             api_key = _build_api_key()
             profile.api_key = api_key
             profile.api_key_prefix = api_key[:API_KEY_PREFIX_LENGTH]
             profile.api_key_hash = hash_api_key(api_key)
             profile.password_hash = hash_password(_build_temporary_password())
-            steps[STEP_WIDGET] = _dt.now(_tz.utc).isoformat()
+            steps[STEP_WIDGET] = _dt.now(UTC).isoformat()
 
-            # Create admin user for the workspace
+            # Create admin user for the workspace if not already present
             new_user_created = False
             raw_temp_password = None
-            if not self.db.execute(
+            buyer_user = self.db.execute(
                 select(_User).where(_User.email == order.buyer_email)
-            ).scalars().first():
+            ).scalars().first()
+            if not buyer_user:
                 raw_temp_password = _build_temporary_password()
                 buyer_user = _User(
                     email=order.buyer_email,
@@ -472,8 +470,38 @@ class ProvisioningService:
                     is_admin=True,
                 )
                 self.db.add(buyer_user)
+                self.db.flush()
                 new_user_created = True
-            steps[STEP_ADMIN] = _dt.now(_tz.utc).isoformat()
+
+            # Generate single-use CSPRNG 24h setup claim token (F-03)
+            raw_claim_token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(raw_claim_token.encode("utf-8")).hexdigest()
+            claim = CredentialClaim(
+                order_id=order.id,
+                user_id=buyer_user.id,
+                token_hash=token_hash,
+                expires_at=datetime.now(UTC) + timedelta(hours=24),
+                email_sent_at=None,
+            )
+            self.db.add(claim)
+
+            # Dispatch setup claim email to buyer
+            try:
+                msg = mail.messages.setup_claim(
+                    to=order.buyer_email,
+                    company_name=order.buyer_company or org.name,
+                    claim_token=raw_claim_token,
+                    workspace_profile_id=profile.id,
+                )
+                mail.send(msg)
+                claim.email_sent_at = datetime.now(UTC)
+            except Exception:
+                logger.exception(
+                    "Order %s: could not dispatch setup claim email; reconciler will retry",
+                    order.paystack_reference,
+                )
+
+            steps[STEP_ADMIN] = _dt.now(UTC).isoformat()
 
             profile.steps_json = _json.dumps(steps)
 
@@ -485,6 +513,7 @@ class ProvisioningService:
                     profile=profile,
                     _api_key=api_key,
                     temporary_password=raw_temp_password if new_user_created else None,
+                    claim_token=raw_claim_token,
                 )
             )
 
@@ -493,14 +522,51 @@ class ProvisioningService:
 
         return tuple(agents)
 
-    def rotate_api_key(self, agent: ProvisionedAgent) -> str:
-        """Rotate the API key for an agent. Returns the new key."""
+    def rotate_api_key(self, target: ProvisionedAgent | WorkspaceProfile) -> str:
+        """Rotate the API key for an agent profile. Returns the new key."""
+        profile = target.profile if isinstance(target, ProvisionedAgent) else target
         api_key = _build_api_key()
-        agent.profile.api_key = api_key
-        agent.profile.api_key_prefix = api_key[:API_KEY_PREFIX_LENGTH]
-        agent.profile.api_key_hash = hash_api_key(api_key)
+        profile.api_key = api_key
+        profile.api_key_prefix = api_key[:API_KEY_PREFIX_LENGTH]
+        profile.api_key_hash = hash_api_key(api_key)
         self.db.commit()
         return api_key
+
+    def retry_undelivered_claim_emails(self) -> int:
+        """Find credential claims where email was never sent and retry dispatch."""
+        now = datetime.now(UTC)
+        claims = self.db.execute(
+            select(CredentialClaim)
+            .where(
+                CredentialClaim.email_sent_at.is_(None),
+                CredentialClaim.claimed_at.is_(None),
+                CredentialClaim.expires_at > now,
+            )
+        ).scalars().all()
+
+        dispatched = 0
+        for claim in claims:
+            order = claim.order
+            if not order:
+                continue
+            raw_claim_token = secrets.token_urlsafe(32)
+            claim.token_hash = hashlib.sha256(raw_claim_token.encode("utf-8")).hexdigest()
+            claim.expires_at = now + timedelta(hours=24)
+            try:
+                msg = mail.messages.setup_claim(
+                    to=order.buyer_email,
+                    company_name=order.buyer_company or "Workspace",
+                    claim_token=raw_claim_token,
+                    workspace_profile_id=claim.order.organization_id if claim.order else None,
+                )
+                mail.send(msg)
+                claim.email_sent_at = now
+                dispatched += 1
+            except Exception:
+                logger.exception("Failed to retry setup claim email for order %s", order.paystack_reference)
+        if dispatched:
+            self.db.commit()
+        return dispatched
 
     def _get_or_create_org(self, order: Order) -> Organization:
         """Get the org for an order, or create one from buyer info.
@@ -556,7 +622,6 @@ class ProvisioningService:
     @staticmethod
     def _starting_config(company_name: str, role: str):
         """A new workspace's starting config — empty until a plan is chosen."""
-        from app.products.config import ProductConfig
         return ProductConfig(
             company_name=company_name,
             tagline="",

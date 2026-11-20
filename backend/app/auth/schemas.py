@@ -157,3 +157,19 @@ class RecoveryCodeVerifyRequest(BaseModel):
     recovery_code: str
 
 
+# ===========================
+# Workspace Claim Schemas
+# ===========================
+
+class ClaimWorkspaceRequest(BaseModel):
+    claim_token: str
+    email: EmailStr
+
+
+class CompleteSetupRequest(BaseModel):
+    claim_token: str
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+

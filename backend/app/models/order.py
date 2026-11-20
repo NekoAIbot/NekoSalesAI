@@ -112,6 +112,21 @@ class Order(BaseModel):
         nullable=True,
     )
 
+    # When this order was last checked against Paystack by the reconciler.
+    # Used to order the polling queue and prevent starving older pending orders.
+    last_reconciled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+
+    # Number of times the reconciler has polled Paystack for this order.
+    reconcile_attempts: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
     # Verbatim Paystack payload from the confirming webhook or verification
     # call. Kept because when a payment is disputed, the provider's own words
     # are the evidence, and a summary we wrote is not.

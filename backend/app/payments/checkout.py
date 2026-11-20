@@ -13,12 +13,11 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app import mail
 from app.config.logging import get_logger
 from app.config.settings import settings
 from app.models.conversation import STAGE_CLOSED_WON, Conversation
@@ -26,11 +25,9 @@ from app.models.configuration import WorkspaceConfiguration
 from app.models.order import ORDER_ABANDONED, ORDER_PAID, ORDER_PENDING, Order
 from app.models.quote import Quote
 from app.models.workspace_profile import WorkspaceProfile
-from app.payments import Charge, PaystackClient, PaystackError, PaymentsNotConfigured, dump_payload
+from app.payments import Charge, PaystackClient, PaymentsNotConfigured, dump_payload
 from app.pricing.complexity import Plan, PricingError, Requirement, price
 from app.pricing.quotes import QuoteError, QuoteService, build_reference as build_quote_reference, _requirement_to_dict
-from app.products.config import ROLE_SALES_AGENT, ROLE_SUPPORT_AGENT
-from app.products.resolver import resolve_config
 
 logger = get_logger(__name__)
 
@@ -360,7 +357,7 @@ class CheckoutService:
                 existing.monthly_conversations = requirement.monthly_conversations
                 existing.integrations = ",".join(requirement.integrations)
                 existing.languages = ",".join(requirement.languages)
-                existing.agreed_at = datetime.now(timezone.utc)
+                existing.agreed_at = datetime.now(UTC)
             else:
                 config = WorkspaceConfiguration(
                     profile_id=profile.id,
@@ -368,7 +365,7 @@ class CheckoutService:
                     monthly_conversations=requirement.monthly_conversations,
                     integrations=",".join(requirement.integrations),
                     languages=",".join(requirement.languages),
-                    agreed_at=datetime.now(timezone.utc),
+                    agreed_at=datetime.now(UTC),
                 )
                 self.db.add(config)
 
@@ -422,15 +419,38 @@ class CheckoutService:
             )
             return order
 
-        order.status = ORDER_PAID
-        order.paid_at = datetime.now(timezone.utc)
-        order.provider_payload = dump_payload(charge.raw)
+        now = datetime.now(UTC)
+        payload_str = dump_payload(charge.raw)
+
+        # Atomic conditional update: only transitions if the order is still pending or abandoned.
+        # This eliminates races between simultaneous webhook deliveries, browser verification,
+        # and background reconciliation workers. Exactly one caller succeeds (rowcount == 1).
+        stmt = (
+            update(Order)
+            .where(
+                Order.id == order.id,
+                Order.status.in_([ORDER_PENDING, ORDER_ABANDONED]),
+            )
+            .values(
+                status=ORDER_PAID,
+                paid_at=now,
+                provider_payload=payload_str,
+            )
+        )
+        result = self.db.execute(stmt)
+
+        if result.rowcount == 0:
+            # Another concurrent caller already committed the transition to ORDER_PAID.
+            self.db.rollback()
+            return self.get_by_reference(charge.reference)
 
         if order.conversation is not None:
             order.conversation.stage = STAGE_CLOSED_WON
 
         self.db.commit()
-        self.db.refresh(order)
+
+        # Reload cleanly after commit
+        order = self.get_by_reference(charge.reference)
 
         logger.info(
             "Order %s paid: %s for %s",
@@ -451,7 +471,7 @@ class CheckoutService:
             return None
         if order.is_paid:
             return order
-        if not settings.payments_enabled:
+        if not client.is_configured:
             raise PaymentsNotConfigured("Payments are not configured")
         try:
             charge = client.verify(reference)

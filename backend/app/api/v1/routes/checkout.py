@@ -89,6 +89,9 @@ def _provision_if_paid(order: Order, db: Session) -> WorkspaceOut | None:
         # Already logged with a traceback inside the service. The buyer's
         # money is safe and recorded; surfacing a 500 here would only tell
         # them their payment failed, which is not what happened.
+        # Rolling back cleans the session so get_for_order does not trigger
+        # PendingRollbackError if a concurrent flush raised IntegrityError.
+        db.rollback()
         profile = service.get_for_order(order)
         return WorkspaceOut.from_model(profile) if profile else None
 
