@@ -14,6 +14,7 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -438,3 +439,448 @@ def test_preflight_check_rules():
         failed_names = [r.name for r in checker.results if not r.passed]
         assert "Production Live Secret Key" in failed_names
         assert "Production Database Engine" in failed_names
+
+
+# ==============================================================================
+# CORRECTION A: Durable, Concurrency-Safe Setup Email Delivery
+# ==============================================================================
+
+def test_email_dispatch_smtp_failure_records_error_and_preserves_intent(db: Session, test_order: Order):
+    """Verify that SMTP failure after DB commit records error and leaves claim retryable."""
+    from app import mail as mail_module
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    with patch.object(mail_module, "send", side_effect=RuntimeError("SMTP connection timeout")):
+        ProvisioningService(db).provision(test_order)
+
+    claim = db.query(CredentialClaim).filter(CredentialClaim.order_id == test_order.id).first()
+    assert claim is not None
+    assert claim.email_sent_at is None
+    assert claim.dispatch_attempts >= 1
+    assert claim.dispatch_last_attempt_at is not None
+    assert "SMTP connection timeout" in (claim.dispatch_error or "")
+    assert claim.dispatch_leased_until is None  # Lease released for retry
+
+    # Autonomous retry succeeds
+    with patch.object(mail_module, "send"):
+        dispatched = ProvisioningService(db).retry_undelivered_claim_emails()
+        assert dispatched == 1
+
+    db.refresh(claim)
+    assert claim.email_sent_at is not None
+    assert claim.dispatch_error is None
+
+
+def test_email_dispatch_simulated_crash_recovers_after_lease_expiry(db: Session, test_order: Order):
+    """Verify recovery when worker crashes after SMTP send before recording success."""
+    from app import mail as mail_module
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    user = User(
+        email=test_order.buyer_email,
+        full_name="Test Buyer",
+        organization_id=test_order.organization_id,
+        password_hash="hash",
+    )
+    db.add(user)
+    db.flush()
+    claim = CredentialClaim(
+        order_id=test_order.id,
+        user_id=user.id,
+        token_hash="hash123",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        email_sent_at=None,
+    )
+    db.add(claim)
+    db.commit()
+
+    # Simulate worker acquired lease and crashed while lease was active
+    now = datetime.now(timezone.utc)
+    claim.dispatch_leased_by = "crashed_worker:9999"
+    claim.dispatch_leased_until = now + timedelta(seconds=60)
+    db.commit()
+
+    # While lease is active, retry cannot steal the lease
+    with patch.object(mail_module, "send") as mock_send:
+        assert ProvisioningService(db).retry_undelivered_claim_emails() == 0
+        assert not mock_send.called
+
+    # Once lease expires, reconciler reacquires lease and retries
+    claim.dispatch_leased_until = now - timedelta(seconds=1)
+    db.commit()
+
+    with patch.object(mail_module, "send") as mock_send:
+        assert ProvisioningService(db).retry_undelivered_claim_emails() == 1
+        assert mock_send.called
+
+    db.refresh(claim)
+    assert claim.email_sent_at is not None
+
+
+def test_email_dispatch_two_workers_competing_mutual_exclusion(db: Session, test_order: Order):
+    """Verify two workers cannot simultaneously dispatch the same pending email."""
+    from app import mail as mail_module
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    user = User(
+        email=test_order.buyer_email,
+        full_name="Test Buyer",
+        organization_id=test_order.organization_id,
+        password_hash="hash",
+    )
+    db.add(user)
+    db.flush()
+    claim = CredentialClaim(
+        order_id=test_order.id,
+        user_id=user.id,
+        token_hash="hash_compete",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        email_sent_at=None,
+    )
+    db.add(claim)
+    db.commit()
+
+    prov = ProvisioningService(db)
+
+    # Worker 1 acquires dispatch lease
+    with patch.object(mail_module, "send"):
+        res1 = prov.dispatch_claim_email(claim, worker_id="worker_alpha", lease_seconds=60)
+        assert res1 is True
+
+    # Worker 2 attempts dispatch -> rejected because email_sent_at is set or leased
+    with patch.object(mail_module, "send"):
+        res2 = prov.dispatch_claim_email(claim, worker_id="worker_beta")
+        assert res2 is False
+
+
+def test_email_dispatch_expired_or_redeemed_tokens_rejected(db: Session, test_order: Order):
+    """Verify expired or already-claimed tokens cannot be leased or dispatched."""
+    from app import mail as mail_module
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    user = User(
+        email=test_order.buyer_email,
+        full_name="Test Buyer",
+        organization_id=test_order.organization_id,
+        password_hash="hash",
+    )
+    db.add(user)
+    db.flush()
+    claim = CredentialClaim(
+        order_id=test_order.id,
+        user_id=user.id,
+        token_hash="hash_expired",
+        expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        email_sent_at=None,
+    )
+    db.add(claim)
+    db.commit()
+
+    with patch.object(mail_module, "send") as mock_send:
+        res = ProvisioningService(db).dispatch_claim_email(claim)
+        assert res is False
+        assert not mock_send.called
+
+    # Mark claimed
+    claim.expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    claim.claimed_at = datetime.now(timezone.utc)
+    db.commit()
+
+    with patch.object(mail_module, "send") as mock_send:
+        res = ProvisioningService(db).dispatch_claim_email(claim)
+        assert res is False
+        assert not mock_send.called
+
+
+# ==============================================================================
+# CORRECTION B: Real Distributed Telegram Lease Ownership & Fencing
+# ==============================================================================
+
+def test_lease_valid_owner_renewal(db: Session):
+    """Verify that only the active owner with matching fencing token can renew."""
+    lease_name = f"test_lease_{secrets.token_hex(4)}"
+    ls = LeaseService(db, worker_id="worker_1")
+    assert ls.acquire_lease(lease_name, ttl_seconds=60) is True
+    token = ls.fencing_token
+    assert token >= 1
+
+    time.sleep(0.05)
+    # Valid renewal
+    assert ls.renew_lease(lease_name, ttl_seconds=60, fencing_token=token) is True
+
+
+def test_lease_wrong_owner_renewal_rejected(db: Session):
+    """Verify that a non-owner cannot renew another worker's lease."""
+    lease_name = f"test_lease_{secrets.token_hex(4)}"
+    ls1 = LeaseService(db, worker_id="worker_owner")
+    ls2 = LeaseService(db, worker_id="worker_intruder")
+
+    assert ls1.acquire_lease(lease_name, ttl_seconds=60) is True
+    # Worker 2 tries to renew Worker 1's lease -> rejected
+    assert ls2.renew_lease(lease_name, ttl_seconds=60) is False
+
+
+def test_lease_expired_reacquisition_increments_fencing_token(db: Session):
+    """Verify that reacquiring an expired lease increments the fencing token."""
+    lease_name = f"test_lease_{secrets.token_hex(4)}"
+    ls1 = LeaseService(db, worker_id="worker_1")
+    ls2 = LeaseService(db, worker_id="worker_2")
+
+    assert ls1.acquire_lease(lease_name, ttl_seconds=60) is True
+    token1 = ls1.fencing_token
+
+    # Force expiration
+    lease = db.query(SystemLease).filter(SystemLease.lease_name == lease_name).first()
+    lease.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.commit()
+
+    # Worker 2 acquires expired lease
+    assert ls2.acquire_lease(lease_name, ttl_seconds=60) is True
+    token2 = ls2.fencing_token
+    assert token2 > token1
+
+
+def test_lease_old_worker_renewal_and_release_rejected_after_new_owner(db: Session):
+    """Verify old owner cannot renew or release lease after new owner takes over."""
+    lease_name = f"test_lease_{secrets.token_hex(4)}"
+    ls1 = LeaseService(db, worker_id="worker_old")
+    ls2 = LeaseService(db, worker_id="worker_new")
+
+    assert ls1.acquire_lease(lease_name, ttl_seconds=60) is True
+    token1 = ls1.fencing_token
+
+    # Simulate lease expiry and takeover by worker_new
+    lease = db.query(SystemLease).filter(SystemLease.lease_name == lease_name).first()
+    lease.acquired_by = "worker_new"
+    lease.fencing_token = token1 + 1
+    lease.expires_at = datetime.now(timezone.utc) + timedelta(seconds=60)
+    db.commit()
+
+    # Old worker tries to renew -> rejected
+    assert ls1.renew_lease(lease_name, ttl_seconds=60, fencing_token=token1) is False
+
+    # Old worker tries to release -> rejected (does not delete new worker's lease)
+    assert ls1.release_lease(lease_name, fencing_token=token1) is False
+
+    # Verify new owner's lease is still completely intact
+    db.refresh(lease)
+    assert lease.acquired_by == "worker_new"
+    exp = lease.expires_at.replace(tzinfo=timezone.utc) if lease.expires_at.tzinfo is None else lease.expires_at
+    assert exp > datetime.now(timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_poller_shutdown_releases_lease(db: Session, db_engine):
+    """Verify that when stop_event is set, _run_poller shuts down and releases lease."""
+    import asyncio
+    from sqlalchemy.orm import sessionmaker
+    from app.main import _run_poller
+
+    test_session_factory = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+    stop_event = asyncio.Event()
+    label = f"test_sd_{secrets.token_hex(4)}"
+
+    def mock_run():
+        while not stop_event.is_set():
+            time.sleep(0.01)
+
+    with patch("app.database.session.SessionLocal", side_effect=test_session_factory), \
+         patch("app.messaging.poller.TelegramPoller.run", side_effect=mock_run):
+        task = asyncio.create_task(_run_poller(stop_event, label=label))
+        await asyncio.sleep(0.1)
+        stop_event.set()
+        await asyncio.wait_for(task, timeout=5)
+
+    lease = db.query(SystemLease).filter(SystemLease.lease_name == f"{label}_poller").first()
+    assert lease is not None
+    exp = lease.expires_at.replace(tzinfo=timezone.utc) if lease.expires_at.tzinfo is None else lease.expires_at
+    assert exp <= datetime.now(timezone.utc) + timedelta(seconds=5)
+
+
+# ==============================================================================
+# CORRECTION C: Idempotent Paid-Order Provisioning and Recovery
+# ==============================================================================
+
+def test_provisioning_crash_immediately_after_settlement(db: Session, test_order: Order, fake_client):
+    """Verify order marked ORDER_PAID with 0 profiles is automatically recovered."""
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    delivery = DeliveryService(db)
+    assert len(delivery.profiles_for(test_order)) == 0
+
+    delivery.deliver(test_order)
+
+    profiles = delivery.profiles_for(test_order)
+    assert len(profiles) > 0
+    assert test_order.is_delivered is True
+
+
+def test_provisioning_two_workers_concurrent_no_duplicates(db: Session, test_order: Order):
+    """Verify two concurrent provisioning invocations produce exactly 1 profile and claim."""
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    prov = ProvisioningService(db)
+
+    # First worker provisions
+    res1 = prov.provision(test_order)
+    assert len(res1.profiles) == 1
+
+    # Second worker provisions concurrently
+    res2 = prov.provision(test_order)
+    assert len(res2.profiles) == 1
+
+    # Check database: exactly 1 profile, 1 user, 1 claim
+    profiles = db.query(WorkspaceProfile).filter(WorkspaceProfile.order_id == test_order.id).all()
+    claims = db.query(CredentialClaim).filter(CredentialClaim.order_id == test_order.id).all()
+    users = db.query(User).filter(User.email == test_order.buyer_email).all()
+
+    assert len(profiles) == 1, "Duplicate workspace profiles must not be created"
+    assert len(claims) == 1, "Duplicate credential claims must not be created"
+    assert len(users) == 1, "Duplicate users must not be created"
+    assert res1.profiles[0].profile.id == res2.profiles[0].profile.id
+
+
+def test_provisioning_repeated_reconciliation_idempotent(db: Session, test_order: Order):
+    """Verify multiple reconciliation passes do not re-provision or rotate credentials."""
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    delivery = DeliveryService(db)
+    delivery.deliver(test_order)
+    first_profile = delivery.profiles_for(test_order)[0]
+    first_key = first_profile.api_key_hash
+
+    # Repeated delivery passes
+    delivery.deliver(test_order)
+    delivery.deliver(test_order)
+
+    db.refresh(first_profile)
+    assert first_profile.api_key_hash == first_key, "API key must not rotate on repeated delivery passes"
+
+
+# ==============================================================================
+# CORRECTION D: Atomic Claim Redemption
+# ==============================================================================
+
+def test_complete_setup_atomic_conditional_update(db: Session, test_order: Order):
+    """Verify complete_setup uses atomic conditional update, preventing double redemption."""
+    from app.auth.router import complete_setup
+    from app.auth.schemas import CompleteSetupRequest
+    from fastapi import HTTPException
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    res = ProvisioningService(db).provision(test_order)
+    raw_token = res.claim_token
+
+    # First completion succeeds
+    out1 = complete_setup(
+        CompleteSetupRequest(claim_token=raw_token, email=test_order.buyer_email, password="ValidPassword123!"),
+        db=db,
+    )
+    assert out1["api_key"] is not None
+
+    # Second completion fails with HTTP 400
+    with pytest.raises(HTTPException) as exc:
+        complete_setup(
+            CompleteSetupRequest(claim_token=raw_token, email=test_order.buyer_email, password="ValidPassword123!"),
+            db=db,
+        )
+    assert exc.value.status_code == 400
+    assert "already been used" in exc.value.detail
+
+
+def test_complete_setup_transaction_boundary_and_rollback(db: Session, test_order: Order):
+    """Verify that failure during credential rotation rolls back claim consumption."""
+    from app.auth.router import complete_setup
+    from app.auth.schemas import CompleteSetupRequest
+    from fastapi import HTTPException
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    res = ProvisioningService(db).provision(test_order)
+    raw_token = res.claim_token
+
+    # Simulate crash/failure inside rotate_api_key
+    with patch.object(ProvisioningService, "rotate_api_key", side_effect=RuntimeError("Key generation failed")):
+        with pytest.raises(HTTPException) as exc:
+            complete_setup(
+                CompleteSetupRequest(claim_token=raw_token, email=test_order.buyer_email, password="ValidPassword123!"),
+                db=db,
+            )
+        assert exc.value.status_code == 500
+
+    # Claim MUST remain unclaimed so user is not locked out!
+    claim = db.query(CredentialClaim).filter(CredentialClaim.order_id == test_order.id).first()
+    assert claim.claimed_at is None, "Failed setup must not consume claim token"
+
+    # Subsequent attempt succeeds
+    out = complete_setup(
+        CompleteSetupRequest(claim_token=raw_token, email=test_order.buyer_email, password="ValidPassword123!"),
+        db=db,
+    )
+    assert out["api_key"] is not None
+    db.refresh(claim)
+    assert claim.claimed_at is not None
+
+
+# ==============================================================================
+# CORRECTION E: Public Credential Exposure Elimination
+# ==============================================================================
+
+def test_order_poll_never_returns_plaintext_credentials(db: Session, test_order: Order):
+    """Correction E: Verify that _provision_if_paid never leaks api_key or temporary_password."""
+    from app.api.v1.routes.checkout import _provision_if_paid
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # First call provisions
+    res = _provision_if_paid(test_order, db)
+    assert res is not None
+    assert res.api_key is None, "Plaintext API key must not be returned"
+    assert res.temporary_password is None, "Plaintext temporary password must not be returned"
+
+
+def test_order_status_poll_never_exposes_secrets_new_and_old_orders(client, db, test_order: Order):
+    """Correction E: Verify neither new nor existing provisioned orders expose secrets via order status poll."""
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+    ref = test_order.paystack_reference
+
+    # Read 1: Freshly provisioned
+    resp1 = client.get(f"/api/v1/checkout/orders/{ref}").json()
+    assert resp1["workspace"]["api_key"] is None
+    assert resp1["workspace"]["temporary_password"] is None
+    assert "token" not in resp1["workspace"]
+    assert "claim_token" not in resp1["workspace"]
+
+    # Read 2: Previously provisioned
+    resp2 = client.get(f"/api/v1/checkout/orders/{ref}").json()
+    assert resp2["workspace"]["api_key"] is None
+    assert resp2["workspace"]["temporary_password"] is None
+    assert "token" not in resp2["workspace"]
+    assert "claim_token" not in resp2["workspace"]

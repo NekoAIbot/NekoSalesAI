@@ -872,7 +872,9 @@ def test_api_key_is_not_returned_on_a_second_read(client, db, paid_order):
         f"/api/v1/checkout/orders/{paid_order.paystack_reference}"
     ).json()
 
-    assert first["workspace"]["api_key"]
+    # Plaintext API keys and temporary passwords must NEVER leak via order status poll (F-03)
+    assert first["workspace"]["api_key"] is None
+    assert first["workspace"]["temporary_password"] is None
     assert second["workspace"]["api_key"] is None
     assert second["workspace"]["temporary_password"] is None
 

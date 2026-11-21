@@ -481,6 +481,7 @@ def complete_setup(
     """Complete workspace onboarding: verify token & email, set password, and return API key."""
     import hashlib
     from datetime import datetime
+    from sqlalchemy import update
     from app.core.security import hash_password
     from app.models.credential_claim import CredentialClaim
     from app.models.workspace_profile import WorkspaceProfile
@@ -501,18 +502,43 @@ def complete_setup(
     if claim.user.email.strip().lower() != payload.email.strip().lower():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email address does not match the purchase record.")
 
-    user = claim.user
-    user.password_hash = hash_password(payload.password)
-    user.is_active = True
-    claim.claimed_at = datetime.now(UTC)
+    # Atomic conditional update to claim the token and prevent concurrent race conditions (F-03 / Correction D)
+    now = datetime.now(UTC)
+    try:
+        stmt = (
+            update(CredentialClaim)
+            .where(
+                CredentialClaim.token_hash == token_hash,
+                CredentialClaim.claimed_at.is_(None),
+            )
+            .values(claimed_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        res = db.execute(stmt)
+        if res.rowcount == 0:
+            db.rollback()
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "This setup link has already been used.")
 
-    # Retrieve workspace profile and rotate/fetch the API key once
-    profile = db.query(WorkspaceProfile).filter(WorkspaceProfile.order_id == claim.order_id).first()
-    new_api_key = None
-    if profile:
-        new_api_key = ProvisioningService(db).rotate_api_key(profile)
+        user = claim.user
+        user.password_hash = hash_password(payload.password)
+        user.is_active = True
 
-    db.commit()
+        # Retrieve workspace profile and rotate/fetch the API key once
+        profile = db.query(WorkspaceProfile).filter(WorkspaceProfile.order_id == claim.order_id).first()
+        new_api_key = None
+        if profile:
+            new_api_key = ProvisioningService(db).rotate_api_key(profile, commit=False)
+
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "An error occurred while setting up your workspace credentials. Please try again.",
+        ) from exc
 
     return {
         "message": "Workspace setup completed successfully.",

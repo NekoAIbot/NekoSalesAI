@@ -71,24 +71,28 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
     to prevent HTTP 409 conflict errors with Telegram.
     """
     import asyncio
+    import uuid
 
     from app.messaging.poller import PollerError, TelegramPoller
     from app.messaging.clients import TelegramClient
     from app.database.session import SessionLocal
     from app.payments.lease import LeaseService
 
-    poller = (TelegramPoller(bot_token=bot_token, poller_label=label) if bot_token else TelegramPoller(poller_label=label))
     logger.info("Starting embedded Telegram poller (%s)", label)
 
+    lease_name = f"{label}_poller"
+    worker_id = f"{label}_{uuid.uuid4().hex[:12]}"
     attempt = 0
     while not stop_event.is_set():
         # Check distributed lease before polling
+        fencing_token = 0
         try:
             with SessionLocal() as db:
-                lease_service = LeaseService(db)
-                has_lease = lease_service.acquire_lease(f"{label}_poller", ttl_seconds=60)
+                lease_service = LeaseService(db, worker_id=worker_id)
+                has_lease = lease_service.acquire_lease(lease_name, ttl_seconds=60)
+                fencing_token = lease_service.fencing_token
         except Exception:
-            has_lease = True  # Fallback if lease check fails
+            has_lease = False
 
         if not has_lease:
             logger.debug("Telegram poller (%s) lease held by another worker; waiting", label)
@@ -98,6 +102,61 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
             except TimeoutError:
                 continue
 
+        logger.info(
+            "Worker %s acquired lease for %s (fencing_token=%s); starting poller loop",
+            worker_id, lease_name, fencing_token
+        )
+
+        poller = (TelegramPoller(bot_token=bot_token, poller_label=label) if bot_token else TelegramPoller(poller_label=label))
+
+        # Heartbeat loop: periodically renew the lease while poller is running.
+        # Fencing: If renewal fails (e.g. lease lost, network partition, or hijacked),
+        # immediately stop the poller to prevent concurrent pollers.
+        hb_stop_event = asyncio.Event()
+        fenced_out = False
+
+        async def _heartbeat_loop():
+            nonlocal fenced_out
+            consecutive_failures = 0
+            while not hb_stop_event.is_set():
+                try:
+                    await asyncio.wait_for(hb_stop_event.wait(), timeout=20)
+                    break
+                except TimeoutError:
+                    pass
+                if hb_stop_event.is_set() or stop_event.is_set():
+                    break
+                try:
+                    with SessionLocal() as db:
+                        renewed = LeaseService(db, worker_id=worker_id).renew_lease(
+                            lease_name, ttl_seconds=60, fencing_token=fencing_token
+                        )
+                        if not renewed:
+                            logger.warning(
+                                "Worker %s lost lease for %s (fencing_token=%s); fencing out poller",
+                                worker_id, lease_name, fencing_token
+                            )
+                            fenced_out = True
+                            poller.stop()
+                            break
+                    consecutive_failures = 0
+                except Exception as exc:
+                    consecutive_failures += 1
+                    logger.warning(
+                        "Worker %s heartbeat error for %s (consecutive %s): %s",
+                        worker_id, lease_name, consecutive_failures, exc
+                    )
+                    # Lease TTL is 60s; if 3 heartbeats (60s) fail due to DB issues, fence out to prevent split-brain
+                    if consecutive_failures >= 3:
+                        logger.error(
+                            "Worker %s reached max heartbeat failures for %s; fencing out poller",
+                            worker_id, lease_name
+                        )
+                        fenced_out = True
+                        poller.stop()
+                        break
+
+        hb_task = asyncio.create_task(_heartbeat_loop(), name=f"{label}-heartbeat")
         run_task = asyncio.create_task(
             asyncio.to_thread(poller.run), name=f"{label}-poller-loop"
         )
@@ -106,6 +165,12 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
             [run_task, stop_task], return_when=asyncio.FIRST_COMPLETED
         )
         await stop_or_fail
+
+        hb_stop_event.set()
+        await hb_task
+        if not stop_task.done():
+            stop_task.cancel()
+
         if stop_event.is_set():
             poller.stop()
             try:
@@ -114,9 +179,29 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
                 logger.warning("Telegram poller did not stop within the long-poll timeout")
             except Exception:
                 logger.exception("Telegram poller exited with an error during shutdown")
+            finally:
+                if not fenced_out:
+                    try:
+                        with SessionLocal() as db:
+                            LeaseService(db, worker_id=worker_id).release_lease(
+                                lease_name, fencing_token=fencing_token
+                            )
+                    except Exception:
+                        pass
             logger.info("Embedded Telegram poller stopped")
             return
-        # The poller exited on its own: an error, since it loops until stopped.
+
+        # Poller exited on its own or was stopped due to lost lease.
+        # Release the lease if we still hold it so another worker can take over immediately.
+        if not fenced_out:
+            try:
+                with SessionLocal() as db:
+                    LeaseService(db, worker_id=worker_id).release_lease(
+                        lease_name, fencing_token=fencing_token
+                    )
+            except Exception:
+                pass
+
         try:
             await run_task
         except PollerError as exc:
@@ -125,8 +210,22 @@ async def _run_poller(stop_event, bot_token: str | None = None, label: str = "te
             )
         except Exception:
             logger.exception("Telegram poller exited with an error (attempt %s)", attempt)
+
+        if fenced_out:
+            logger.info("Worker %s fenced out; waiting for next lease availability", worker_id)
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=15)
+                break
+            except TimeoutError:
+                continue
+
         attempt += 1
-        TelegramClient(bot_token=bot_token).delete_webhook(drop_pending_updates=False)
+        effective_token = bot_token or getattr(settings, "TELEGRAM_BOT_TOKEN", None)
+        if effective_token:
+            try:
+                TelegramClient(bot_token=effective_token).delete_webhook(drop_pending_updates=False)
+            except Exception as e:
+                logger.warning("Failed to clear Telegram webhook (%s): %s", label, e)
         backoff = min(60, 15 * attempt)
         logger.info("Telegram webhook cleared; retrying poller in %ss", backoff)
         try:

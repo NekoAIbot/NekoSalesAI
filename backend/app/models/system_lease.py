@@ -11,7 +11,7 @@ If a worker crashes or is killed, the lease naturally expires after its TTL.
 
 from datetime import datetime, UTC
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -41,6 +41,13 @@ class SystemLease(Base):
         DateTime(timezone=True),
         nullable=False,
         index=True,
+    )
+
+    # Monotonically increasing fencing token for distributed ownership fencing (Correction B)
+    fencing_token: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+        nullable=False,
     )
 
     @property

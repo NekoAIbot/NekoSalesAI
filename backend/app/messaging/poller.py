@@ -197,6 +197,9 @@ class TelegramPoller:
         total = PollReport()
 
         while True:
+            if self._stopping:
+                return total
+
             report = self.drain()
 
             total.updates += report.updates
@@ -206,21 +209,16 @@ class TelegramPoller:
             total.failed += report.failed
             total.errors.extend(report.errors)
 
+            if self._stopping:
+                return total
+
             # Payments, every cycle, whether or not anybody messaged.
-            #
-            # Outside drain() on purpose. drain() returns early when Telegram had
-            # nothing, and a payment arrives with no Telegram update attached to
-            # it — a buyer taps the checkout link, pays in Paystack's tab, and
-            # sends no further message at all. Reconciling inside drain() would
-            # mean the quieter the thread, the longer the buyer waits, which is
-            # exactly backwards.
             self.reconcile_payments()
 
+            if self._stopping:
+                return total
+
             # Follow-ups, throttled by interval, whether or not anybody messaged.
-            #
-            # Follow-ups are scheduled when an order is provisioned, and without a periodic
-            # runner they remain in the database indefinitely. The poller is the only
-            # autonomous background loop in this deployment.
             self.reconcile_followups()
 
             if once or self._stopping:
@@ -385,6 +383,8 @@ class TelegramPoller:
             service = self._service_factory(db)
 
             for update in updates:
+                if self._stopping:
+                    break
                 failures_before = report.failed
                 self._handle(service, db, organization_id, update, report)
 

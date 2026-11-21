@@ -100,11 +100,7 @@ def _provision_if_paid(order: Order, db: Session) -> WorkspaceOut | None:
     _tell_the_buyer(order, db)
 
     if result.profiles:
-        return WorkspaceOut.from_model(
-            result.profiles[0].profile,
-            api_key=result.profiles[0].api_key,
-            temporary_password=result.profiles[0].temporary_password,
-        )
+        return WorkspaceOut.from_model(result.profiles[0].profile)
     return None
 
 

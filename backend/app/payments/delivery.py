@@ -305,9 +305,18 @@ class DeliveryService:
         profiles = self.profiles_for(order)
 
         if not profiles:
-            # Paid but nothing stood up yet. Saying "your workspace is live"
-            # here would be the same class of lie as the spinner that started
-            # all this, so it waits for the next pass.
+            # Paid but nothing stood up yet (e.g. process crashed between settlement commit
+            # and provisioning). Resume provisioning now so the customer is not stranded.
+            try:
+                from app.payments.provisioning import ProvisioningService
+                ProvisioningService(self.db).provision(order)
+                profiles = self.profiles_for(order)
+            except Exception:
+                self.db.rollback()
+                logger.exception("Reconciler failed to provision paid order %s", order.paystack_reference)
+                return None
+
+        if not profiles:
             return None
 
         parts = delivery_parts(order, profiles, channels=self.channels_for(order))

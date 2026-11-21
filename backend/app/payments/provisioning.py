@@ -8,7 +8,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, UTC
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app import mail
@@ -283,6 +283,32 @@ class ProvisioningService:
             ).scalars().all()
         )
         if by_order:
+            # Crash recovery: verify claim was created and invitation dispatched
+            claim = self.db.execute(
+                select(CredentialClaim).where(CredentialClaim.order_id == order.id)
+            ).scalars().first()
+            if not claim:
+                user = self.db.execute(
+                    select(User).where(User.email == order.buyer_email)
+                ).scalars().first()
+                if user:
+                    raw_token = secrets.token_urlsafe(32)
+                    claim = CredentialClaim(
+                        order_id=order.id,
+                        user_id=user.id,
+                        token_hash=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+                        expires_at=datetime.now(UTC) + timedelta(hours=24),
+                        email_sent_at=None,
+                    )
+                    self.db.add(claim)
+                    try:
+                        self.db.commit()
+                        self.dispatch_claim_email(claim, raw_token=raw_token)
+                    except Exception:
+                        self.db.rollback()
+            elif claim.email_sent_at is None:
+                self.dispatch_claim_email(claim)
+
             return ProvisioningResult(created=False, profiles=tuple(
                 ProvisionedAgent(profile=p) for p in by_order
             ))
@@ -415,48 +441,60 @@ class ProvisioningService:
                 order.organization_id = org.id
             agent_name = self._agent_name(agent_role)
 
-            profile = WorkspaceProfile(
-                organization_id=org.id,
-                order_id=order.id,
-                plan_code=order.plan_code,
-                role=agent_role,
-                agent_name=agent_name,
-                company_name=order.buyer_company or org.name,
-                greeting=(
-                    f"Hi, I'm {agent_name}. I'm the "
-                    f"{'sales' if agent_role == ROLE_SALES_AGENT else 'support'} "
-                    f"agent for {order.buyer_company or org.name}. How can I help?"
-                ),
-                widget_token=_build_widget_token(),
-                status=PROVISION_READY,
-            )
+            # Idempotency check: see if profile already exists for this org and role
+            profile = self.db.execute(
+                select(WorkspaceProfile).where(
+                    WorkspaceProfile.organization_id == org.id,
+                    WorkspaceProfile.role == agent_role,
+                )
+            ).scalars().first()
 
-            # The moment the workspace went live. Every follow-up offset is
-            # counted from this, and FollowUpService refuses to schedule
-            # without it — a workspace that is ready but undated would never
-            # hear from us again.
-            profile.ready_at = datetime.now(UTC)
-
-            import json as _json
-            from datetime import datetime as _dt
-            from app.models.user import User as _User
-            steps = {}
-            steps[STEP_WORKSPACE] = _dt.now(UTC).isoformat()
-
-            self.db.add(profile)
-            self.db.flush()
-            steps[STEP_API_KEY] = _dt.now(UTC).isoformat()
-
-            api_key = _build_api_key()
-            profile.api_key = api_key
-            profile.api_key_prefix = api_key[:API_KEY_PREFIX_LENGTH]
-            profile.api_key_hash = hash_api_key(api_key)
-            profile.password_hash = hash_password(_build_temporary_password())
-            steps[STEP_WIDGET] = _dt.now(UTC).isoformat()
-
-            # Create admin user for the workspace if not already present
             new_user_created = False
             raw_temp_password = None
+            api_key = None
+
+            if profile is None:
+                profile = WorkspaceProfile(
+                    organization_id=org.id,
+                    order_id=order.id,
+                    plan_code=order.plan_code,
+                    role=agent_role,
+                    agent_name=agent_name,
+                    company_name=order.buyer_company or org.name,
+                    greeting=(
+                        f"Hi, I'm {agent_name}. I'm the "
+                        f"{'sales' if agent_role == ROLE_SALES_AGENT else 'support'} "
+                        f"agent for {order.buyer_company or org.name}. How can I help?"
+                    ),
+                    widget_token=_build_widget_token(),
+                    status=PROVISION_READY,
+                )
+                profile.ready_at = datetime.now(UTC)
+
+                import json as _json
+                from datetime import datetime as _dt
+                steps = {}
+                steps[STEP_WORKSPACE] = _dt.now(UTC).isoformat()
+                self.db.add(profile)
+                self.db.flush()
+
+                api_key = _build_api_key()
+                profile.api_key = api_key
+                profile.api_key_prefix = api_key[:API_KEY_PREFIX_LENGTH]
+                profile.api_key_hash = hash_api_key(api_key)
+                profile.password_hash = hash_password(_build_temporary_password())
+                steps[STEP_API_KEY] = _dt.now(UTC).isoformat()
+                steps[STEP_WIDGET] = _dt.now(UTC).isoformat()
+                steps[STEP_ADMIN] = _dt.now(UTC).isoformat()
+                profile.steps_json = _json.dumps(steps)
+                self.db.add(profile)
+            else:
+                profile.order_id = order.id
+                profile.status = PROVISION_READY
+                profile.ready_at = datetime.now(UTC)
+
+            # Check admin user
+            from app.models.user import User as _User
             buyer_user = self.db.execute(
                 select(_User).where(_User.email == order.buyer_email)
             ).scalars().first()
@@ -473,67 +511,202 @@ class ProvisioningService:
                 self.db.flush()
                 new_user_created = True
 
-            # Generate single-use CSPRNG 24h setup claim token (F-03)
-            raw_claim_token = secrets.token_urlsafe(32)
-            token_hash = hashlib.sha256(raw_claim_token.encode("utf-8")).hexdigest()
-            claim = CredentialClaim(
-                order_id=order.id,
-                user_id=buyer_user.id,
-                token_hash=token_hash,
-                expires_at=datetime.now(UTC) + timedelta(hours=24),
-                email_sent_at=None,
-            )
-            self.db.add(claim)
+            # Idempotency check: see if claim already exists for this order
+            claim = self.db.execute(
+                select(CredentialClaim).where(CredentialClaim.order_id == order.id)
+            ).scalars().first()
 
-            # Dispatch setup claim email to buyer
+            raw_claim_token = None
+            if not claim:
+                raw_claim_token = secrets.token_urlsafe(32)
+                token_hash = hashlib.sha256(raw_claim_token.encode("utf-8")).hexdigest()
+                claim = CredentialClaim(
+                    order_id=order.id,
+                    user_id=buyer_user.id,
+                    token_hash=token_hash,
+                    expires_at=datetime.now(UTC) + timedelta(hours=24),
+                    email_sent_at=None,
+                )
+                self.db.add(claim)
+
+            # Commit durable state before dispatching email
             try:
-                msg = mail.messages.setup_claim(
-                    to=order.buyer_email,
-                    company_name=order.buyer_company or org.name,
-                    claim_token=raw_claim_token,
-                    workspace_profile_id=profile.id,
-                )
-                mail.send(msg)
-                claim.email_sent_at = datetime.now(UTC)
+                self.db.commit()
             except Exception:
-                logger.exception(
-                    "Order %s: could not dispatch setup claim email; reconciler will retry",
-                    order.paystack_reference,
+                self.db.rollback()
+                profile = self.db.execute(
+                    select(WorkspaceProfile).where(
+                        WorkspaceProfile.organization_id == org.id,
+                        WorkspaceProfile.role == agent_role,
+                    )
+                ).scalars().first()
+                claim = self.db.execute(
+                    select(CredentialClaim).where(CredentialClaim.order_id == order.id)
+                ).scalars().first()
+
+            if claim and claim.email_sent_at is None:
+                self.dispatch_claim_email(claim, raw_token=raw_claim_token)
+
+            if profile:
+                agents.append(
+                    ProvisionedAgent(
+                        profile=profile,
+                        _api_key=api_key,
+                        temporary_password=raw_temp_password if new_user_created else None,
+                        claim_token=raw_claim_token,
+                    )
                 )
-
-            steps[STEP_ADMIN] = _dt.now(UTC).isoformat()
-
-            profile.steps_json = _json.dumps(steps)
-
-            self.db.add(profile)
-            self.db.flush()
-
-            agents.append(
-                ProvisionedAgent(
-                    profile=profile,
-                    _api_key=api_key,
-                    temporary_password=raw_temp_password if new_user_created else None,
-                    claim_token=raw_claim_token,
-                )
-            )
 
         if agents:
-            self.db.commit()
+            try:
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
 
         return tuple(agents)
 
-    def rotate_api_key(self, target: ProvisionedAgent | WorkspaceProfile) -> str:
+    def rotate_api_key(
+        self,
+        target: ProvisionedAgent | WorkspaceProfile,
+        commit: bool = True,
+    ) -> str:
         """Rotate the API key for an agent profile. Returns the new key."""
         profile = target.profile if isinstance(target, ProvisionedAgent) else target
         api_key = _build_api_key()
         profile.api_key = api_key
         profile.api_key_prefix = api_key[:API_KEY_PREFIX_LENGTH]
         profile.api_key_hash = hash_api_key(api_key)
-        self.db.commit()
+        if commit:
+            self.db.commit()
         return api_key
 
-    def retry_undelivered_claim_emails(self) -> int:
-        """Find credential claims where email was never sent and retry dispatch."""
+    def dispatch_claim_email(
+        self,
+        claim: CredentialClaim,
+        raw_token: str | None = None,
+        worker_id: str | None = None,
+        lease_seconds: int = 60,
+    ) -> bool:
+        """Durably dispatch setup claim email under an exclusive distributed lease.
+
+        Guarantees at-least-once delivery with single-use invitation tokens:
+        1. Atomically acquires a dispatch lease on the claim record.
+        2. Verifies token is unclaimed and unexpired.
+        3. Dispatches email via SMTP.
+        4. Records email_sent_at and releases lease on success.
+        5. On failure, records dispatch_error and releases lease for retry.
+        """
+        import os
+        import socket
+        now = datetime.now(UTC)
+        worker = worker_id or f"{socket.gethostname()}:{os.getpid()}"
+
+        # Atomic lease acquisition: only one worker can lease dispatch for this claim
+        stmt = (
+            update(CredentialClaim)
+            .where(
+                CredentialClaim.id == claim.id,
+                CredentialClaim.email_sent_at.is_(None),
+                CredentialClaim.claimed_at.is_(None),
+                CredentialClaim.expires_at > now,
+                or_(
+                    CredentialClaim.dispatch_leased_until.is_(None),
+                    CredentialClaim.dispatch_leased_until < now,
+                ),
+            )
+            .values(
+                dispatch_leased_by=worker,
+                dispatch_leased_until=now + timedelta(seconds=lease_seconds),
+                dispatch_last_attempt_at=now,
+                dispatch_attempts=CredentialClaim.dispatch_attempts + 1,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        res = self.db.execute(stmt)
+        if res.rowcount == 0:
+            self.db.rollback()
+            return False
+        self.db.commit()
+
+        # Re-fetch order for recipient details
+        order = claim.order or self.db.get(Order, claim.order_id)
+        if not order:
+            return False
+
+        token_to_send = raw_token
+        if not token_to_send:
+            token_to_send = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(token_to_send.encode("utf-8")).hexdigest()
+            stmt = (
+                update(CredentialClaim)
+                .where(
+                    CredentialClaim.id == claim.id,
+                    CredentialClaim.dispatch_leased_by == worker,
+                )
+                .values(
+                    token_hash=token_hash,
+                    expires_at=now + timedelta(hours=24),
+                )
+                .execution_options(synchronize_session=False)
+            )
+            self.db.execute(stmt)
+            self.db.commit()
+
+        try:
+            msg = mail.messages.setup_claim(
+                to=order.buyer_email,
+                company_name=order.buyer_company or "Workspace",
+                claim_token=token_to_send,
+                workspace_profile_id=order.organization_id,
+            )
+            mail.send(msg)
+
+            sent_time = datetime.now(UTC)
+            stmt = (
+                update(CredentialClaim)
+                .where(
+                    CredentialClaim.id == claim.id,
+                    CredentialClaim.dispatch_leased_by == worker,
+                )
+                .values(
+                    email_sent_at=sent_time,
+                    dispatch_leased_until=None,
+                    dispatch_leased_by=None,
+                    dispatch_error=None,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            self.db.execute(stmt)
+            self.db.commit()
+            claim.email_sent_at = sent_time
+            return True
+        except Exception as exc:
+            err = str(exc)[:500]
+            logger.warning(
+                "Setup claim email dispatch failed for order %s (attempt %s): %s",
+                order.paystack_reference,
+                claim.dispatch_attempts,
+                err,
+            )
+            stmt = (
+                update(CredentialClaim)
+                .where(
+                    CredentialClaim.id == claim.id,
+                    CredentialClaim.dispatch_leased_by == worker,
+                )
+                .values(
+                    dispatch_leased_until=None,
+                    dispatch_leased_by=None,
+                    dispatch_error=err,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            self.db.execute(stmt)
+            self.db.commit()
+            return False
+
+    def retry_undelivered_claim_emails(self, worker_id: str | None = None) -> int:
+        """Find credential claims where email was never sent and retry dispatch under lease."""
         now = datetime.now(UTC)
         claims = self.db.execute(
             select(CredentialClaim)
@@ -541,31 +714,17 @@ class ProvisioningService:
                 CredentialClaim.email_sent_at.is_(None),
                 CredentialClaim.claimed_at.is_(None),
                 CredentialClaim.expires_at > now,
+                or_(
+                    CredentialClaim.dispatch_leased_until.is_(None),
+                    CredentialClaim.dispatch_leased_until < now,
+                ),
             )
         ).scalars().all()
 
         dispatched = 0
         for claim in claims:
-            order = claim.order
-            if not order:
-                continue
-            raw_claim_token = secrets.token_urlsafe(32)
-            claim.token_hash = hashlib.sha256(raw_claim_token.encode("utf-8")).hexdigest()
-            claim.expires_at = now + timedelta(hours=24)
-            try:
-                msg = mail.messages.setup_claim(
-                    to=order.buyer_email,
-                    company_name=order.buyer_company or "Workspace",
-                    claim_token=raw_claim_token,
-                    workspace_profile_id=claim.order.organization_id if claim.order else None,
-                )
-                mail.send(msg)
-                claim.email_sent_at = now
+            if self.dispatch_claim_email(claim, worker_id=worker_id):
                 dispatched += 1
-            except Exception:
-                logger.exception("Failed to retry setup claim email for order %s", order.paystack_reference)
-        if dispatched:
-            self.db.commit()
         return dispatched
 
     def _get_or_create_org(self, order: Order) -> Organization:

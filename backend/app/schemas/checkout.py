@@ -100,19 +100,13 @@ class WorkspaceOut(BaseModel):
     ready_at: datetime | None = None
     failure_reason: str | None = None
 
-    # Present only in the response that provisioned the workspace. A second
-    # read of the same workspace will not include them, because the server
-    # kept only a hash of the key and never stored the password at all.
+    # Credentials are NEVER returned in unauthenticated checkout responses (F-03).
+    # Kept as None for backward schema compatibility.
     api_key: str | None = None
     temporary_password: str | None = None
 
     @classmethod
-    def from_model(
-        cls,
-        profile,
-        api_key: str | None = None,
-        temporary_password: str | None = None,
-    ) -> "WorkspaceOut":
+    def from_model(cls, profile) -> "WorkspaceOut":
         import json
 
         try:
@@ -138,8 +132,6 @@ class WorkspaceOut(BaseModel):
             ],
             ready_at=profile.ready_at,
             failure_reason=profile.failure_reason,
-            api_key=api_key,
-            temporary_password=temporary_password,
         )
 
 

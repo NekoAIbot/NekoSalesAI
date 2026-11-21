@@ -540,20 +540,37 @@ def test_an_unpaid_order_is_never_delivered(db, checkout, storefront):
     assert not delivery_messages(db, conversation.id)
 
 
-def test_a_paid_order_with_nothing_provisioned_yet_waits(
+def test_a_paid_order_with_nothing_provisioned_yet_waits_if_provisioning_fails(
     db, checkout, transport, storefront
 ):
     """"Your workspace is live" must not be said before it is.
 
-    This is the same lie as the spinner that started all of it, just in the other
-    direction — and the next pass will deliver, so waiting costs seconds.
+    If fallback provisioning encounters an error, delivery safely waits for the next cycle.
     """
+    from unittest.mock import patch
+    from app.payments.provisioning import ProvisioningService
+
     conversation = web_thread(db, storefront)
     order = make_order(checkout, storefront, conversation=conversation)
     order = pay(checkout, transport, order)
 
-    assert DeliveryService(db).deliver(order) is None
-    assert not order.is_delivered
+    with patch.object(ProvisioningService, "provision", side_effect=RuntimeError("Transient DB failure")):
+        assert DeliveryService(db).deliver(order) is None
+        assert not order.is_delivered
+
+
+def test_a_paid_order_with_nothing_provisioned_yet_is_auto_provisioned_on_delivery(
+    db, checkout, transport, storefront
+):
+    """Paid order without profiles (e.g. post-settlement crash recovery) is auto-provisioned."""
+    conversation = web_thread(db, storefront)
+    order = make_order(checkout, storefront, conversation=conversation)
+    order = pay(checkout, transport, order)
+
+    # Deliver auto-provisions and delivers
+    DeliveryService(db).deliver(order)
+    assert order.is_delivered
+    assert len(DeliveryService(db).profiles_for(order)) > 0
 
 
 # ---------- reconciling without a webhook ----------
