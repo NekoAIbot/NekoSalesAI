@@ -884,3 +884,267 @@ def test_order_status_poll_never_exposes_secrets_new_and_old_orders(client, db, 
     assert resp2["workspace"]["temporary_password"] is None
     assert "token" not in resp2["workspace"]
     assert "claim_token" not in resp2["workspace"]
+
+
+# ==============================================================================
+# PHASE 1 (P0) & PHASE 3 (P2): GENUINE CONCURRENCY & LEASE LOSS TESTS
+# ==============================================================================
+
+def test_concurrent_simultaneous_payment_settlement(db: Session, db_engine, test_order: Order, fake_client):
+    """Concurrency Scenario 1: Two simultaneous workers race to confirm the same payment."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from sqlalchemy.orm import sessionmaker
+
+    db.commit()  # Ensure test_order is committed so independent worker sessions can read it
+
+    session_factory = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+    barrier = threading.Barrier(2)
+    receipt_counter = []
+    receipt_lock = threading.Lock()
+
+    charge = Charge(
+        reference=test_order.paystack_reference,
+        status="success",
+        amount_minor=test_order.amount_minor,
+        currency=test_order.currency,
+        paid=True,
+        raw={"id": 12345, "status": "success"},
+    )
+
+    def worker(worker_id: int):
+        with session_factory() as sess:
+            checkout = CheckoutService(sess, client=fake_client)
+            def counted_receipt(order):
+                with receipt_lock:
+                    receipt_counter.append(worker_id)
+            checkout._send_receipt = counted_receipt
+
+            barrier.wait(timeout=5)
+            res = checkout.confirm(charge)
+            return res.is_paid if res else False
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(worker, 1)
+        f2 = executor.submit(worker, 2)
+        r1 = f1.result(timeout=10)
+        r2 = f2.result(timeout=10)
+
+    assert r1 is True and r2 is True
+    assert len(receipt_counter) == 1, "Customer receipt must be dispatched exactly once"
+
+    with session_factory() as verify_sess:
+        order_fresh = verify_sess.get(Order, test_order.id)
+        assert order_fresh.status == ORDER_PAID
+        assert order_fresh.paid_at is not None
+
+
+def test_concurrent_simultaneous_paid_order_provisioning(db: Session, db_engine, test_order: Order):
+    """Concurrency Scenario 2: Two simultaneous workers race to provision the same paid order."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from sqlalchemy.orm import sessionmaker
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    order_id = test_order.id
+    buyer_email = test_order.buyer_email
+    session_factory = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+    barrier = threading.Barrier(2)
+
+    def worker():
+        with session_factory() as sess:
+            prov = ProvisioningService(sess)
+            order = sess.get(Order, order_id)
+            barrier.wait(timeout=5)
+            res = prov.provision(order)
+            return res.profiles[0].profile.id
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(worker)
+        f2 = executor.submit(worker)
+        id1 = f1.result(timeout=10)
+        id2 = f2.result(timeout=10)
+
+    assert id1 == id2
+
+    with session_factory() as verify_sess:
+        profiles = verify_sess.query(WorkspaceProfile).filter(WorkspaceProfile.order_id == order_id).all()
+        claims = verify_sess.query(CredentialClaim).filter(CredentialClaim.order_id == order_id).all()
+        users = verify_sess.query(User).filter(User.email == buyer_email).all()
+
+        assert len(profiles) == 1, "Duplicate workspace profiles must not be created under concurrent execution"
+        assert len(claims) == 1, "Duplicate credential claims must not be created under concurrent execution"
+        assert len(users) == 1, "Duplicate users must not be created under concurrent execution"
+
+
+def test_concurrent_simultaneous_credential_email_dispatch(db: Session, db_engine, test_order: Order):
+    """Concurrency Scenario 3: Two simultaneous workers race to lease & dispatch the same credential email."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from sqlalchemy.orm import sessionmaker
+    from app import mail as mail_module
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    user = User(
+        email=test_order.buyer_email,
+        full_name="Test Buyer",
+        organization_id=test_order.organization_id,
+        password_hash="hash",
+    )
+    db.add(user)
+    db.flush()
+    claim = CredentialClaim(
+        order_id=test_order.id,
+        user_id=user.id,
+        token_hash="hash_concurrent_dispatch",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        email_sent_at=None,
+    )
+    db.add(claim)
+    db.commit()
+
+    session_factory = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+    barrier = threading.Barrier(2)
+    claim_id = claim.id
+
+    def worker(worker_name: str):
+        with session_factory() as sess:
+            prov = ProvisioningService(sess)
+            c = sess.get(CredentialClaim, claim_id)
+            barrier.wait(timeout=5)
+            with patch.object(mail_module, "send"):
+                acquired = prov.dispatch_claim_email(c, worker_id=worker_name, lease_seconds=60)
+                return acquired
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(worker, "worker_alpha")
+        f2 = executor.submit(worker, "worker_beta")
+        r1 = f1.result(timeout=10)
+        r2 = f2.result(timeout=10)
+
+    assert (r1 is True and r2 is False) or (r1 is False and r2 is True), "Exactly one worker must acquire the dispatch lease"
+
+    with session_factory() as verify_sess:
+        claim_fresh = verify_sess.get(CredentialClaim, claim_id)
+        assert claim_fresh.email_sent_at is not None
+        assert claim_fresh.dispatch_attempts == 1
+
+
+def test_concurrent_simultaneous_setup_claim_redemption(db: Session, db_engine, test_order: Order):
+    """Concurrency Scenario 4: Two simultaneous clients race to redeem the same single-use claim token."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from sqlalchemy.orm import sessionmaker
+    from app.auth.router import complete_setup
+    from app.auth.schemas import CompleteSetupRequest
+    from fastapi import HTTPException
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    res = ProvisioningService(db).provision(test_order)
+    raw_token = res.claim_token
+    buyer_email = test_order.buyer_email
+    order_id = test_order.id
+
+    session_factory = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+    barrier = threading.Barrier(2)
+
+    def worker():
+        with session_factory() as sess:
+            barrier.wait(timeout=5)
+            try:
+                out = complete_setup(
+                    CompleteSetupRequest(
+                        claim_token=raw_token,
+                        email=buyer_email,
+                        password="SecurePassword123!",
+                    ),
+                    db=sess,
+                )
+                return {"status": 200, "data": out}
+            except HTTPException as exc:
+                return {"status": exc.status_code, "detail": exc.detail}
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(worker)
+        f2 = executor.submit(worker)
+        res1 = f1.result(timeout=10)
+        res2 = f2.result(timeout=10)
+
+    statuses = [res1["status"], res2["status"]]
+    assert 200 in statuses, "One redemption attempt must succeed"
+    assert 400 in statuses, "Racing redemption attempt must be rejected with 400"
+
+    with session_factory() as verify_sess:
+        claim = verify_sess.query(CredentialClaim).filter(CredentialClaim.order_id == order_id).first()
+        assert claim.claimed_at is not None
+
+
+def test_concurrent_simultaneous_distributed_lease_acquisition(db: Session, db_engine):
+    """Concurrency Scenario 5: Two simultaneous workers race to acquire the same distributed lease."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from sqlalchemy.orm import sessionmaker
+
+    lease_name = f"concurrent_lease_{secrets.token_hex(4)}"
+    session_factory = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+    barrier = threading.Barrier(2)
+
+    def worker(worker_name: str):
+        with session_factory() as sess:
+            ls = LeaseService(sess, worker_id=worker_name)
+            barrier.wait(timeout=5)
+            acquired = ls.acquire_lease(lease_name, ttl_seconds=60)
+            return acquired, ls.fencing_token
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(worker, "worker_alpha")
+        f2 = executor.submit(worker, "worker_beta")
+        r1, token1 = f1.result(timeout=10)
+        r2, token2 = f2.result(timeout=10)
+
+    assert (r1 is True and r2 is False) or (r1 is False and r2 is True), "Exactly one worker must acquire the lease"
+
+    with session_factory() as verify_sess:
+        lease = verify_sess.query(SystemLease).filter(SystemLease.lease_name == lease_name).first()
+        assert lease is not None
+        assert lease.acquired_by in ("worker_alpha", "worker_beta")
+        assert lease.fencing_token >= 1
+
+
+def test_poller_stopping_guard_skips_reconciliation_work():
+    """Phase 3 (P2): Verify poller checks stopping state before beginning reconciliation."""
+    from app.messaging.poller import TelegramPoller
+    from app.payments.delivery import DeliveryReport
+
+    reconciler_calls = [0]
+    class MockDelivery:
+        def __init__(self, db): pass
+        def reconcile(self):
+            reconciler_calls[0] += 1
+            return DeliveryReport()
+
+    poller = TelegramPoller(
+        bot_token="test-token",
+        fetch=lambda _p: {"ok": True, "result": []},
+        session_factory=lambda: MagicMock(),
+        push_clients={},
+    )
+    poller.stop()
+    assert poller._stopping is True
+
+    with patch("app.messaging.poller.DeliveryService", MockDelivery):
+        rep = poller.reconcile_payments()
+        assert rep.checked == 0
+        assert reconciler_calls[0] == 0, "No reconciliation work may begin when stopping/fenced out"
+
+        followup_rep = poller.reconcile_followups()
+        assert followup_rep.due == 0

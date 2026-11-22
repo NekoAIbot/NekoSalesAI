@@ -519,6 +519,7 @@ def complete_setup(
             db.rollback()
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "This setup link has already been used.")
 
+        claim.claimed_at = now
         user = claim.user
         user.password_hash = hash_password(payload.password)
         user.is_active = True

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, UTC
 
 from sqlalchemy import or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import mail
@@ -365,6 +366,15 @@ class ProvisioningService:
             self.db.commit()
 
         if not agents:
+            by_order = (
+                self.db.execute(
+                    select(WorkspaceProfile).where(WorkspaceProfile.order_id == order.id)
+                ).scalars().all()
+            )
+            if by_order:
+                return ProvisioningResult(created=False, profiles=tuple(
+                    ProvisionedAgent(profile=p) for p in by_order
+                ))
             raise ProvisioningError(
                 f"No agents provisioned for order {order.paystack_reference}."
             )
@@ -476,7 +486,27 @@ class ProvisioningService:
                 steps = {}
                 steps[STEP_WORKSPACE] = _dt.now(UTC).isoformat()
                 self.db.add(profile)
-                self.db.flush()
+                try:
+                    self.db.flush()
+                except IntegrityError:
+                    self.db.rollback()
+                    profile = self.db.execute(
+                        select(WorkspaceProfile).where(
+                            WorkspaceProfile.order_id == order.id,
+                            WorkspaceProfile.role == agent_role,
+                        )
+                    ).scalars().first()
+                    if not profile:
+                        profile = self.db.execute(
+                            select(WorkspaceProfile).where(
+                                WorkspaceProfile.organization_id == org.id,
+                                WorkspaceProfile.role == agent_role,
+                            )
+                        ).scalars().first()
+                    if profile:
+                        agents.append(ProvisionedAgent(profile=profile))
+                        continue
+                    raise
 
                 api_key = _build_api_key()
                 profile.api_key = api_key
@@ -508,8 +538,14 @@ class ProvisioningService:
                     is_admin=True,
                 )
                 self.db.add(buyer_user)
-                self.db.flush()
-                new_user_created = True
+                try:
+                    self.db.flush()
+                    new_user_created = True
+                except IntegrityError:
+                    self.db.rollback()
+                    buyer_user = self.db.execute(
+                        select(_User).where(_User.email == order.buyer_email)
+                    ).scalars().first()
 
             # Idempotency check: see if claim already exists for this order
             claim = self.db.execute(
@@ -536,10 +572,17 @@ class ProvisioningService:
                 self.db.rollback()
                 profile = self.db.execute(
                     select(WorkspaceProfile).where(
-                        WorkspaceProfile.organization_id == org.id,
+                        WorkspaceProfile.order_id == order.id,
                         WorkspaceProfile.role == agent_role,
                     )
                 ).scalars().first()
+                if not profile:
+                    profile = self.db.execute(
+                        select(WorkspaceProfile).where(
+                            WorkspaceProfile.organization_id == org.id,
+                            WorkspaceProfile.role == agent_role,
+                        )
+                    ).scalars().first()
                 claim = self.db.execute(
                     select(CredentialClaim).where(CredentialClaim.order_id == order.id)
                 ).scalars().first()
@@ -775,7 +818,18 @@ class ProvisioningService:
 
         org = Organization(name=org_name, slug=slug)
         self.db.add(org)
-        self.db.flush()
+        try:
+            self.db.flush()
+        except IntegrityError:
+            self.db.rollback()
+            existing_org = (
+                self.db.execute(
+                    select(Organization).where(Organization.slug == slug)
+                ).scalars().first()
+            )
+            if existing_org is not None:
+                return existing_org
+            raise
         return org
 
     @staticmethod

@@ -280,6 +280,9 @@ class TelegramPoller:
         whole process down and cost every buyer, not just the one whose order
         failed.
         """
+        if self._stopping:
+            return DeliveryReport()
+
         db = self._session_factory()
 
         try:
@@ -322,6 +325,9 @@ class TelegramPoller:
         Never raises. A transient mail error, database issue, or bad recipient
         address must not crash the Telegram poller or delay message processing.
         """
+        if self._stopping:
+            return RunReport()
+
         current_time = time.monotonic()
         if (
             not force

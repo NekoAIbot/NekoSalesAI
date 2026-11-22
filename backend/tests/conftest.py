@@ -9,11 +9,12 @@ StaticPool keeps every connection pointed at the same in-memory database —
 without it each connection would get its own empty one.
 """
 
+import secrets
 from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -35,21 +36,28 @@ settings.MAIL_BACKEND = "memory"
 
 
 @pytest.fixture
-def db_engine():
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+def db_engine(tmp_path):
+    if not settings.is_sqlite:
+        from app.database.database import engine
+        yield engine
+    else:
+        db_file = tmp_path / f"test_{secrets.token_hex(4)}.db"
+        test_engine = create_engine(
+            f"sqlite:///{db_file}?timeout=30",
+            connect_args={"check_same_thread": False},
+        )
+        with test_engine.connect() as conn:
+            conn.execute(text("PRAGMA journal_mode=WAL"))
+            conn.commit()
 
-    # Importing app.models registers every table on Base.metadata.
-    import app.models  # noqa: F401
+        # Importing app.models registers every table on Base.metadata.
+        import app.models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=test_engine)
 
-    yield engine
+        yield test_engine
 
-    engine.dispose()
+        test_engine.dispose()
 
 
 @pytest.fixture

@@ -41,13 +41,14 @@ jobs:
       DATABASE_URL: "postgresql+psycopg://neko_user:neko_password@localhost:5432/neko_test"
       PAYSTACK_SECRET_KEY: "sk_test_fake_ci_key_12345678901234567890"
       PAYSTACK_PUBLIC_KEY: "pk_test_fake_ci_key_12345678901234567890"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Set up Python 3.11.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.4.0
         with:
           python-version: "3.11.11"
           cache: "pip"
@@ -71,4 +72,4 @@ jobs:
       - name: Run Financial Integrity & Settlement Concurrency Tests
         working-directory: backend
         run: |
-          pytest tests/test_financial_integrity_remediation.py tests/test_checkout.py tests/test_delivery.py -v --tb=short
+          pytest tests/test_financial_integrity_remediation.py tests/test_checkout.py tests/test_delivery.py tests/test_payment_environment.py tests/test_poller_loop.py -v --tb=short
