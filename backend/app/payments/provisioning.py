@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app import mail
 from app.config.logging import get_logger
+from app.config.settings import settings
 from app.core.security import hash_password
 from app.models.credential_claim import CredentialClaim
 from app.models.order import Order
@@ -293,11 +294,14 @@ class ProvisioningService:
                     select(User).where(User.email == order.buyer_email)
                 ).scalars().first()
                 if user:
+                    from app.models.credential_claim import encrypt_claim_token
                     raw_token = secrets.token_urlsafe(32)
+                    enc_token = encrypt_claim_token(raw_token, settings.SECRET_KEY)
                     claim = CredentialClaim(
                         order_id=order.id,
                         user_id=user.id,
                         token_hash=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+                        encrypted_token=enc_token,
                         expires_at=datetime.now(UTC) + timedelta(hours=24),
                         email_sent_at=None,
                     )
@@ -554,12 +558,15 @@ class ProvisioningService:
 
             raw_claim_token = None
             if not claim:
+                from app.models.credential_claim import encrypt_claim_token
                 raw_claim_token = secrets.token_urlsafe(32)
+                enc_claim_token = encrypt_claim_token(raw_claim_token, settings.SECRET_KEY)
                 token_hash = hashlib.sha256(raw_claim_token.encode("utf-8")).hexdigest()
                 claim = CredentialClaim(
                     order_id=order.id,
                     user_id=buyer_user.id,
                     token_hash=token_hash,
+                    encrypted_token=enc_claim_token,
                     expires_at=datetime.now(UTC) + timedelta(hours=24),
                     email_sent_at=None,
                 )
@@ -678,8 +685,17 @@ class ProvisioningService:
 
         token_to_send = raw_token
         if not token_to_send:
+            from app.models.credential_claim import decrypt_claim_token
+            # Attempt to recover the existing raw token using secure at-rest decryption
+            # to preserve any previously issued/delivered links without invalidating them.
+            token_to_send = decrypt_claim_token(claim.encrypted_token, settings.SECRET_KEY)
+
+        if not token_to_send:
+            # Fallback if encrypted token is missing or corrupted: rotate to a fresh token
+            from app.models.credential_claim import encrypt_claim_token
             token_to_send = secrets.token_urlsafe(32)
             token_hash = hashlib.sha256(token_to_send.encode("utf-8")).hexdigest()
+            enc_token = encrypt_claim_token(token_to_send, settings.SECRET_KEY)
             stmt = (
                 update(CredentialClaim)
                 .where(
@@ -688,6 +704,7 @@ class ProvisioningService:
                 )
                 .values(
                     token_hash=token_hash,
+                    encrypted_token=enc_token,
                     expires_at=now + timedelta(hours=24),
                 )
                 .execution_options(synchronize_session=False)

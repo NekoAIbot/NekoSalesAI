@@ -45,6 +45,8 @@ class PreflightChecker:
         self._check_environment_and_keys()
         self._check_database_engine()
         self._check_app_secret()
+        self._check_public_base_url()
+        self._check_mail_backend()
         if probe_provider and settings.payments_enabled:
             self._probe_provider_auth()
         return all(r.passed for r in self.results)
@@ -145,6 +147,126 @@ class PreflightChecker:
                     name="Application Secret Key",
                     passed=True,
                     detail="Development secret key detected.",
+                )
+            )
+
+    def _check_public_base_url(self) -> None:
+        import urllib.parse
+        env = (settings.ENVIRONMENT or "development").strip().lower()
+        base_url = (settings.PUBLIC_BASE_URL or "").strip()
+
+        if env == "production":
+            if not base_url:
+                self.results.append(
+                    PreflightCheckResult(
+                        name="Production Public Base URL",
+                        passed=False,
+                        detail="PUBLIC_BASE_URL is not set for production.",
+                    )
+                )
+                return
+
+            if not base_url.startswith("https://"):
+                self.results.append(
+                    PreflightCheckResult(
+                        name="Production Public Base URL",
+                        passed=False,
+                        detail="Production requires PUBLIC_BASE_URL starting with 'https://' (insecure HTTP forbidden).",
+                    )
+                )
+                return
+
+            parsed = urllib.parse.urlparse(base_url)
+            host = (parsed.hostname or "").lower()
+
+            private_prefixes = ("192.168.", "10.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.",
+                                "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.",
+                                "172.28.", "172.29.", "172.30.", "172.31.")
+            if host in ("localhost", "127.0.0.1", "0.0.0.0", "::1") or host.startswith(private_prefixes) or "example.com" in host or "test.local" in host:
+                self.results.append(
+                    PreflightCheckResult(
+                        name="Production Public Base URL",
+                        passed=False,
+                        detail=f"Production PUBLIC_BASE_URL cannot use loopback, private IP, or placeholder host '{host}'.",
+                    )
+                )
+                return
+
+            self.results.append(
+                PreflightCheckResult(
+                    name="Production Public Base URL",
+                    passed=True,
+                    detail=f"PUBLIC_BASE_URL is configured for production ({parsed.scheme}://{host}).",
+                )
+            )
+        else:
+            self.results.append(
+                PreflightCheckResult(
+                    name="Public Base URL",
+                    passed=True,
+                    detail=f"Running in {env} mode with PUBLIC_BASE_URL={base_url or 'UNSET'}.",
+                )
+            )
+
+    def _check_mail_backend(self) -> None:
+        env = (settings.ENVIRONMENT or "development").strip().lower()
+        backend = (settings.MAIL_BACKEND or "").strip().lower()
+
+        if env == "production":
+            if not backend or backend in ("console", "memory", "dummy", "test"):
+                self.results.append(
+                    PreflightCheckResult(
+                        name="Production Mail Delivery Backend",
+                        passed=False,
+                        detail=f"Production requires a live mail delivery backend (currently '{backend or 'NONE'}'; console/memory delivery forbidden).",
+                    )
+                )
+                return
+
+            if backend == "smtp":
+                host = (settings.SMTP_HOST or "").strip()
+                if not host or host in ("localhost", "127.0.0.1", "0.0.0.0"):
+                    self.results.append(
+                        PreflightCheckResult(
+                            name="Production Mail Delivery Backend",
+                            passed=False,
+                            detail=f"Production SMTP backend requires a remote SMTP_HOST (currently '{host or 'EMPTY'}').",
+                        )
+                    )
+                    return
+
+                mail_from = (settings.MAIL_FROM or "").strip()
+                if not mail_from or "@" not in mail_from:
+                    self.results.append(
+                        PreflightCheckResult(
+                            name="Production Mail Delivery Backend",
+                            passed=False,
+                            detail=f"Production SMTP backend requires a valid MAIL_FROM address (currently '{mail_from or 'EMPTY'}').",
+                        )
+                    )
+                    return
+
+                self.results.append(
+                    PreflightCheckResult(
+                        name="Production Mail Delivery Backend",
+                        passed=True,
+                        detail=f"Production mail backend is SMTP ({host}:{settings.SMTP_PORT}, from={mail_from}).",
+                    )
+                )
+            else:
+                self.results.append(
+                    PreflightCheckResult(
+                        name="Production Mail Delivery Backend",
+                        passed=True,
+                        detail=f"Production mail backend is '{backend}'.",
+                    )
+                )
+        else:
+            self.results.append(
+                PreflightCheckResult(
+                    name="Mail Delivery Backend",
+                    passed=True,
+                    detail=f"Running in {env} mode on '{backend or 'console'}' mail backend.",
                 )
             )
 

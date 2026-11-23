@@ -57,6 +57,12 @@ class CredentialClaim(BaseModel):
         nullable=False,
     )
 
+    # Encrypted-at-rest token payload for durable retry without link invalidation
+    encrypted_token: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
+    )
+
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -115,3 +121,29 @@ class CredentialClaim(BaseModel):
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=UTC)
         return now >= exp
+
+
+def encrypt_claim_token(raw_token: str, secret_key: str) -> str:
+    """Encrypt the raw setup token at rest using application SECRET_KEY."""
+    import base64
+    import hashlib
+    from cryptography.fernet import Fernet
+
+    derived_key = base64.urlsafe_b64encode(hashlib.sha256(secret_key.encode("utf-8")).digest())
+    return Fernet(derived_key).encrypt(raw_token.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_claim_token(encrypted_token: str | None, secret_key: str) -> str | None:
+    """Decrypt the raw setup token for safe retry. Returns None on failure."""
+    if not encrypted_token:
+        return None
+    import base64
+    import hashlib
+    from cryptography.fernet import Fernet, InvalidToken
+
+    try:
+        derived_key = base64.urlsafe_b64encode(hashlib.sha256(secret_key.encode("utf-8")).digest())
+        return Fernet(derived_key).decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, Exception):
+        return None
+

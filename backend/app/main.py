@@ -435,6 +435,7 @@ NEW_APP_INDEX = FRONTEND_DIR / "app" / "index.html"
 @app.api_route("/workspace", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/settings", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/checkout/return", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/claim-workspace", methods=["GET", "HEAD"], include_in_schema=False)
 async def serve_new_frontend():
     if NEW_APP_INDEX.is_file():
         return FileResponse(NEW_APP_INDEX)
@@ -468,7 +469,7 @@ if FRONTEND_DIR.is_dir():
     @app.api_route("/v2", methods=["GET", "HEAD"], include_in_schema=False)
     @app.api_route("/v2/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve_greenfield_frontend(full_path: str = ""):
-        index_file = FRONTEND_DIR / "app" / "index.html"
+        index_file = FRONTEND_DIR / "index.html"
         if index_file.is_file():
             return FileResponse(index_file)
         return JSONResponse(status_code=404, content={"detail": "Frontend index.html not found"})

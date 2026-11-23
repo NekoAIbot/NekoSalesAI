@@ -487,6 +487,12 @@ def complete_setup(
     from app.models.workspace_profile import WorkspaceProfile
     from app.payments.provisioning import ProvisioningService
 
+    from app.auth.schemas import validate_password_policy
+    try:
+        validate_password_policy(payload.password)
+    except ValueError as err:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(err))
+
     token_hash = hashlib.sha256(payload.claim_token.strip().encode("utf-8")).hexdigest()
     claim = db.query(CredentialClaim).filter(CredentialClaim.token_hash == token_hash).first()
 
@@ -504,6 +510,7 @@ def complete_setup(
 
     # Atomic conditional update to claim the token and prevent concurrent race conditions (F-03 / Correction D)
     now = datetime.now(UTC)
+    access_token = None
     try:
         stmt = (
             update(CredentialClaim)
@@ -523,6 +530,7 @@ def complete_setup(
         user = claim.user
         user.password_hash = hash_password(payload.password)
         user.is_active = True
+        user.email_verified = True  # SEC-01: Establish email verification upon legitimate claim token redemption
 
         # Retrieve workspace profile and rotate/fetch the API key once
         profile = db.query(WorkspaceProfile).filter(WorkspaceProfile.order_id == claim.order_id).first()
@@ -531,6 +539,9 @@ def complete_setup(
             new_api_key = ProvisioningService(db).rotate_api_key(profile, commit=False)
 
         db.commit()
+
+        from app.auth.service import create_access_token
+        access_token = create_access_token(subject=str(user.id))
     except HTTPException:
         db.rollback()
         raise
@@ -544,6 +555,8 @@ def complete_setup(
     return {
         "message": "Workspace setup completed successfully.",
         "email": user.email,
+        "access_token": access_token,
+        "token_type": "bearer",
         "api_key": new_api_key,
         "api_key_prefix": profile.api_key_prefix if profile else None,
     }

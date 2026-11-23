@@ -1,5 +1,5 @@
 import { api } from '../src-legacy/core/api.js';
-import { home, products, pricing, trust, auth, accountNav, checkoutReturn } from './public-pages.js';
+import { home, products, pricing, trust, auth, accountNav, checkoutReturn, claimWorkspace } from './public-pages.js';
 import { dashboard, workspace, settings, builder } from './account-pages.js';
 const app=document.querySelector('#app');
 const go=(path,replace=false)=>{const isAuthPath=path==='/login'||path==='/signup';if(isAuthPath&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&!document.body.dataset.doorPlayed){document.body.dataset.doorPlayed='1';const l=document.createElement('div'),r=document.createElement('div');l.className='door-panel door-left';r.className='door-panel door-right';document.body.append(l,r);setTimeout(()=>{l.remove();r.remove();},900);}const page=document.querySelector('#page');if(page&&!matchMedia('(prefers-reduced-motion: reduce)').matches){page.classList.add('page-leaving');setTimeout(()=>{history[replace?'replaceState':'pushState']({},'',path);render();window.scrollTo({top:0,behavior:'smooth'});},120);}else{history[replace?'replaceState':'pushState']({},'',path);render();window.scrollTo({top:0,behavior:'smooth'});}};
@@ -57,6 +57,7 @@ async function render(){
  else if(path==='/settings')html=await settings(api);
  else if(path==='/force-reset')html=forceReset();
  else if(path==='/checkout/return')html=checkoutReturn();
+ else if(path==='/claim-workspace')html=claimWorkspace();
  else html=home();
  app.innerHTML=html;
  app.classList.remove('page-leaving');
@@ -72,6 +73,36 @@ async function render(){
  if(path==='/settings')bindSettings();
  if(path==='/force-reset')bindForceReset();
  if(path==='/checkout/return')bindReturn();
+ if(path==='/claim-workspace')bindClaimWorkspace();
+}
+function bindClaimWorkspace(){
+ const form=document.querySelector('#claim-form');if(!form)return;
+ form.addEventListener('submit',async(e)=>{
+  e.preventDefault();
+  const btn=document.querySelector('#claim-btn'),errBox=document.querySelector('#claim-error'),succBox=document.querySelector('#claim-success');
+  errBox.style.display='none';
+  const q=new URLSearchParams(location.search);
+  const token=q.get('token')||q.get('claim_token')||'';
+  const email=document.querySelector('#claim-email')?.value.trim();
+  const password=document.querySelector('#claim-password')?.value;
+  const confirm=document.querySelector('#claim-confirm')?.value;
+  if(password!==confirm){errBox.textContent='Passwords do not match.';errBox.style.display='block';return;}
+  if(password.length<8){errBox.textContent='Password must be at least 8 characters.';errBox.style.display='block';return;}
+  btn.disabled=true;btn.textContent='Activating...';
+  try{
+   const res=await fetch('/api/v1/auth/complete-setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({claim_token:token,email,password})});
+   const data=await res.json();
+   if(!res.ok)throw new Error(data.detail||data.message||'Setup failed');
+   if(data.access_token)localStorage.setItem('nera_auth_token',data.access_token);
+   form.style.display='none';succBox.style.display='block';
+   succBox.innerHTML=`<div class="form-success"><h3>Workspace Activated!</h3><p>Your account is verified and ready.</p><a class="button button-primary" href="/dashboard" data-route="/dashboard">Enter Workspace Dashboard →</a></div>`;
+   succBox.querySelector('a')?.addEventListener('click',ev=>{ev.preventDefault();go('/dashboard');});
+  }catch(err){
+   errBox.textContent=err.message||'Setup failed. Please check your link.';
+   errBox.style.display='block';
+   btn.disabled=false;btn.textContent='Activate Workspace ↗';
+  }
+ });
 }
 let idleTimer;function resetIdleTimer(){if(!localStorage.getItem('nera_auth_token'))return;clearTimeout(idleTimer);idleTimer=setTimeout(()=>{api.logout();sessionStorage.setItem('nera_session_expired','1');go('/login',true);},15*60*1000);}['pointerdown','pointermove','keydown','touchstart','scroll'].forEach(event=>window.addEventListener(event,resetIdleTimer,{passive:true}));window.addEventListener('popstate',render);render();
 

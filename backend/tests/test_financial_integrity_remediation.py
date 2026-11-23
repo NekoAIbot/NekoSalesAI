@@ -1148,3 +1148,208 @@ def test_poller_stopping_guard_skips_reconciliation_work():
 
         followup_rep = poller.reconcile_followups()
         assert followup_rep.due == 0
+
+
+# ==============================================================================
+# SEC-01 & REL-01: Release Readiness Remediations (Customer Login & Token Recovery)
+# ==============================================================================
+
+def test_e2e_sec_01_customer_setup_and_login_unblocked(db: Session, client: TestClient, test_order: Order):
+    """SEC-01 (P0): Verify complete_setup marks email_verified=True and unblocks customer login.
+    
+    1. Provisions paid order.
+    2. Verifies unverified user cannot log in before setup completion.
+    3. Completes setup with secure password and single-use claim token.
+    4. Immediately logs in using buyer email and new password.
+    5. Confirms authentication succeeds and protected workspace (/me) is accessible.
+    6. Confirms second redemption attempt fails.
+    7. Confirms invalid or expired claims cannot verify email or activate account.
+    """
+    from fastapi import HTTPException
+    from app.auth.router import claim_workspace, complete_setup
+    from app.auth.schemas import ClaimWorkspaceRequest, CompleteSetupRequest
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # Provision order
+    res = ProvisioningService(db).provision(test_order)
+    assert res.created
+    raw_token = res.claim_token
+    assert raw_token is not None
+
+    buyer_user = db.query(User).filter(User.email == test_order.buyer_email).first()
+    assert buyer_user is not None
+    assert buyer_user.email_verified is False
+
+    # Attempting to log in prior to completing setup must be rejected
+    pre_login_resp = client.post(
+        "/api/v1/auth/login",
+        json={"email": test_order.buyer_email, "password": "AnyPassword123!"},
+    )
+    assert pre_login_resp.status_code in (401, 403)
+
+    # Complete setup with valid credentials
+    new_password = "SecureCustomerPassword123!"
+    setup_res = complete_setup(
+        CompleteSetupRequest(
+            claim_token=raw_token,
+            email=test_order.buyer_email,
+            password=new_password,
+        ),
+        db=db,
+    )
+    assert setup_res["access_token"] is not None
+    assert setup_res["token_type"] == "bearer"
+    assert setup_res["email"] == test_order.buyer_email
+    assert setup_res["api_key"] is not None
+
+    # Verify user record in database has email_verified=True and is_active=True
+    db.refresh(buyer_user)
+    assert buyer_user.is_active is True
+    assert buyer_user.email_verified is True
+
+    # Immediate login succeeds using buyer email and new password
+    login_resp = client.post(
+        "/api/v1/auth/login",
+        json={"email": test_order.buyer_email, "password": new_password},
+    )
+    assert login_resp.status_code == 200, f"Login failed: {login_resp.text}"
+    token_data = login_resp.json()
+    assert "access_token" in token_data
+    access_token = token_data["access_token"]
+
+    # Verify protected workspace /me endpoint is accessible with this token
+    me_resp = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert me_resp.status_code == 200
+    me_data = me_resp.json()
+    assert me_data["email"] == test_order.buyer_email
+    assert me_data["email_verified"] is True
+    assert me_data["is_active"] is True
+
+    # Second redemption attempt fails (single-use guarantee)
+    with pytest.raises(HTTPException) as replay_exc:
+        complete_setup(
+            CompleteSetupRequest(
+                claim_token=raw_token,
+                email=test_order.buyer_email,
+                password="AnotherPassword123!",
+            ),
+            db=db,
+        )
+    assert replay_exc.value.status_code == 400
+    assert "already been used" in replay_exc.value.detail
+
+    # Invalid token cannot verify email or redeem
+    with pytest.raises(HTTPException) as invalid_exc:
+        complete_setup(
+            CompleteSetupRequest(
+                claim_token="invalid_bogus_token_12345",
+                email="unknown@example.com",
+                password="AnotherPassword123!",
+            ),
+            db=db,
+        )
+    assert invalid_exc.value.status_code == 400
+
+
+def test_e2e_rel_01_encrypted_token_recovery_on_retry(db: Session, test_order: Order):
+    """REL-01 (P2): Verify email retry decrypts durable token and preserves setup link validity.
+    
+    1. Provisions order and saves encrypted_token at rest.
+    2. Simulates delivery crash where email was not sent (email_sent_at is None).
+    3. Runs retry_undelivered_claim_emails() without raw_token in memory.
+    4. Verifies worker decrypts encrypted_token, delivers email, and keeps token_hash unchanged.
+    5. Verifies customer successfully completes setup using the original raw token.
+    """
+    from app.auth.router import complete_setup
+    from app.auth.schemas import CompleteSetupRequest
+    from app.models.credential_claim import decrypt_claim_token
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # Provision order
+    res = ProvisioningService(db).provision(test_order)
+    original_raw_token = res.claim_token
+    assert original_raw_token is not None
+
+    claim = db.query(CredentialClaim).filter(CredentialClaim.order_id == test_order.id).first()
+    assert claim is not None
+    assert claim.encrypted_token is not None
+    original_token_hash = claim.token_hash
+
+    # Confirm decrypted token matches the raw token issued during provisioning
+    recovered_token = decrypt_claim_token(claim.encrypted_token, settings.SECRET_KEY)
+    assert recovered_token == original_raw_token
+
+    # Simulate email delivery failure / crash: reset email_sent_at
+    claim.email_sent_at = None
+    claim.dispatch_leased_by = None
+    claim.dispatch_leased_until = None
+    db.commit()
+
+    # Run retry worker (which does not have original_raw_token in memory)
+    retried_count = ProvisioningService(db).retry_undelivered_claim_emails(worker_id="retry_worker_test")
+    assert retried_count == 1
+
+    db.refresh(claim)
+    assert claim.email_sent_at is not None
+    # Crucial: token_hash MUST NOT have changed, preserving the customer's link
+    assert claim.token_hash == original_token_hash
+
+    # Verify customer can successfully redeem setup link with original token
+    setup_res = complete_setup(
+        CompleteSetupRequest(
+            claim_token=original_raw_token,
+            email=test_order.buyer_email,
+            password="DecryptedPassword123!",
+        ),
+        db=db,
+    )
+    assert setup_res["email"] == test_order.buyer_email
+    assert setup_res["access_token"] is not None
+
+    db.refresh(claim)
+    assert claim.is_claimed is True
+
+
+def test_rel_01_concurrent_email_retry_no_double_dispatch(db: Session, db_engine, test_order: Order):
+    """REL-01 (P2): Verify concurrent retry workers respect dispatch leases without double-sending."""
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from sqlalchemy.orm import sessionmaker
+
+    test_order.status = ORDER_PAID
+    test_order.paid_at = datetime.now(timezone.utc)
+    db.commit()
+
+    res = ProvisioningService(db).provision(test_order)
+    claim = db.query(CredentialClaim).filter(CredentialClaim.order_id == test_order.id).first()
+    claim.email_sent_at = None
+    claim.dispatch_leased_by = None
+    claim.dispatch_leased_until = None
+    db.commit()
+
+    session_factory = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+    barrier = threading.Barrier(2)
+
+    def worker(worker_name: str):
+        with session_factory() as sess:
+            barrier.wait(timeout=5)
+            return ProvisioningService(sess).retry_undelivered_claim_emails(worker_id=worker_name)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(worker, "worker_1")
+        f2 = executor.submit(worker, "worker_2")
+        c1 = f1.result(timeout=10)
+        c2 = f2.result(timeout=10)
+
+    # Exactly one worker should successfully lease and dispatch the undelivered email
+    assert c1 + c2 == 1, f"Expected exactly 1 successful dispatch, got worker1={c1}, worker2={c2}"
+

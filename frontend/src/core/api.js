@@ -211,6 +211,25 @@ class ApiClient {
     return this.getWorkspaceProfiles();
   }
 
+  // --- Workspace Setup & Claim ---
+  async validateClaimToken(claim_token, email) {
+    return this.request('/api/v1/auth/claim-workspace', {
+      method: 'POST',
+      body: JSON.stringify({ claim_token, email })
+    });
+  }
+
+  async completeSetup(claim_token, email, password) {
+    const data = await this.request('/api/v1/auth/complete-setup', {
+      method: 'POST',
+      body: JSON.stringify({ claim_token, email, password })
+    });
+    if (data && data.access_token) {
+      this.setToken(data.access_token);
+    }
+    return data;
+  }
+
   logout() {
     this.setToken(null);
   }

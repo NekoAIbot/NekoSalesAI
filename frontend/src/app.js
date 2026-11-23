@@ -24,6 +24,7 @@ import { DashboardView } from './views/DashboardView.js';
 import { CheckoutReturnView } from './views/CheckoutReturnView.js';
 import { SettingsView } from './views/SettingsView.js';
 import { WorkspaceView } from './views/WorkspaceView.js';
+import { ClaimWorkspaceView } from './views/ClaimWorkspaceView.js';
 
 class App {
   constructor() {
@@ -76,6 +77,7 @@ class App {
     this.router.register('/workspace', WorkspaceView);
     this.router.register('/settings', SettingsView);
     this.router.register('/checkout/return', CheckoutReturnView);
+    this.router.register('/claim-workspace', ClaimWorkspaceView);
 
     // 3. Check for existing session token
     const token = localStorage.getItem('nera_auth_token');

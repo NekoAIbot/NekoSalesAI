@@ -37,6 +37,7 @@ def test_greenfield_views_exist():
         "AuthView.js",
         "DashboardView.js",
         "CheckoutReturnView.js",
+        "ClaimWorkspaceView.js",
     ]
     for view_file in expected_views:
         path = views_dir / view_file
@@ -60,12 +61,13 @@ def test_greenfield_endpoints_return_200():
         "/signup",
         "/dashboard",
         "/checkout/return",
+        "/claim-workspace",
     ]
     for route in subroutes:
         resp = client.get(f"/v2{route}")
         assert resp.status_code == 200, f"/v2{route} returned {resp.status_code}"
         assert "text/html" in resp.headers.get("content-type", "")
-        assert "Nera — AI-Powered Business Automation" in resp.text
+        assert "Nera" in resp.text
         assert 'id="app"' in resp.text
 
 

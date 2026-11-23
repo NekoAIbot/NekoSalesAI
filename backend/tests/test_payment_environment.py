@@ -214,3 +214,118 @@ def test_webhook_fails_closed_with_503_when_environment_guard_violated(monkeypat
     )
     assert resp.status_code == 503
     assert "Payments not configured" in resp.json()["detail"]
+
+
+def test_preflight_public_base_url_validation_in_production(monkeypatch):
+    """Verify preflight rejects missing, non-https, and loopback/private URLs in production."""
+    from app.config.settings import settings
+    from app.payments.preflight import PreflightChecker
+
+    checker = PreflightChecker()
+
+    # Case 1: Missing PUBLIC_BASE_URL in production
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "")
+    checker.results.clear()
+    checker._check_public_base_url()
+    assert len(checker.results) == 1
+    assert not checker.results[0].passed
+    assert "not set for production" in checker.results[0].detail
+
+    # Case 2: HTTP in production
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "http://app.nekosales.ai")
+    checker.results.clear()
+    checker._check_public_base_url()
+    assert len(checker.results) == 1
+    assert not checker.results[0].passed
+    assert "insecure HTTP forbidden" in checker.results[0].detail
+
+    # Case 3: Localhost/loopback in production
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "https://localhost:8000")
+    checker.results.clear()
+    checker._check_public_base_url()
+    assert len(checker.results) == 1
+    assert not checker.results[0].passed
+    assert "cannot use loopback" in checker.results[0].detail
+
+    # Case 4: Private IP in production
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "https://192.168.1.50:8000")
+    checker.results.clear()
+    checker._check_public_base_url()
+    assert len(checker.results) == 1
+    assert not checker.results[0].passed
+    assert "private IP" in checker.results[0].detail
+
+    # Case 5: Valid production HTTPS URL
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "https://app.nekosales.ai")
+    checker.results.clear()
+    checker._check_public_base_url()
+    assert len(checker.results) == 1
+    assert checker.results[0].passed
+
+
+def test_preflight_mail_backend_validation_in_production(monkeypatch):
+    """Verify preflight rejects console/memory mail backends and invalid SMTP in production."""
+    from app.config.settings import settings
+    from app.payments.preflight import PreflightChecker
+
+    checker = PreflightChecker()
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+
+    # Case 1: Memory / console backend forbidden in production
+    for forbidden in ("memory", "console", "dummy", "test", ""):
+        monkeypatch.setattr(settings, "MAIL_BACKEND", forbidden)
+        checker.results.clear()
+        checker._check_mail_backend()
+        assert len(checker.results) == 1
+        assert not checker.results[0].passed
+        assert "console/memory delivery forbidden" in checker.results[0].detail
+
+    # Case 2: SMTP with missing/localhost host
+    monkeypatch.setattr(settings, "MAIL_BACKEND", "smtp")
+    monkeypatch.setattr(settings, "SMTP_HOST", "localhost")
+    checker.results.clear()
+    checker._check_mail_backend()
+    assert len(checker.results) == 1
+    assert not checker.results[0].passed
+    assert "requires a remote SMTP_HOST" in checker.results[0].detail
+
+    # Case 3: SMTP with missing MAIL_FROM
+    monkeypatch.setattr(settings, "SMTP_HOST", "smtp.sendgrid.net")
+    monkeypatch.setattr(settings, "MAIL_FROM", "")
+    checker.results.clear()
+    checker._check_mail_backend()
+    assert len(checker.results) == 1
+    assert not checker.results[0].passed
+    assert "requires a valid MAIL_FROM" in checker.results[0].detail
+
+    # Case 4: Valid production SMTP configuration
+    monkeypatch.setattr(settings, "SMTP_HOST", "smtp.sendgrid.net")
+    monkeypatch.setattr(settings, "SMTP_PORT", 587)
+    monkeypatch.setattr(settings, "MAIL_FROM", "billing@nekosales.ai")
+    checker.results.clear()
+    checker._check_mail_backend()
+    assert len(checker.results) == 1
+    assert checker.results[0].passed
+
+
+def test_preflight_development_mode_allows_local_settings(monkeypatch):
+    """Verify development/test modes permit memory mail backend and localhost URLs."""
+    from app.config.settings import settings
+    from app.payments.preflight import PreflightChecker
+
+    checker = PreflightChecker()
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "http://localhost:8000")
+    monkeypatch.setattr(settings, "MAIL_BACKEND", "memory")
+
+    checker.results.clear()
+    checker._check_public_base_url()
+    assert len(checker.results) == 1
+    assert checker.results[0].passed
+
+    checker.results.clear()
+    checker._check_mail_backend()
+    assert len(checker.results) == 1
+    assert checker.results[0].passed
+

@@ -34,7 +34,7 @@ assert(tokensContent.includes('--emerald: #10B981;'), 'Tokens must declare emera
 assert(tokensContent.includes('--electric-blue: #3B82F6;'), 'Tokens must declare electric blue');
 assert(tokensContent.includes('--grad-ribbon:'), 'Tokens must declare grad-ribbon');
 
-// 3. Verify All 10 Greenfield Views Exist
+// 3. Verify All Greenfield Views Exist
 const viewsDir = path.join(rootDir, 'src', 'views');
 const views = [
   'HomeView.js',
@@ -46,7 +46,8 @@ const views = [
   'TrustView.js',
   'AuthView.js',
   'DashboardView.js',
-  'CheckoutReturnView.js'
+  'CheckoutReturnView.js',
+  'ClaimWorkspaceView.js'
 ];
 
 for (const v of views) {
