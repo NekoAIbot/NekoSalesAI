@@ -29,10 +29,88 @@ from app.models import Organization, User
 # from the LLM slow path, making copy assertions meaningless and the run
 # both slow and non-deterministic.
 settings.TESTING = True
+settings.ENVIRONMENT = "test"
 
 # The suite uses the memory transport by default so no test can quietly connect
 # to SMTP or post to the internet, regardless of the developer's .env.
 settings.MAIL_BACKEND = "memory"
+
+
+def _verify_safe_test_database(engine) -> None:
+    """Ensure cleanup can NEVER execute against production or staging databases."""
+    if not settings.TESTING:
+        raise RuntimeError(
+            "Safety check failed: settings.TESTING is not True. Refusing database cleanup."
+        )
+
+    env = getattr(settings, "ENVIRONMENT", "").lower()
+    if env not in ("test", "testing"):
+        raise RuntimeError(
+            f"Safety check failed: ENVIRONMENT is '{env}', expected 'test'. Refusing database cleanup."
+        )
+
+    if engine.dialect.name == "postgresql":
+        url = engine.url
+        database_name = (url.database or "").lower()
+        host = (url.host or "").lower()
+
+        prohibited_host_keywords = (
+            "render.com",
+            "neon.tech",
+            "aws",
+            "rds",
+        )
+        for keyword in prohibited_host_keywords:
+            if keyword in host:
+                raise RuntimeError(
+                    f"Safety check failed: Prohibited keyword '{keyword}' found in database host ({host}). "
+                    "Refusing database cleanup."
+                )
+
+        prohibited_name_keywords = (
+            "prod",
+            "production",
+            "stage",
+            "staging",
+        )
+        for keyword in prohibited_name_keywords:
+            if keyword in database_name or keyword in host:
+                raise RuntimeError(
+                    f"Safety check failed: Prohibited keyword '{keyword}' found in database host/name "
+                    f"({host}/{database_name}). Refusing database cleanup."
+                )
+
+        if "test" not in database_name and database_name != "neko_test":
+            raise RuntimeError(
+                f"Safety check failed: PostgreSQL database name '{database_name}' does not contain 'test'. "
+                "Refusing database cleanup."
+            )
+
+
+def _clean_database(engine) -> None:
+    """Clean all application tables while preserving alembic_version and schema."""
+    _verify_safe_test_database(engine)
+
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as conn:
+            conn.execute(text("SET lock_timeout = '5s';"))
+            result = conn.execute(
+                text(
+                    "SELECT tablename FROM pg_tables "
+                    "WHERE schemaname = 'public' AND tablename != 'alembic_version'"
+                )
+            )
+            tables = [row[0] for row in result.fetchall()]
+            if tables:
+                table_list = ", ".join(f'"{t}"' for t in tables)
+                conn.execute(text(f"TRUNCATE TABLE {table_list} RESTART IDENTITY CASCADE;"))
+    elif engine.dialect.name == "sqlite":
+        with engine.begin() as conn:
+            conn.execute(text("PRAGMA foreign_keys = OFF;"))
+            for table in Base.metadata.tables.keys():
+                if table != "alembic_version":
+                    conn.execute(text(f'DELETE FROM "{table}";'))
+            conn.execute(text("PRAGMA foreign_keys = ON;"))
 
 
 @pytest.fixture
@@ -58,6 +136,16 @@ def db_engine(tmp_path):
         yield test_engine
 
         test_engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def clean_db(db_engine):
+    """Ensure complete database isolation before and after each test case."""
+    _clean_database(db_engine)
+    try:
+        yield
+    finally:
+        _clean_database(db_engine)
 
 
 @pytest.fixture
