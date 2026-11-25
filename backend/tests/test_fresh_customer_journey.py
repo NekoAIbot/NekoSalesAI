@@ -10,6 +10,7 @@ Verifies:
 7. Session invalidation upon missing, expired, or invalid token
 """
 
+import re
 import time
 import pytest
 from jose import jwt
@@ -22,7 +23,20 @@ from app.models.order import Order, ORDER_PAID
 from app.models.workspace_profile import WorkspaceProfile
 
 
-def test_fresh_customer_signup_to_dashboard_and_isolation(client, db):
+def _wait_for_otp(outbox, recipient_email: str, timeout: float = 2.0) -> str:
+    """Poll the test-only memory outbox until the background mail thread delivers the OTP."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for msg in reversed(outbox.outbox):
+            if msg.to.lower() == recipient_email.lower():
+                match = re.search(r"\b(\d{6})\b", msg.body)
+                if match:
+                    return match.group(1)
+        time.sleep(0.02)
+    raise AssertionError(f"Timed out waiting for verification OTP email to {recipient_email}")
+
+
+def test_fresh_customer_signup_to_dashboard_and_isolation(client, db, outbox):
     ts = int(time.time())
     email_a = f"fresh_customer_a_{ts}@audit.nera.ai"
     email_b = f"fresh_customer_b_{ts}@audit.nera.ai"
@@ -40,6 +54,22 @@ def test_fresh_customer_signup_to_dashboard_and_isolation(client, db):
     org_a_id = user_a_data["organization_id"]
     assert org_a_id is not None
     assert user_a_data["email"] == email_a
+    assert user_a_data["email_verified"] is False
+
+    # 1b. Unverified login is rejected with 403
+    unverified_login_a = client.post("/api/v1/auth/login", json={
+        "email": email_a,
+        "password": pwd
+    })
+    assert unverified_login_a.status_code == 403
+
+    # 1c. Retrieve OTP via test-only outbox and verify email
+    otp_a = _wait_for_otp(outbox, email_a)
+    verify_a = client.post("/api/v1/auth/email-verification/verify", json={
+        "email": email_a,
+        "code": otp_a,
+    })
+    assert verify_a.status_code == 200
 
     # 2. Login Customer A
     login_a = client.post("/api/v1/auth/login", json={
@@ -79,7 +109,7 @@ def test_fresh_customer_signup_to_dashboard_and_isolation(client, db):
     assert len(items_a) == 1
     assert items_a[0]["agent_name"] == "Alpha Sales Engine"
 
-    # 6. Register & Login Customer B
+    # 6. Register, Verify & Login Customer B
     reg_b = client.post("/api/v1/auth/register", json={
         "full_name": "Customer Beta",
         "email": email_b,
@@ -90,6 +120,13 @@ def test_fresh_customer_signup_to_dashboard_and_isolation(client, db):
     user_b_data = reg_b.json()
     org_b_id = user_b_data["organization_id"]
     assert org_b_id != org_a_id
+
+    otp_b = _wait_for_otp(outbox, email_b)
+    verify_b = client.post("/api/v1/auth/email-verification/verify", json={
+        "email": email_b,
+        "code": otp_b,
+    })
+    assert verify_b.status_code == 200
 
     login_b = client.post("/api/v1/auth/login", json={
         "email": email_b,

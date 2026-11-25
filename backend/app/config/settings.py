@@ -126,6 +126,21 @@ class Settings(BaseSettings):
             environment=self.ENVIRONMENT,
         )
 
+    def validate_mail_environment(self) -> None:
+        """Enforce production-safe mail transport configuration."""
+        if not self.is_production:
+            return
+        backend = (self.MAIL_BACKEND or "").strip().lower()
+        if backend not in {"smtp", "brevo", "brevo_api"}:
+            raise RuntimeError(
+                f"MAIL_BACKEND='{self.MAIL_BACKEND}' is forbidden in production. "
+                "Configure 'smtp' or 'brevo' so verification codes and credentials are never logged."
+            )
+        if backend == "smtp" and not self.SMTP_HOST.strip():
+            raise RuntimeError("MAIL_BACKEND='smtp' requires SMTP_HOST in production.")
+        if backend in {"brevo", "brevo_api"} and not self.BREVO_API_KEY.strip():
+            raise RuntimeError("MAIL_BACKEND='brevo' requires BREVO_API_KEY in production.")
+
     @property
     def payments_enabled(self) -> bool:
         if not self.PAYSTACK_SECRET_KEY.strip():

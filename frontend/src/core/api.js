@@ -162,6 +162,20 @@ class ApiClient {
     return data;
   }
 
+  async sendEmailVerification(email) {
+    return this.request('/api/v1/auth/email-verification/send', {
+      method: 'POST',
+      body: JSON.stringify({ email })
+    });
+  }
+
+  async verifyEmail(email, code) {
+    return this.request('/api/v1/auth/email-verification/verify', {
+      method: 'POST',
+      body: JSON.stringify({ email, code })
+    });
+  }
+
   async register(emailOrPayload, password, fullName, orgName) {
     let payload;
     if (typeof emailOrPayload === 'object' && emailOrPayload !== null) {

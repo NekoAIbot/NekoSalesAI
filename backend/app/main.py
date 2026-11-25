@@ -114,6 +114,9 @@ async def lifespan(app: FastAPI):
     if telegram_mode not in {"polling", "webhook"}:
         raise RuntimeError("TELEGRAM_MODE must be 'polling' or 'webhook'.")
 
+    if settings.is_production and not settings.TESTING:
+        settings.validate_mail_environment()
+
     # Zuri's own shared bot, for owners. Her loop is independent of the buyer
     # bot's: one dying must not take the other with it.
     global _zuri_poller_task, _zuri_poller_stop
@@ -260,6 +263,11 @@ NEW_APP_INDEX = FRONTEND_DIR / "app" / "index.html"
 @app.api_route("/trust", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/signup", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/login", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/verify-email", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/setup-mfa", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/forgot-password", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/reset-password", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/force-reset", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/build", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/configure", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/dashboard", methods=["GET", "HEAD"], include_in_schema=False)

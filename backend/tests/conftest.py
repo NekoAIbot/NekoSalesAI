@@ -20,6 +20,7 @@ from sqlalchemy.pool import StaticPool
 from app.config.settings import settings
 from app.database.base import Base
 from app.database.session import get_db
+from app.mail import MemoryMailTransport, set_transport
 from app.main import app
 from app.models import Organization, User
 
@@ -74,6 +75,17 @@ def client(db) -> Iterator[TestClient]:
         yield test_client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def outbox() -> Iterator[MemoryMailTransport]:
+    """Test-only in-memory mail outbox; resets transport on teardown."""
+    transport = MemoryMailTransport()
+    set_transport(transport)
+    try:
+        yield transport
+    finally:
+        set_transport(None)
 
 
 @pytest.fixture

@@ -177,6 +177,8 @@ class ConsoleMailTransport(MailTransport):
     name = BACKEND_CONSOLE
 
     def _deliver(self, message: Message) -> None:
+        if settings.is_production:
+            raise RuntimeError("Console mail transport is forbidden in production.")
         logger.info(
             "[mail:console] to=%s subject=%s\n%s",
             message.to,
@@ -317,6 +319,11 @@ _transport_lock = threading.Lock()
 
 def build_transport(backend: str | None = None) -> MailTransport:
     chosen = (backend or settings.MAIL_BACKEND or BACKEND_CONSOLE).strip().lower()
+
+    if settings.is_production and chosen not in (BACKEND_SMTP, BACKEND_BREVO, "brevo_api"):
+        raise RuntimeError(
+            f"MAIL_BACKEND={chosen!r} is forbidden in production. Configure 'smtp' or 'brevo'."
+        )
 
     if chosen == BACKEND_SMTP:
         return SmtpMailTransport()

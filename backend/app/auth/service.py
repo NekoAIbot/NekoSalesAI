@@ -100,7 +100,7 @@ def _send_verification_email(email: str, code: str) -> None:
     )
     message = Message(
         to=email,
-        subject=f"Your verification code: {code}",
+        subject="Your Nera verification code",
         body=body,
     )
     send_in_background(message)
@@ -378,12 +378,42 @@ class AuthService:
         if verification.attempts >= EMAIL_CODE_MAX_ATTEMPTS:
             raise ValueError("Too many attempts. Please request a new code.")
 
-        verification.attempts += 1
+        from sqlalchemy import delete, update
+
+        # Atomically claim one attempt so concurrent requests cannot bypass the limit.
+        attempt_stmt = (
+            update(EmailVerificationCode)
+            .where(
+                EmailVerificationCode.id == verification.id,
+                EmailVerificationCode.user_id == user.id,
+                EmailVerificationCode.attempts < EMAIL_CODE_MAX_ATTEMPTS,
+            )
+            .values(attempts=EmailVerificationCode.attempts + 1)
+            .execution_options(synchronize_session=False)
+        )
+        attempt_res = self.db.execute(attempt_stmt)
         self.db.commit()
+        if attempt_res.rowcount == 0:
+            raise ValueError("Too many attempts. Please request a new code.")
+
         if not _verify_secret(code, verification.code_hash):
             raise ValueError("Invalid code.")
+
+        # Atomically consume the code so concurrent valid submissions cannot reuse it.
+        consume_stmt = (
+            delete(EmailVerificationCode)
+            .where(
+                EmailVerificationCode.id == verification.id,
+                EmailVerificationCode.user_id == user.id,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        consume_res = self.db.execute(consume_stmt)
+        if consume_res.rowcount == 0:
+            self.db.rollback()
+            raise ValueError("No valid verification code found. Please request a new one.")
+
         user.email_verified = True
-        self.db.delete(verification)
         self.db.commit()
         return True
 

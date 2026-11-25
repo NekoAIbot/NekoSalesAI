@@ -72,6 +72,7 @@ class App {
     this.router.register('/trust', TrustView);
     this.router.register('/login', AuthView);
     this.router.register('/signup', AuthView);
+    this.router.register('/verify-email', AuthView);
     this.router.register('/dashboard', DashboardView);
     this.router.register('/workspace', WorkspaceView);
     this.router.register('/settings', SettingsView);
